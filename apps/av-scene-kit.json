@@ -44,6 +44,12 @@
       "takelog": {"noot":41}
     },
     "scenes": [{"noot":36},{"noot":37},{"noot":38},{"noot":39}],
+    "presets": [
+      {"noot":36,"waarden":{"feedback":0.85,"mix":0.5,"glitch":0.1,"emission":0.35,"height":0.3,"orbit":0.15,"hue":0.55,"master_dim":1}},
+      {"noot":37,"waarden":{"feedback":0.96,"mix":0.7,"glitch":0.8,"emission":0.7,"height":0.6,"orbit":0.5,"hue":0.9,"master_dim":1}},
+      {"noot":38,"waarden":{"feedback":0.6,"mix":0.3,"glitch":0.45,"emission":0.9,"height":0.85,"orbit":0.7,"hue":0.15,"master_dim":0.95}},
+      {"noot":39,"waarden":{"feedback":0.3,"mix":0.9,"glitch":0,"emission":0.2,"height":0.1,"orbit":0.05,"hue":0.6,"master_dim":0.8}}
+    ],
     "_bron": "tools/genereer-manifesten.mjs ← av-scene-kit/config.json + td/td_build_hub.py (PRESETS)"
   }
 }

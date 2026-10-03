@@ -5,6 +5,7 @@
 //
 //   const d = maakDriver(statisch, { systeem, klok, fetch });
 //   d.start(kern);   // verbind + hallo + manifest, daarna hartslagen zolang de app bereikbaar lijkt
+//   d.opnieuw();  // nieuwe aanmelding: de kern speelt alle waarden opnieuw af (na een herstart van de app)
 //   d.stop();
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -27,7 +28,7 @@ export const DRIVER_SOORTEN = /** @type {const} */ (['midi', 'http']);
 /**
  * @param {Record<string, any>} statisch  inhoud van apps/<app>.json
  * @param {{ systeem?: any, klok: import('../core/klok.js').Klok, fetch?: any, config?: any, log?: (...a: unknown[]) => void }} o
- * @returns {{ verbinding: Verbinding, start: (kern: KernVoorDriver) => void, stop: () => void, driver: MidiDriver|HttpDriver }}
+ * @returns {{ verbinding: Verbinding, start: (kern: KernVoorDriver) => void, stop: () => void, opnieuw: () => void, driver: MidiDriver|HttpDriver }}
  */
 export function maakDriver(statisch, { systeem, klok, fetch, config, log }) {
   const soort = statisch?.driver?.soort;
@@ -36,7 +37,7 @@ export function maakDriver(statisch, { systeem, klok, fetch, config, log }) {
   if (soort === 'midi') d = new MidiDriver(statisch, { systeem, klok, config, log });
   else if (soort === 'http') d = new HttpDriver(statisch, { klok, fetch, config, log });
   else throw new Error(`onbekende driver-soort: ${soort} (${statisch?.app ?? '?'})`);
-  return { verbinding: d.verbinding, start: (kern) => d.start(kern), stop: () => d.stop(), driver: d };
+  return { verbinding: d.verbinding, start: (kern) => d.start(kern), stop: () => d.stop(), opnieuw: () => d.opnieuw(), driver: d };
 }
 
 const isInt = (/** @type {unknown} */ x, lo = 0, hi = 127) => Number.isInteger(x) && /** @type {number} */ (x) >= lo && /** @type {number} */ (x) <= hi;
@@ -74,11 +75,25 @@ export function valideerStatisch(statisch) {
     };
     for (const [id, d] of Object.entries(map)) {
       if (!params.has(id)) f.push(`driver.map.${id}: geen param met die id`);
+      const ps = params.get(id)?.soort;
+      if (d && typeof d === 'object' && d.noot !== undefined && ps && ps !== 'trigger' && ps !== 'schakelaar') f.push(`driver.map.${id}: een ${ps} kan niet op een noot (alleen trigger of schakelaar)`);
       const s = doel(`driver.map.${id}`, d);
       if (s) { if (bezet.has(s)) f.push(`driver.map.${id}: ${s} al gebruikt door ${bezet.get(s)}`); else bezet.set(s, id); }
     }
     for (const [i, d] of (Array.isArray(driver.scenes) ? driver.scenes : []).entries()) doel(`driver.scenes[${i}]`, d);
     if (driver.scenes !== undefined && !Array.isArray(driver.scenes)) f.push('driver.scenes moet een lijst zijn');
+    if (driver.presets !== undefined && !Array.isArray(driver.presets)) f.push('driver.presets moet een lijst zijn');
+    for (const [i, pr] of (Array.isArray(driver.presets) ? driver.presets : []).entries()) {
+      doel(`driver.presets[${i}]`, pr && typeof pr === 'object' ? { cc: pr.cc, noot: pr.noot, kanaal: pr.kanaal } : pr);
+      const w = pr?.waarden;
+      if (!w || typeof w !== 'object' || Array.isArray(w)) { f.push(`driver.presets[${i}].waarden ontbreekt`); continue; }
+      for (const [id, v] of Object.entries(w)) {
+        const p = params.get(id);
+        if (!p) f.push(`driver.presets[${i}].waarden.${id}: geen param met die id`);
+        else if (p.soort === 'trigger') f.push(`driver.presets[${i}].waarden.${id}: een trigger heeft geen waarde`);
+        if (typeof v !== 'number' || !(v >= 0 && v <= 1)) f.push(`driver.presets[${i}].waarden.${id}: moet 0..1 zijn`);
+      }
+    }
     for (const id of params.keys()) if (!(id in map)) f.push(`param ${id} heeft geen MIDI-doel in driver.map`);
   }
   if (driver.soort === 'http') {
@@ -122,19 +137,45 @@ export function laadStatisch(map = APPS_MAP) {
   return { statisch, fouten };
 }
 
+/** Standaard wachttijd voor de drivers starten: echte (WS-)apps die al draaien, verbinden eerst. */
+export const DRIVER_UITSTEL_MS = 3000;
+
 /**
  * Start een driver voor elk statisch manifest. Handig voor de daemon (cli.js).
- * @param {{ kern: KernVoorDriver, klok: import('../core/klok.js').Klok, systeem?: any, fetch?: any, config?: any, map?: string, log?: (...a: unknown[]) => void }} o
+ *
+ * Volgorde en moment doen ertoe: de kern geeft slots in volgorde van eerste hallo, en de eerste app
+ * krijgt de focus. Een MIDI-driver is altijd 'bereikbaar', ook als TD of Logic dicht is. Daarom:
+ * - drivers starten pas na `uitstel_ms` (standaard config.drivers.uitstel_ms of 3 s), zodat apps die
+ *   zichzelf aanmelden eerst hun slot (en de focus) krijgen;
+ * - in de volgorde van config.apps (daarna alfabetisch);
+ * - `config.apps.<app>.autostart: false` slaat een driver over.
+ * @param {{ kern: KernVoorDriver, klok: import('../core/klok.js').Klok, systeem?: any, fetch?: any, config?: any, map?: string, uitstel_ms?: number, log?: (...a: unknown[]) => void }} o
  */
-export function startDrivers({ kern, klok, systeem, fetch, config, map, log = () => {} }) {
+export function startDrivers({ kern, klok, systeem, fetch, config, map, uitstel_ms, log = () => {} }) {
   const { statisch, fouten } = laadStatisch(map);
   for (const f of fouten) log('drivers', `${f.bestand} overgeslagen:`, f.fouten.join('; '));
+  const volgorde = Object.keys(config?.apps ?? {});
+  const plek = (/** @type {string} */ app) => { const i = volgorde.indexOf(app); return i < 0 ? Infinity : i; };
+  const lijst = [...statisch].sort((a, b) => plek(a.app) - plek(b.app) || String(a.app).localeCompare(String(b.app)));
+  /** @type {ReturnType<typeof maakDriver>[]} */
   const drivers = [];
-  for (const s of statisch) {
+  for (const s of lijst) {
+    if (config?.apps?.[s.app]?.autostart === false) { log('drivers', `${s.app}: autostart uit in config.json, overgeslagen`); continue; }
     if (s.driver.soort === 'midi' && !systeem?.virtueel) { log('drivers', `${s.app}: geen MIDI-systeem met virtuele poorten, overgeslagen`); continue; }
-    const d = maakDriver(s, { systeem, klok, fetch, config, log });
-    d.start(kern);
-    drivers.push(d);
+    drivers.push(maakDriver(s, { systeem, klok, fetch, config, log }));
   }
-  return { drivers, stop: () => { for (const d of drivers) d.stop(); } };
+  let gestopt = false;
+  const startAlle = () => { timer = null; if (!gestopt) for (const d of drivers) d.start(kern); };
+  const wacht = uitstel_ms ?? config?.drivers?.uitstel_ms ?? DRIVER_UITSTEL_MS;
+  /** @type {any} */
+  let timer = null;
+  if (wacht > 0) timer = klok.zet(startAlle, wacht); else startAlle();
+  return {
+    drivers,
+    stop: () => {
+      gestopt = true;
+      if (timer !== null) { klok.wis(timer); timer = null; }
+      for (const d of drivers) d.stop();
+    },
+  };
 }

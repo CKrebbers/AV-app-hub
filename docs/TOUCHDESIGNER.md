@@ -26,12 +26,13 @@ Manifest en mapping: `apps/av-scene-kit.json` (gegenereerd uit `av-scene-kit/con
 
 De L2TD-poort (device 3, Logic → TD) en TD2L (device 2) blijven zoals ze waren.
 
-**Na een herstart van de hub** verdwijnt de virtuele poort even. Staat de regel in de Device Mapper daarna op
+**Na een herstart van de hub** verdwijnt de virtuele poort even (en de hub begint weer bij de standaardwaarden). Staat de regel in de Device Mapper daarna op
 "not found", kies dan de In Device opnieuw. (TD pakt hem meestal vanzelf weer op.)
 
 ## Wat de hub stuurt
 
-Alle waarden 0..1 uit de hub worden `round(v·127)`. De hub stuurt een waarde alleen als hij verandert.
+Alle waarden 0..1 uit de hub worden `round(v·127)`. Een beweging van de APC, LPD8 of cockpit stuurt de hub
+alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt hij altijd.
 
 | MIDI (kanaal 1) | TD-kanaal | Hub-param | Wat | Rol (LPD8) | APC-hint |
 |---|---|---|---|---|---|
@@ -52,14 +53,21 @@ Alle waarden 0..1 uit de hub worden `round(v·127)`. De hub stuurt een waarde al
 
 - **Pads** zijn triggers: indrukken = note-on 127, loslaten = note-off. TD reageert op de note-on
   (`onOffToOn` in de `pads`-DAT). Opname en take-log **togglen** in TD zelf; de hub weet dus niet of de opname
-  loopt — kijk naar de TD-statusregel.
+  loopt — kijk naar de TD-statusregel. Elke druk is een echte aanslag: kwam het loslaten van de vorige druk
+  nooit aan (bijvoorbeeld omdat je intussen Bank indrukte), dan stuurt de hub eerst nog een note-off.
 - **Scènes** (Scene 1–4 op de APC, of in de cockpit) spelen dezelfde preset-noten als korte aanslag
   (note-off na 100 ms, zodat TD de noot zeker in een frame ziet).
-- **Presets en pickup:** na een preset houdt TD elke knop vast tot de binnenkomende waarde de presetwaarde
-  kruist (`knob_moved` in de `pads`-DAT, `PICK_EPS 0.02`). Draait een APC-fader dus "niets", beweeg hem dan
-  over de presetwaarde heen. De hub doet zijn eigen pickup daarnaast, voor de fysieke fader.
-- **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. Na een herstart van de hub speelt hij
-  de laatst bekende waarden opnieuw af. Herstart je alleen TD, beweeg dan even de faders, of laad een snapshot.
+- **Presets en pickup:** een preset zet in TD alle acht knoppen op de presetwaarden, en TD houdt elke knop vast
+  tot de binnenkomende waarde de presetwaarde kruist (`knob_moved` in de `pads`-DAT, `PICK_EPS 0.02`). De hub
+  kent die presetwaarden (`driver.presets` in `apps/av-scene-kit.json`, uit `PRESETS` in `td_build_hub.py`)
+  en neemt ze bij elke preset-noot over. Ringen en cockpit tonen dus de presetstand, en de pickup van de hub
+  wacht net als TD tot de fader de presetwaarde kruist.
+- **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. Zolang de hub draait, speelt hij bij
+  een nieuwe aanmelding van de driver de laatst bekende waarden opnieuw af. Die waarden staan alleen in het
+  geheugen: na een herstart van de hub zelf begint alles weer bij de standaardwaarden (= preset 1).
+- **Alleen TD herstart?** Dan staat TD weer op preset 1 en weet de hub dat niet. Kies een preset (pad of scène):
+  TD en hub staan dan weer gelijk. Of beweeg de faders die je terug wilt. Een snapshot laden helpt alleen voor
+  waarden die afwijken van de huidige hub-stand.
 
 ## Problemen
 
@@ -69,3 +77,4 @@ Alle waarden 0..1 uit de hub worden `round(v·127)`. De hub stuurt een waarde al
 | Alleen CC 20–23 bewegen | Je gebruikt nog de echte APC als device 1 in plaats van de hub-poort. |
 | Waarden springen | Twee apparaten op ID 1. Er mag er maar één zijn. |
 | Pad doet twee keer iets | De oude controller staat er nog naast; haal hem uit de Device Mapper. |
+| Sediment speelt een noot als ik een preset kies | Logic luistert ook naar VARVE-HUB TD. Zie docs/LOGIC.md stap 2: uitvinken. |

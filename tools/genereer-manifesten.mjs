@@ -54,10 +54,13 @@ export function sceneKitManifest(kit, app, presets = []) {
   const params = [];
   /** @type {Record<string, any>} */
   const map = {};
+  /** @type {(string|null)[]} param-id per knop 1..8 (index 0..7) */
+  const knopIds = [];
   for (let i = 1; i <= 8; i++) {
     const k = kit.knobs?.[String(i)];
-    if (!k || cc[i - 1] === undefined) continue;
+    if (!k || cc[i - 1] === undefined) { knopIds.push(null); continue; }
     const id = String(k.name).toLowerCase().replace(/[^a-z0-9_.-]/g, '_');
+    knopIds.push(id);
     const extra = SCENE_KIT_KNOPPEN[id] ?? { naam: k.name, hint: 'knop' };
     params.push({
       id, naam: extra.naam, soort: 'waarde', standaard: basis[i - 1] ?? 0, hint: extra.hint, groep: k.target,
@@ -77,6 +80,12 @@ export function sceneKitManifest(kit, app, presets = []) {
   if (pads.record !== undefined) { params.push({ id: 'record', naam: 'Opname aan/uit', soort: 'trigger', hint: 'pad', groep: 'opname' }); map.record = { noot: pads.record }; }
   if (pads.takelog !== undefined) { params.push({ id: 'takelog', naam: 'Take-log aan/uit', soort: 'trigger', hint: 'pad', groep: 'opname' }); map.takelog = { noot: pads.takelog }; }
   const scenes = presets.slice(0, 4).map((p) => p.naam.slice(0, 32));
+  // Een preset-noot laat TD zelf alle knoppen op de presetwaarden zetten (apply_preset); de driver meldt
+  // die waarden dan aan de kern, zodat ringen en pickup TD volgen.
+  const presetWaarden = presets.slice(0, 4).map((p, i) => ({
+    noot: pads[`preset${i + 1}`],
+    waarden: Object.fromEntries(knopIds.map((id, k) => [id, p.knoppen[k]]).filter(([id, v]) => id !== null && Number.isFinite(v))),
+  })).filter((p) => p.noot !== undefined);
   return {
     v: 1, app: 'av-scene-kit', naam: app.naam, ...(app.kleur ? { kleur: app.kleur } : {}), truth: 'hub', hb_s: 1, lease: false,
     scenes,
@@ -85,6 +94,7 @@ export function sceneKitManifest(kit, app, presets = []) {
       soort: 'midi', poort: app.midipoort ?? 'VARVE-HUB TD', kanaal,
       map,
       ...(scenes.length ? { scenes: scenes.map((_, i) => ({ noot: pads[`preset${i + 1}`] })) } : {}),
+      ...(presetWaarden.length ? { presets: presetWaarden } : {}),
       _bron: 'tools/genereer-manifesten.mjs ← av-scene-kit/config.json + td/td_build_hub.py (PRESETS)',
     },
   };
@@ -195,6 +205,10 @@ export function opmaak(m) {
           const ids = Object.keys(v.map);
           ids.forEach((id, n) => regels.push(`      ${JSON.stringify(id)}: ${JSON.stringify(v.map[id])}${n < ids.length - 1 ? ',' : ''}`));
           regels.push(`    }${dkomma}`);
+        } else if (d === 'presets') {
+          regels.push('    "presets": [');
+          v.presets.forEach((/** @type {any} */ x, n) => regels.push(`      ${JSON.stringify(x)}${n < v.presets.length - 1 ? ',' : ''}`));
+          regels.push(`    ]${dkomma}`);
         } else regels.push(`    ${JSON.stringify(d)}: ${JSON.stringify(v[d])}${dkomma}`);
       });
       regels.push(`  }${komma}`);

@@ -7,6 +7,7 @@ import { NepSysteem } from '../src/ports/nep.js';
 import { valideerManifest } from '../src/protocol/manifest.js';
 import { leesVanApp, leesNaarApp } from '../src/protocol/berichten.js';
 import { maakDriver, valideerStatisch, laadStatisch, startDrivers, midiBytes, verbBericht, APPS_MAP } from '../src/drivers/index.js';
+import { CHECK_TIMEOUT_MS, POST_TIMEOUT_MS } from '../src/drivers/http.js';
 import { genereer, opmaak, leesParamsH, leesPresets, naarGenormaliseerd, sedimentManifest, sceneKitManifest, VERBODEN_CC } from '../tools/genereer-manifesten.mjs';
 import { laadConfig } from '../src/config.js';
 
@@ -210,7 +211,9 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     kern.stuur(v, { t: 'trig', id: 'preset1', aan: true });
     kern.stuur(v, { t: 'scene', i: 1 });
     d.stop();
-    expect(poort.verstuurd).toEqual([[0x90, 36, 127], [0x90, 37, 127], [0x80, 37, 0], [0x80, 36, 0]]);
+    expect(poort.verstuurd.slice(0, 2)).toEqual([[0x90, 36, 127], [0x90, 37, 127]]);
+    expect(poort.verstuurd.slice(2)).toEqual(expect.arrayContaining([[0x80, 37, 0], [0x80, 36, 0]]));
+    expect(poort.verstuurd).toHaveLength(4);
     expect(klok.timers.size).toBe(0);
     expect(poort.open).toBe(false);
   });
@@ -234,6 +237,122 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     mag = true;
     klok.loop(1000);
     expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+  });
+
+  it('poort komt later: de replay na de nieuwe aanmelding komt echt als CC op de poort', () => {
+    const klok = new NepKlok(), kern = new NepKern();
+    let mag = false;
+    const nep = new NepSysteem();
+    const systeem = { soort: 'test', lijst: () => nep.lijst(), open: (n) => nep.open(n), virtueel: (n) => { if (!mag) throw new Error('geen ALSA'); return nep.virtueel(n); } };
+    const s = leesApp('sediment.json');
+    const d = maakDriver(s, { systeem, klok });
+    d.start(kern);
+    kern.stuur(d.verbinding, { t: 'zet', id: 'cutoff', v: 0.5 }); // nog geen poort: gaat nergens heen
+    mag = true;
+    klok.loop(1000);
+    expect(nep.apparaten.get('VARVE-HUB Logic').verstuurd).toEqual([[0xb0, s.driver.map.cutoff.cc, 64]]);
+  });
+
+  it('opnieuw(): nieuwe aanmelding, de kern speelt alles opnieuw af en niets wordt weggefilterd', () => {
+    const { kern, d, poort, v } = opzet();
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 0.5 });
+    d.opnieuw();
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest']);
+    expect(poort.verstuurd).toEqual([[0xb0, 22, 64], [0xb0, 22, 64]]);
+  });
+
+  it('snapshot en replay gaan altijd door de dubbelfilter (herstel na een herstart van TD)', () => {
+    const { kern, poort, v } = opzet();
+    kern.stuur(v, { t: 'zet', id: 'feedback', v: 0.3 });
+    kern.stuur(v, { t: 'zet', id: 'feedback', v: 0.3, bron: 'snapshot' });
+    kern.stuur(v, { t: 'zet', id: 'feedback', v: 0.3, bron: 'replay' });
+    kern.stuur(v, { t: 'zet', id: 'feedback', v: 0.3, bron: 'apc40' });
+    expect(poort.verstuurd).toEqual([[0xb0, 20, 38], [0xb0, 20, 38], [0xb0, 20, 38]]);
+  });
+
+  it('twee keer trig aan zonder uit (los ingeslikt door de hubtoets): toch een nieuwe aanslag, met note-off ertussen', () => {
+    const { kern, poort, v } = opzet();
+    kern.stuur(v, { t: 'trig', id: 'record', aan: true });
+    kern.stuur(v, { t: 'trig', id: 'record', aan: true });
+    kern.stuur(v, { t: 'trig', id: 'record', aan: false });
+    kern.stuur(v, { t: 'trig', id: 'record', aan: false }); // dubbele uit: niets
+    expect(poort.verstuurd).toEqual([[0x90, 40, 127], [0x80, 40, 0], [0x90, 40, 127], [0x80, 40, 0]]);
+  });
+
+  it('twee scènes binnen 100 ms: elke aanslag is een echte uit → aan, de oude note-off vervalt', () => {
+    const { klok, kern, poort, v } = opzet();
+    kern.stuur(v, { t: 'scene', i: 0 });
+    klok.loop(50);
+    kern.stuur(v, { t: 'scene', i: 0 });
+    klok.loop(60); // de note-off van de eerste scène zou nu vallen
+    expect(poort.verstuurd).toEqual([[0x90, 36, 127], [0x80, 36, 0], [0x90, 36, 127]]);
+    klok.loop(40);
+    expect(poort.verstuurd).toEqual([[0x90, 36, 127], [0x80, 36, 0], [0x90, 36, 127], [0x80, 36, 0]]);
+  });
+
+  it('scène terwijl de preset-pad ingedrukt is: geen dubbele note-on, loslaten daarna stuurt niets extra', () => {
+    const { klok, kern, poort, v } = opzet();
+    kern.stuur(v, { t: 'trig', id: 'preset1', aan: true });
+    kern.stuur(v, { t: 'scene', i: 0 });
+    klok.loop(100);
+    kern.stuur(v, { t: 'trig', id: 'preset1', aan: false });
+    expect(poort.verstuurd).toEqual([[0x90, 36, 127], [0x80, 36, 0], [0x90, 36, 127], [0x80, 36, 0]]);
+  });
+
+  it('preset-noot: de driver meldt de presetwaarden van TD als zet aan de kern', () => {
+    const { klok, kern, poort, v } = opzet();
+    const s = leesApp('av-scene-kit.json');
+    kern.stuur(v, { t: 'trig', id: 'preset2', aan: true });
+    expect(kern.soorten()).toEqual(['hallo', 'manifest']); // niet midden in het bericht van de kern
+    klok.loop(0);
+    const zets = kern.ontvangen.filter(([, b]) => b.t === 'zet').map(([, b]) => [b.id, b.v]);
+    expect(Object.fromEntries(zets)).toEqual(s.driver.presets[1].waarden);
+    kern.stuur(v, { t: 'scene', i: 3 });
+    klok.loop(0);
+    expect(kern.ontvangen.filter(([, b]) => b.t === 'zet').slice(-8).map(([, b]) => b.v)).toEqual(Object.values(s.driver.presets[3].waarden));
+    // TD staat nu op de presetwaarde: dezelfde waarde van de APC hoeft niet nog eens
+    const voor = poort.verstuurd.length;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: s.driver.presets[3].waarden.glitch, bron: 'apc40' });
+    expect(poort.verstuurd).toHaveLength(voor);
+  });
+
+  it('start() twee keer: één timerketen, stop() ruimt alles op en de poort blijft dicht', () => {
+    const { klok, kern, d } = opzet();
+    d.start(kern);
+    expect(kern.verbindingen).toHaveLength(1);
+    d.stop();
+    klok.loop(3000);
+    expect(klok.timers.size).toBe(0);
+    expect(d.driver.poort).toBe(null);
+  });
+
+  it('NaN wordt nooit een databyte', () => {
+    expect(midiBytes({ cc: 21 }, 'waarde', NaN, 0)).toEqual([0xb0, 21, 0]);
+    const { poort, v } = opzet();
+    v.stuur({ t: 'zet', id: 'mix', v: NaN });
+    expect(poort.verstuurd).toEqual([]);
+  });
+
+  it('kan de poort niet open, dan logt hij dat één keer, niet elke seconde', () => {
+    const klok = new NepKlok(), kern = new NepKern(), log = [];
+    const systeem = { soort: 'test', lijst: () => [], open: () => null, virtueel: () => { throw new Error('geen ALSA'); } };
+    const d = maakDriver(leesApp('sediment.json'), { systeem, klok, log: (...a) => log.push(a.join(' ')) });
+    d.start(kern);
+    klok.loop(10000);
+    expect(log.filter((m) => /niet te openen/.test(m))).toHaveLength(1);
+  });
+
+  it('valideerStatisch: een waarde op een noot mag niet; presets worden gecontroleerd', () => {
+    const s = leesApp('av-scene-kit.json');
+    const r = valideerStatisch({ ...s, driver: { ...s.driver, map: { ...s.driver.map, feedback: { noot: 50 } } } });
+    expect(r.ok ? [] : r.fouten).toEqual(['driver.map.feedback: een waarde kan niet op een noot (alleen trigger of schakelaar)']);
+    const r2 = valideerStatisch({ ...s, driver: { ...s.driver, presets: [{ noot: 36, waarden: { feedback: 2, record: 1, bestaat_niet: 0.5 } }, { noot: 37 }] } });
+    expect(r2.ok ? [] : r2.fouten).toEqual([
+      'driver.presets[0].waarden.feedback: moet 0..1 zijn',
+      'driver.presets[0].waarden.record: een trigger heeft geen waarde',
+      'driver.presets[0].waarden.bestaat_niet: geen param met die id',
+      'driver.presets[1].waarden ontbreekt',
+    ]);
   });
 
   it('sediment: alle 22 parameters op eigen CC, geen botsing met CC 1/7/10/64', () => {
@@ -399,7 +518,7 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(kern.soorten()).toEqual(['hallo', 'manifest']);
   });
 
-  it('een hangende check wordt na 1,5 s afgebroken en blokkeert de volgende niet', async () => {
+  it('een hangende check wordt na 0,8 s afgebroken en blokkeert de volgende niet', async () => {
     const klok = new NepKlok(), kern = new NepKern();
     let n = 0;
     const fetch = (url, init) => {
@@ -415,6 +534,80 @@ describe('HTTP-driver (uurwerk)', () => {
     klok.loop(500); await rust();
     expect(n).toBe(2);
     expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+  });
+
+  it('een hangende check die het afbreken negeert, blokkeert de volgende checks niet', async () => {
+    const klok = new NepKlok(), kern = new NepKern();
+    let n = 0;
+    const fetch = (url, init) => {
+      if (init?.method === 'POST') return Promise.resolve({ ok: true });
+      n++;
+      if (n === 1) return new Promise(() => {}); // hangt voor altijd, signal of niet
+      return Promise.resolve({ ok: true, text: async () => 'tabs: 1' });
+    };
+    const d = maakDriver(leesApp('uurwerk.json'), { klok, fetch });
+    d.start(kern);
+    klok.loop(2000); await rust();
+    expect(n).toBe(2);
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    expect(d.driver.checkBezig).toBe(false);
+  });
+
+  it('check-periode + time-out blijft onder stil_s: een trage brug knippert niet op "stil"', () => {
+    const cfg = laadConfig();
+    const u = leesApp('uurwerk.json');
+    expect((u.driver.gezond_s ?? 2) * 1000 + CHECK_TIMEOUT_MS).toBeLessThan(cfg.hartslag.stil_s * 1000);
+  });
+
+  it('een POST die blijft hangen wordt na 2 s afgebroken, zonder replay', async () => {
+    const klok = new NepKlok(), kern = new NepKern();
+    const afgebroken = [];
+    const fetch = (url, init) => {
+      if (init?.method === 'POST') return new Promise((_, nee) => init.signal.addEventListener('abort', () => { afgebroken.push(JSON.parse(init.body).args.naam); nee(new Error('afgebroken')); }));
+      return Promise.resolve({ ok: true, text: async () => 'tabs: 1' });
+    };
+    const d = maakDriver(leesApp('uurwerk.json'), { klok, fetch });
+    d.start(kern);
+    await rust();
+    kern.stuur(d.verbinding, { t: 'zet', id: 'dicht', v: 0.3 });
+    klok.loop(POST_TIMEOUT_MS - 1); await rust();
+    expect(afgebroken).toEqual([]);
+    klok.loop(1); await rust();
+    expect(afgebroken).toEqual(['dicht']);
+    expect(d.driver.posts.size).toBe(0);
+    klok.loop(2000); await rust();
+    expect(kern.soorten().filter((t) => t === 'hallo')).toHaveLength(1); // de brug had hem wel: geen replay
+  });
+
+  it('onbereikbaar: geen POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af', async () => {
+    const { klok, kern, fetch, v } = opzet({ gezond: false });
+    await rust();
+    kern.stuur(v, { t: 'zet', id: 'samenhang', v: 0.4 });
+    kern.stuur(v, { t: 'trig', id: 'bewaar', aan: true });
+    await rust();
+    expect(fetch.verbs()).toEqual([]);
+    fetch.gezond = true;
+    klok.loop(2000); await rust();
+    expect(fetch.verbs().map((b) => b.args.waarde)).toEqual([0.4]);
+  });
+
+  it('NaN: geen verb (en verbBericht klemt NaN naar de ondergrens)', async () => {
+    expect(verbBericht({ verb: 'macro', args: { naam: 'licht' }, waarde: 'waarde', bereik: [-1, 1] }, 'waarde', NaN).args.waarde).toBe(-1);
+    const { fetch, v } = opzet();
+    v.stuur({ t: 'zet', id: 'dicht', v: NaN });
+    await rust();
+    expect(fetch.verbs()).toEqual([]);
+  });
+
+  it('start() twee keer: één checkketen, stop() ruimt alles op', async () => {
+    const { klok, kern, fetch, d } = opzet();
+    d.start(kern);
+    await rust();
+    expect(fetch.checks()).toBe(1);
+    d.stop();
+    klok.loop(10000); await rust();
+    expect(klok.timers.size).toBe(0);
+    expect(fetch.checks()).toBe(1);
   });
 
   it('stop(): timers weg, verbreek, daarna niets meer', async () => {
@@ -445,16 +638,38 @@ describe('maakDriver / startDrivers', () => {
   });
   it('startDrivers start ze allemaal; MIDI alleen met virtuele poorten', async () => {
     const klok = new NepKlok(), kern = new NepKern(), systeem = new NepSysteem(), fetch = nepFetch();
-    const r = startDrivers({ kern, klok, systeem, fetch });
+    const r = startDrivers({ kern, klok, systeem, fetch, uitstel_ms: 0 });
     expect(r.drivers).toHaveLength(3);
     expect([...systeem.apparaten.keys()].sort()).toEqual(['VARVE-HUB Logic', 'VARVE-HUB TD']);
     r.stop();
     expect(kern.verbroken.sort()).toEqual(['av-scene-kit', 'sediment', 'uurwerk']);
     const meldingen = [];
-    const r2 = startDrivers({ kern: new NepKern(), klok, systeem: null, fetch, log: (...a) => meldingen.push(a.join(' ')) });
+    const r2 = startDrivers({ kern: new NepKern(), klok, systeem: null, fetch, uitstel_ms: 0, log: (...a) => meldingen.push(a.join(' ')) });
     expect(r2.drivers).toHaveLength(1);
     expect(meldingen.filter((m) => /geen MIDI-systeem/.test(m))).toHaveLength(2);
     r2.stop();
+  });
+});
+
+describe('startDrivers: volgorde en moment', () => {
+  it('wacht eerst (echte apps krijgen de eerste slots), dan in de volgorde van config.apps; autostart:false slaat over', () => {
+    const klok = new NepKlok(), kern = new NepKern(), systeem = new NepSysteem(), fetch = nepFetch();
+    const config = { apps: { uurwerk: {}, sediment: {}, 'av-scene-kit': { autostart: false } } };
+    const r = startDrivers({ kern, klok, systeem, fetch, config, uitstel_ms: 3000 });
+    expect(r.drivers.map((d) => d.driver.manifest.app)).toEqual(['uurwerk', 'sediment']);
+    klok.loop(2999);
+    expect(kern.verbindingen).toHaveLength(0);
+    klok.loop(1);
+    expect(kern.ontvangen.filter(([, b]) => b.t === 'hallo').map(([app]) => app)).toEqual(['uurwerk', 'sediment']);
+    r.stop();
+  });
+  it('stop() vóór het starten: er start niets meer', () => {
+    const klok = new NepKlok(), kern = new NepKern(), systeem = new NepSysteem(), fetch = nepFetch();
+    const r = startDrivers({ kern, klok, systeem, fetch });
+    r.stop();
+    klok.loop(10000);
+    expect(kern.verbindingen).toHaveLength(0);
+    expect(klok.timers.size).toBe(0);
   });
 });
 
@@ -507,6 +722,8 @@ describe('genereer-manifesten', () => {
     expect(Object.values(kit.driver.map).map((d) => d.cc ?? d.noot)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41]);
     expect(kit.driver.kanaal).toBe(0);
     expect(kit.params.find((p) => p.id === 'record').soort).toBe('trigger');
+    expect(kit.driver.presets.map((p) => p.noot)).toEqual([36, 37, 38, 39]);
+    expect(kit.driver.presets[0].waarden).toEqual(Object.fromEntries(kit.params.filter((p) => p.soort === 'waarde').map((p) => [p.id, p.standaard])));
     expect(Object.fromEntries(kit.params.filter((p) => p.rol).map((p) => [p.id, p.rol]))).toMatchObject({ hue: 'macro.kleur', orbit: 'macro.beweging', emission: 'macro.intensiteit' });
     expect(uit['sediment.json'].params).toHaveLength(22);
   });

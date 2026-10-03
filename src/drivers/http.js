@@ -8,14 +8,20 @@
 // driver = { soort:"http", url:"http://127.0.0.1:8766", gezond_s?:2, max_hz?:10,
 //            verbs: { paramId: { verb, args?, waarde?: "argnaam", bereik?: [min, max] } } }
 import { DriverBasis, scheidStatisch } from './basis.js';
+import { klem01 } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
 /** @typedef {{ verb: string, args?: Record<string, unknown>, waarde?: string, bereik?: [number, number] }} VerbSpec */
 /** @typedef {(url: string, init?: any) => Promise<any>} Fetch */
 
 export const AUTEUR = 'varve-hub';
-/** Hoe lang een gezondheidscheck mag duren. */
-export const CHECK_TIMEOUT_MS = 1500;
+/**
+ * Hoe lang een gezondheidscheck mag duren. Klein genoeg dat check-periode (2 s) + time-out onder
+ * config.hartslag.stil_s (3 s) blijft: een trage brug knippert dan niet op 'stil'.
+ */
+export const CHECK_TIMEOUT_MS = 800;
+/** Hoe lang een POST /verb open mag blijven (de brug wacht op de tab, tot 90 s). */
+export const POST_TIMEOUT_MS = 2000;
 
 /**
  * Het verb-bericht voor een waarde (0..1) of een trigger. Puur, voor driver en tests.
@@ -33,7 +39,7 @@ export function verbBericht(spec, soort, v) {
     if (soort === 'schakelaar' || soort === 'trigger') args[spec.waarde] = typeof v === 'boolean' ? v : v >= 0.5;
     else {
       const [lo, hi] = spec.bereik ?? [0, 1];
-      const x = lo + Math.max(0, Math.min(1, Number(v))) * (hi - lo);
+      const x = lo + klem01(Number(v)) * (hi - lo);
       args[spec.waarde] = Math.round(x * 1e4) / 1e4;
     }
   }
@@ -71,6 +77,8 @@ export class HttpDriver extends DriverBasis {
     /** @type {{ ac: AbortController|null, timer: any } | null} de check die nu loopt */
     this.lopend = null;
     this.gestopt = true;
+    /** @type {Map<any, AbortController|null>} lopende POSTs: klok-handle van hun time-out → afbreker */
+    this.posts = new Map();
     /** @type {{ verb: string, args: Record<string, unknown>, auteur: string }[]} alles wat verstuurd is (diagnose/tests) */
     this.verstuurd = [];
   }
@@ -78,14 +86,26 @@ export class HttpDriver extends DriverBasis {
   /** @param {{ verb: string, args: Record<string, unknown>, auteur: string }} bericht */
   #post(bericht) {
     if (this.gestopt) return;
+    // Onbereikbaar: niet sturen (geen stapel open verzoeken); bij herstel speelt de kern alles opnieuw af.
+    if (this.bereikbaar === false) { this.gemist = true; return; }
     this.verstuurd.push(bericht);
+    const ac = typeof AbortController === 'function' ? new AbortController() : null;
+    let verlopen = false;
+    const timer = this.klok.zet(() => { verlopen = true; this.posts.delete(timer); ac?.abort(); }, POST_TIMEOUT_MS);
+    this.posts.set(timer, ac);
+    const klaar = () => { if (this.posts.delete(timer)) this.klok.wis(timer); };
     let p;
     try {
-      p = this.fetch(`${this.url}/verb`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(bericht) });
-    } catch (e) { this.#mislukt(bericht, e); return; }
+      p = this.fetch(`${this.url}/verb`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(bericht), ...(ac ? { signal: ac.signal } : {}) });
+    } catch (e) { klaar(); this.#mislukt(bericht, e); return; }
     Promise.resolve(p).then(
-      (r) => { if (r && r.ok === false) this.#mislukt(bericht, new Error(`HTTP ${r.status}`)); },
-      (e) => this.#mislukt(bericht, e),
+      (r) => { klaar(); if (r && r.ok === false) this.#mislukt(bericht, new Error(`HTTP ${r.status}`)); },
+      (e) => {
+        klaar();
+        // Afgebroken na POST_TIMEOUT_MS: de brug heeft het verb wel, de tab is alleen traag. Geen replay.
+        if (verlopen) this.log('driver', this.manifest.app, `verb ${bericht.verb}: geen antwoord binnen ${POST_TIMEOUT_MS} ms`);
+        else this.#mislukt(bericht, e);
+      },
     );
   }
 
@@ -99,7 +119,7 @@ export class HttpDriver extends DriverBasis {
   #zet(id, v) {
     const spec = this.driver.verbs?.[id];
     const p = this.params.get(id);
-    if (!spec || !p || p.soort === 'trigger') return;
+    if (!spec || !p || p.soort === 'trigger' || !Number.isFinite(v)) return;
     const nu = this.klok.nu();
     let r = this.rem.get(id);
     if (!r) { r = { laatstOp: -Infinity, timer: null }; this.rem.set(id, r); }
@@ -142,7 +162,16 @@ export class HttpDriver extends DriverBasis {
     this.checkBezig = true;
     let ok = false;
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
-    const mijn = { ac, timer: this.klok.zet(() => ac?.abort(), CHECK_TIMEOUT_MS) };
+    // De time-out sluit de check zelf af: ook een fetch die het afbreken negeert, blokkeert de volgende niet.
+    /** @type {{ ac: AbortController|null, timer: any }} */
+    const mijn = { ac, timer: null };
+    mijn.timer = this.klok.zet(() => {
+      if (this.lopend !== mijn) return;
+      this.lopend = null;
+      this.checkBezig = false;
+      this.bereikbaar = false;
+      ac?.abort();
+    }, CHECK_TIMEOUT_MS);
     this.lopend = mijn;
     try {
       const r = await this.fetch(`${this.url}/`, { method: 'GET', ...(ac ? { signal: ac.signal } : {}) });
@@ -169,12 +198,16 @@ export class HttpDriver extends DriverBasis {
     this.hartslag();
   }
 
+  /** Laat de kern alles opnieuw afspelen (bijv. na een herlaadde uurwerk-tab). */
+  opnieuw() { if (this.kern) this.aanmelden(); }
+
   #plan() {
     this.checkTimer = this.klok.zet(() => { this.controleer(); this.#plan(); }, this.gezondMs);
   }
 
   /** @param {import('./basis.js').KernVoorDriver} kern */
   start(kern) {
+    if (!this.gestopt) return; // loopt al: geen tweede timerketen
     this.gestopt = false;
     this.koppel(kern);
     this.controleer();
@@ -187,6 +220,8 @@ export class HttpDriver extends DriverBasis {
     this.checkTimer = null;
     if (this.lopend) { this.klok.wis(this.lopend.timer); this.lopend.ac?.abort(); this.lopend = null; }
     this.checkBezig = false;
+    for (const [h, ac] of this.posts) { this.klok.wis(h); ac?.abort(); }
+    this.posts.clear();
     for (const r of this.rem.values()) if (r.timer !== null) this.klok.wis(r.timer);
     this.rem.clear();
     this.ontkoppel();

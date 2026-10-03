@@ -49,20 +49,28 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
    Controle: *Audio MIDI-configuratie → MIDI-studio* toont "VARVE-HUB Logic".
 2. **Logic → Instellingen → MIDI → Invoer** (*Settings → MIDI → Inputs*): vink **VARVE-HUB Logic** aan.
    (Staat hij er niet, start Logic dan opnieuw nadat de hub draait.)
+   **Vink in dezelfde lijst VARVE-HUB TD uit.** Logic luistert standaard naar álle MIDI-ingangen. De TD-poort
+   stuurt noten 36–41 (presets, opname, take-log) en CC 20–27 op kanaal 1: precies de CC's van Shape … Resonance.
+   Staat hij aan, dan speelt Sediment een lage noot bij elke TD-preset, en bewegen zijn parameters mee met de
+   TD-knoppen.
 3. Maak (of open) een **softwarematig-instrumentspoor met Sediment** en selecteer het. Open het
    plug-invenster van Sediment.
-4. Geef in de hub **Sediment de focus** (Bank ingedrukt houden + de Track Select-knop van het Sediment-slot),
-   of open de cockpit (`http://localhost:7700`) en kies Sediment. Nu stuurt elke beweging een CC uit de tabel.
+4. Open de cockpit (`http://localhost:7700`) en kies Sediment. Dat is de makkelijkste route om te leren: daar
+   zet je elke parameter direct, zonder pickup. (Op de APC kan het ook: Bank ingedrukt houden + de Track
+   Select-knop van het Sediment-slot. Maar een APC-fader met pickup stuurt pas een CC als hij de huidige waarde
+   kruist, dus dan "leert Logic niets" tot je de fader ver genoeg beweegt.)
 5. Koppel elke parameter met **Leer-modus**:
    1. **Logic Pro → Bedieningsoppervlakken → Leer toewijzing voor …** (*Control Surfaces → Learn Assignment*,
       sneltoets **⌘L**). Het venster *Controller Assignments* opent in Leer-modus.
    2. Klik in het Sediment-venster op de parameter (bijv. **Cutoff**) of beweeg hem een klein beetje.
-   3. Beweeg op de APC (of in de cockpit) de control van diezelfde parameter. Logic leert CC 26 → Cutoff.
-   4. Volgende parameter: stap 2–3 herhalen, Leer-modus blijft aan. Werk de tabel van boven naar beneden af;
-      in de cockpit zie je per parameter welke CC hij is.
+   3. Beweeg in de cockpit (of op de APC) diezelfde parameter een flink stuk heen en weer. Logic leert
+      CC 26 → Cutoff.
+   4. Volgende parameter: stap 2–3 herhalen, Leer-modus blijft aan. Werk de tabel hierboven van boven naar
+      beneden af; welke CC bij welke parameter hoort, staat alleen in die tabel (de cockpit kent de CC-nummers niet).
    5. Klaar: zet Leer-modus uit (⌘L of de knop in het venster).
 6. **Controleer in de expertweergave** van *Controller Assignments* (*Expert View*):
-   - **Input**: `VARVE-HUB Logic`, **Channel** 1, **Type** Control Change, **Number** = de CC uit de tabel.
+   - **Input**: `VARVE-HUB Logic`, **nooit `All`**. Met *All* reageert de toewijzing ook op CC 20–27 van de
+     TD-poort en van je keyboard. **Channel** 1, **Type** Control Change, **Number** = de CC uit de tabel.
    - **Value**: Min 0, Max 127, Format *unsigned*, **Mode** *Scaled* (niet *Relative* of *Toggle*).
    - **Class** *Mixer*, **Channel Strip** het Sediment-spoor (of *Selected Track* als Sediment altijd
      geselecteerd is), **Parameter** de Sediment-parameter.
@@ -83,8 +91,11 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
 | "VARVE-HUB Logic" staat niet in de invoerlijst | Hub draait niet, of Logic startte vóór de hub. Hub starten, Logic herstarten. |
 | Parameter springt terug | Er staat automatie op het spoor in *Read*; zet het spoor op *Off* of *Latch*. |
 | Leer-modus pakt CC 1 | Je bewoog het modwiel tijdens het leren. Toewijzing verwijderen en opnieuw. |
+| Sediment speelt vanzelf lage noten (C1–F1) als ik in TD een preset kies | VARVE-HUB TD staat aan als Logic-invoer. Stap 2: uitvinken. |
+| Shape … Resonance bewegen mee met de TD-knoppen | De toewijzing heeft Input *All*, of VARVE-HUB TD staat aan als invoer. Stap 2 en 6. |
+| Leer-modus pakt niets als ik een APC-fader beweeg | Pickup: de hub stuurt pas als de fader de huidige waarde kruist. Leer via de cockpit, of beweeg de fader over zijn hele bereik. |
 | Werkt alleen als het spoor geselecteerd is | In de expertweergave staat *Selected Track*; kies het Sediment-spoor. |
-| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. |
+| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. De hub onthoudt waarden alleen zolang hij draait: na een herstart van de hub krijgt Sediment de standaardwaarden uit het manifest, niet je laatste stand. |
 
 *Later (ONDERZOEK.md §7):* een vaste CC→parameter-tabel in de Sediment-processor zelf maakt deze Logic-stap
 overbodig. De CC-nummers hierboven zijn dan de tabel.
