@@ -90,7 +90,7 @@ Parameter:
 | `hint` | nee | `"fader"` · `"knop"` · `"pad"` · `"kolom"` — voorkeur voor automatische indeling |
 | `groep` | nee | groepen worden pagina's op de device-knoppen en kolommen op het grid |
 | `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"` |
-| `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth) |
+| `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth): elke `zet` van de hub zelf (cockpit, snapshot, replay, LPD8-macro), niet een directe APC-beweging; alleen bij `soort:"waarde"` (§12) |
 | `takeover` | nee | `"pickup"` (standaard voor faders), `"direct"`, `"schaal"` |
 | `eenheid`, `min`, `max`, `centre` | nee | alleen voor weergave in de cockpit; `centre` = de waarde die op 0,5 ligt (log-schaal zoals JUCE `setSkewForCentre`), zonder `centre` lineair |
 
@@ -153,8 +153,9 @@ Zodat transports, drivers en kern los van elkaar gebouwd kunnen worden. Types in
 - `kern.verbind(v)` → nieuwe verbinding (app nog onbekend); `kern.ontvang(v, bericht)` voor elk gecontroleerd bericht (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`) — bij `hallo` zet de kern `v.app`; `kern.verbreek(v)` bij sluiten.
 - `kern.invoer(g, bytes)` voor elke gebeurtenis van `ApcSessie`/`Lpd8Sessie` en van de virtuele controllers (ruwe bytes zijn nodig voor lease).
 - `kern.cockpit(b)`, `kern.focus(app)`, `kern.bewaar(nr)`, `kern.laad(nr)`, `kern.herteken()` (na opnieuw aansluiten), `kern.apparaatWeg(dev)`, `kern.zetApparaat(dev, info)`, `kern.beeld()`, `kern.stop()`.
+- `kern.exporteer()` / `kern.importeer(data)`: het geheugen over een herstart heen (§12), puur; `src/opslag.js` schrijft en leest het.
 - De kern schrijft LEDs via een **Oppervlak** `{ zet(id, LedStaat), teken(), stuur(bytes), vergeet() }` (`ApcSessie` voldoet) en stuurt naar apps via `verbinding.stuur()`.
-- Events via `kern.bij(naam, fn)`: `beeld`, `leds`, `invoer`, `opname`, `naarApp`.
+- Events via `kern.bij(naam, fn)`: `beeld`, `leds`, `invoer`, `opname`, `naarApp`, `geheugen` (snapshots of truth:"hub"-waarden veranderden).
 - Bedrading van alles samen: `src/hub.js` (`startHub`), gestart met `varve-hub start`.
 
 ## 10. Beslissingen (golf 1)
@@ -164,7 +165,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 **Verbinden**
 - `welkom` stuurt de hub; de server garandeert er precies één per verbinding.
 - Een tweede `hallo` op dezelfde verbinding met dezelfde `app` en een nieuwe `inst` = herstart (drivers gebruiken dit na een storing): pickup opnieuw "wachten", bij `truth:"hub"` opnieuw afspelen.
-- `truth:"hub"`: bij `hallo` speelt de hub alle bekende waarden opnieuw af (`bron:"replay"`) en negeert hij het eerstvolgende `staat` van die app, zodat standaardwaarden de bewaarde niet overschrijven. Alleen binnen dezelfde hub-sessie (nog niet op schijf).
+- `truth:"hub"`: bij `hallo` speelt de hub alle bekende waarden opnieuw af (`bron:"replay"`) en negeert hij het eerstvolgende `staat` van die app, zodat standaardwaarden de bewaarde niet overschrijven. Sinds golf 4 ook over een herstart van de hub heen (geheugen op schijf, §12).
 - Hartslag: `config.hartslag.stil_s`/`weg_s` gelden voor `hb_s = 1`; een app met `hb_s = 2` krijgt twee keer zo lang.
 
 **Globaal (§6)**
@@ -195,5 +196,22 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - **Lease-LEDs:** alleen geldige berichten (precies één note-on, note-off of CC van 3 bytes) gaan naar de APC — ook verstopte mode-SysEx valt weg, al bij de validatie (`isLedBericht`). Bij een stortvloed lopen lease-LEDs hooguit ±40 ms voor op de APC; de rest wordt per LED samengevoegd (nieuwste wint).
 - **LPD8-pickup volgt de buitenwereld:** verandert de waarde van een macro door een snapshot, de app of de cockpit, dan "wacht" de LPD8-knop weer tot hij die waarde kruist.
 - **Triggers blijven nooit hangen:** het loslaten gaat altijd naar de trigger waar het indrukken heen ging, ook na een nieuw manifest, een paginawissel of een focuswissel.
-- **Stoppen:** een gestopte kern negeert alles en start geen timers meer; `hub.stop()` sluit eerst de server en dan de apparaten.
+- **Stoppen:** een gestopte kern negeert alles en start geen timers meer; `hub.stop()` sluit eerst de server, schrijft dan het geheugen weg (§12), stopt de kern en sluit de apparaten.
 - **Zonder virtuele MIDI-poorten** (geen RtMidi) starten de MIDI-drivers niet en melden ze dat; TD en Sediment staan dan niet als "actief" in de cockpit.
+
+## 12. Beslissingen (golf 4 — geheugen en slew)
+
+**Geheugen op schijf**
+- De hub onthoudt over een herstart heen: de snapshots (1-5 via Bank+Scene, 1-4 via de LPD8) en de laatste waarden van apps met `truth:"hub"`, plus per zo'n app zijn laatste `inst`. Waarden van `truth:"app"`-apps niet (die app weet het zelf); komt een bewaarde app terug als `truth:"app"`, dan verdwijnen zijn waarden uit het geheugen.
+- Bestand: `config.json` → `geheugen.pad` (standaard `~/.varve-hub/staat.json`); `$VARVE_HUB_STAAT` gaat voor; `varve-hub start --zonder-geheugen` zet het uit. Inhoud: `{ "v": 1, "snapshots": { "<nr>": { "<app>": { "<param>": 0..1 } } }, "waarden": { "<app>": { … } }, "inst": { "<app>": "<inst>" } }`.
+- Schrijven: hooguit eens per `geheugen.schrijf_ms` (minimum en standaard 1000 ms), alleen bij een echte wijziging, atomisch (tijdelijk bestand + fsync + rename), en bij stoppen meteen. Van een lopende slew wordt het doel bewaard, niet de tussenwaarde.
+- Lezen bij de start. Ontbreekt het bestand: leeg beginnen, met een melding. Kapot, onleesbaar of een onbekende versie: leeg beginnen, en het oude bestand gaat naar `<pad>.kapot`; lukt dat niet, dan schrijft de hub deze sessie niets (het oude geheugen blijft). Ongeldige onderdelen vallen weg; dan blijft het origineel als kopie in `<pad>.kapot`.
+- Replay na een hub-herstart: zodra het manifest van een `truth:"hub"`-app binnenkomt, krijgt hij de bewaarde waarden (`bron:"replay"`) en wordt zijn eerstvolgende `staat` genegeerd. Meldt hij zich met **dezelfde `inst`** als vorige sessie (hij draaide gewoon door), dan gaan ze direct, zonder slew: hij heeft ze nog, en zo is er geen dip. Met een **nieuwe `inst`** (de app herstartte ook, of een driver: die krijgt per hub-start een nieuwe inst) staat de app op zijn standaardwaarde en verlopen ze van daaruit met `slew_s`.
+
+**slew_s**
+- `slew_s` geldt voor elke `zet` van de hub zelf: cockpit, snapshot laden, replay na een herstart, LPD8-macro. Niet voor een directe APC-fader of -knop: die is al continu en moet direct voelen; zo'n beweging breekt een lopende slew af.
+- Alleen voor `soort:"waarde"`; een keuze of schakelaar springt.
+- Elke nieuwe `zet` start een nieuwe slew vanaf de huidige (tussen)waarde, met de volle `slew_s`. Een cockpit-schuif die je sleept loopt dus achter; laat je hem los, dan toont de cockpit even de tussenwaarde en glijdt hij daarna naar het doel. Dat is bewust: de app krijgt nooit een sprong.
+
+**Apps per monitor**
+- Een app met `per_monitor: true` in `config.json` (flux) meldt zich per monitor aan als `<app>-<monitor>` (`flux-dp-1`). De hub geeft die de kleur van de basis-app en de naam `"<naam> (<monitor>)"`; staat de monitor niet in de naam uit het manifest, dan zet de hub hem erachter.

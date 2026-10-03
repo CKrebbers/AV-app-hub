@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const HUB_MAP = join(import.meta.dirname, '..');
 
@@ -12,7 +14,7 @@ const HUB_MAP = join(import.meta.dirname, '..');
  */
 function startUitvoer(extra) {
   return new Promise((klaar, mis) => {
-    const p = spawn(process.execPath, ['src/cli.js', 'start', '--poort', '0', ...extra], { cwd: HUB_MAP });
+    const p = spawn(process.execPath, ['src/cli.js', 'start', '--poort', '0', ...extra], { cwd: HUB_MAP, env: { ...process.env, VARVE_HUB_STAAT: join(mkdtempSync(join(tmpdir(), 'varve-cli-')), 'staat.json') } }); // nooit het echte geheugen
     let uit = '';
     const stop = () => { clearTimeout(t); p.kill('SIGKILL'); };
     const t = setTimeout(() => { stop(); mis(new Error('hub startte niet:\n' + uit)); }, 10000);

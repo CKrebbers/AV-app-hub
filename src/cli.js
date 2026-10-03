@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
-//   start [set] [--poort N] [--host H] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer]
-//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers;
+//   start [set] [--poort N] [--host H] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer] [--zonder-geheugen]
+//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers, geheugen;
 //                            met een set (sets/<set>.json) ook alle apps van die avond (docs/SETS.md)
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
@@ -23,6 +23,7 @@ import { voerUit, terminalIO } from './proef/runner.js';
 import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
+import { geheugenPad } from './opslag.js';
 import { NepSysteem } from './ports/nep.js';
 import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen, PADEN_PAD, toonPad } from './sets/index.js';
 import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
@@ -139,6 +140,8 @@ const opdrachten = {
       hub = await startHub({
         config, systeem, poort, host: optie('--host'),
         drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), log,
+        // Snapshots en truth:"hub"-waarden over een herstart heen (config.json → geheugen.pad, $VARVE_HUB_STAAT).
+        geheugen: args.includes('--zonder-geheugen') ? null : geheugenPad(config),
       });
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
@@ -164,6 +167,7 @@ const opdrachten = {
       /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
     }
     hub.kern.bij('naarApp', () => {});
+    console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren.');
     console.log(`varve-hub draait. Cockpit: ${hub.adres}   Apps: ${hub.adres.replace('http', 'ws')}/app   Ctrl-C stopt.`);
     if (set) { const h = hub; draaiSet(set, kernToegang(h.kern), Number(new URL(h.adres).port), () => h.stop()); }
     else bijStoppen(() => hub.stop());
@@ -294,7 +298,7 @@ const opdrachten = {
 
   help() {
     console.log(`varve-hub — opdrachten:
-  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers);
+  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers, --zonder-geheugen);
                     met een set ook de apps van die avond (${lijstSets().join(', ') || 'geen sets'}; --zonder-chrome, --uitvoer)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
