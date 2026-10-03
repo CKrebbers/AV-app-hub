@@ -1,0 +1,206 @@
+{
+  "_bron": "waterschaal · claude/varve-hub-koppeling @ 9c5c0f7 — vastgelegd door tools/repetitie.mjs op 2026-10-03T16:05:44.828Z",
+  "manifest": {
+    "v": 1,
+    "app": "waterschaal",
+    "naam": "Waterschaal",
+    "truth": "app",
+    "hb_s": 1,
+    "lease": false,
+    "scenes": [
+      "Water en diepte",
+      "Dageraad",
+      "Nacht",
+      "Storm binnen"
+    ],
+    "params": [
+      {
+        "id": "druk",
+        "naam": "Wrijfdruk",
+        "soort": "waarde",
+        "standaard": 0,
+        "hint": "fader",
+        "groep": "wrijven"
+      },
+      {
+        "id": "draai",
+        "naam": "Draaisnelheid",
+        "soort": "waarde",
+        "standaard": 0,
+        "hint": "fader",
+        "groep": "wrijven"
+      },
+      {
+        "id": "tempo",
+        "naam": "Tempo",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "groep": "adem",
+        "hint": "knop",
+        "rol": "klok.adem_periode",
+        "eenheid": "s per adem",
+        "min": 4,
+        "max": 16
+      },
+      {
+        "id": "inuit",
+        "naam": "In : uit",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "groep": "adem",
+        "hint": "knop",
+        "min": 0.3,
+        "max": 0.5
+      },
+      {
+        "id": "leiding",
+        "naam": "Leiding",
+        "soort": "waarde",
+        "standaard": 0.3,
+        "groep": "adem",
+        "hint": "knop",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "morph",
+        "naam": "Karakter",
+        "soort": "waarde",
+        "standaard": 0.1,
+        "groep": "klank",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "zweving",
+        "naam": "Zweving",
+        "soort": "waarde",
+        "standaard": 0.4,
+        "groep": "klank",
+        "rol": "macro.beweging",
+        "min": 0,
+        "max": 2.5
+      },
+      {
+        "id": "hardheid",
+        "naam": "Stok",
+        "soort": "waarde",
+        "standaard": 0.2,
+        "groep": "klank",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "vulling",
+        "naam": "Water",
+        "soort": "waarde",
+        "standaard": 0,
+        "groep": "klank",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "uitklank",
+        "naam": "Uitklank",
+        "soort": "waarde",
+        "standaard": 0.375,
+        "groep": "klank",
+        "rol": "macro.ruimte",
+        "min": 0.4,
+        "max": 2
+      },
+      {
+        "id": "volume",
+        "naam": "Volume",
+        "soort": "waarde",
+        "standaard": 0.7,
+        "groep": "klank",
+        "rol": "macro.intensiteit",
+        "hint": "fader",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "tik1",
+        "naam": "Veld 1",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik2",
+        "naam": "Veld 2",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik3",
+        "naam": "Veld 3",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik4",
+        "naam": "Veld 4",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik5",
+        "naam": "Veld 5",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik6",
+        "naam": "Veld 6",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik7",
+        "naam": "Veld 7",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "tik8",
+        "naam": "Veld 8",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "aanslag",
+        "naam": "Aanslag",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "spelen"
+      },
+      {
+        "id": "paniek",
+        "naam": "Paniek",
+        "soort": "trigger"
+      }
+    ]
+  },
+  "staat": {
+    "druk": 0,
+    "draai": 0,
+    "tempo": 0.5,
+    "inuit": 0.5,
+    "leiding": 0.3,
+    "morph": 0.1,
+    "zweving": 0.4,
+    "hardheid": 0.2,
+    "vulling": 0,
+    "uitklank": 0.375,
+    "volume": 0.7
+  }
+}
