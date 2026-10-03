@@ -19,7 +19,7 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     ws.zwijg();
     fl.zwijg(); // stuurt geen hb meer, maar wel elke seconde een zet
     const tot = (/** @type {number} */ s) => {
-      while (h.klok.nu() < begin + s * 1000) { h.tijd(Math.min(1000, begin + s * 1000 - h.klok.nu())); fl.zet('in1', Math.random()); }
+      while (h.klok.nu() < begin + s * 1000) { h.tijd(Math.min(1000, begin + s * 1000 - h.klok.nu())); fl.zet('in1', (h.klok.nu() % 1000) / 1000); }
     };
     tot(2.8);
     expect(h.appBeeld('waterschaal').status).toBe('actief');
@@ -149,7 +149,7 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     expect(h.appBeeld('formula-lab').waarden).toMatchObject({ in1: 1, k1: 1, aan: 0 });
   });
 
-  it('kern.beeld() geeft de cockpit alles: apps met slot, status, focus, params en waarden; globaal; apparaten', () => {
+  it('kern.beeld() geeft de cockpit alles (apps met slot, status, focus, params, waarden; globaal; apparaten) en meldt wijzigingen hooguit 10x per seconde', () => {
     const h = bank();
     h.app(manifest('formula-lab', [P.fader('in1')], { kleur: '#3fbf5f' }), { in1: 0.25 });
     h.app({ v: 1, app: 'varve-dj', naam: 'Varve DJ', lease: true, params: [] });
@@ -169,14 +169,12 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     expect(typeof fl.kleur).toBe('string');
     expect(dj).toMatchObject({ app: 'varve-dj', focus: false, slot: 2, lease: true });
     expect(() => JSON.stringify(b)).not.toThrow();
-  });
 
-  it('beeld-meldingen komen hooguit 10x per seconde, ook als er heel veel verandert, en nooit te laat', () => {
-    const h = bank();
-    const fl = h.app(manifest('formula-lab', [P.fader('in1')]), { in1: 0.2 });
+    // Meldingen: hooguit 10x per seconde, ook als er heel veel verandert, en nooit te laat.
+    const app = h.apps[0];
     h.tijd(1000);
     const t0 = h.klok.nu();
-    for (let i = 0; i < 100; i++) { fl.zet('in1', (i % 50) / 50); h.klok.loop(10); }
+    for (let i = 0; i < 100; i++) { app.zet('in1', (i % 50) / 50); h.klok.loop(10); }
     h.tijd(300);
     const inSeconde = h.ev.beeld.filter((t) => t >= t0 && t < t0 + 1000);
     expect(inSeconde.length).toBeGreaterThan(0);
@@ -184,7 +182,7 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
 
     h.tijd(2000);
     const t1 = h.klok.nu();
-    fl.zet('in1', 0.123);
+    app.zet('in1', 0.123);
     h.tijd(250);
     expect(h.ev.beeld.some((t) => t >= t1)).toBe(true);
   });

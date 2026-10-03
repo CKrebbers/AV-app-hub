@@ -39,7 +39,7 @@ describe.skipIf(!Kern)(`Lease-apps: Varve DJ en av-kern${MELDING}`, () => {
     });
     expect(dj.midi()).toEqual([]);
     h.tik('pad2-2');
-    expect(dj.midi().map((m) => m.bytes)).toEqual([[0x90, 8, 127], [0x80, 8, 0]]);
+    expect(dj.midi().map((m) => m.bytes)).toEqual([[0x90, 9, 127], [0x80, 9, 0]]);
   });
 
   it('lease-app zonder focus krijgt geen MIDI; de LPD8 gaat nooit als MIDI naar een lease-app, wel als globaal', () => {

@@ -38,10 +38,11 @@ describe.skipIf(!Kern)(`Een manifest-app bespelen op de APC${MELDING}`, () => {
       fl.wis();
       h.fader(i, 0);
       h.fader(i, 0.5);
-      kaart[i] = fl.zetten().at(-1)?.id ?? null;
+      const z = fl.zetten().at(-1);
+      kaart[i] = z?.id ?? null;
+      if (z) expect(z).toMatchObject({ v: fysiek(0.5), bron: 'apc40' });
     }
     expect(kaart).toEqual({ 1: 'f1', 2: 'f2', 3: 'a', 4: 'b', 5: null });
-    expect(fl.laatsteZet('f1')).toMatchObject({ bron: 'apc40' });
   });
 
   it('fader staat fysiek op 0.9, app op 0.2 → bewegen verandert niets tot hij 0.2 kruist; tot dan knippert clip stop', () => {
