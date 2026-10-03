@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { Opruimer, start, wachtOpUrl, metTijd, isHoofdmodule, poortBezet, totUiterlijk } from '../tools/repetitie-proces.mjs';
+import { Opruimer, start, wachtOpUrl, metTijd, poortBezet, totUiterlijk, staart } from '../tools/repetitie-proces.mjs';
 import { leesPaden, appLijst, leesPagina, TE_LAAT } from '../tools/repetitie.mjs';
 import { laadConfig } from '../src/config.js';
 
@@ -106,6 +106,23 @@ describe('processen starten (start / wachtOpUrl)', () => {
     const t0 = Date.now();
     await expect(wachtOpUrl('http://127.0.0.1:9/', { ms: 20000, proces: pr })).rejects.toThrow(/medisynth: het proces stopte \(code 3\)[\s\S]*Cannot find module vite/);
     expect(Date.now() - t0).toBeLessThan(3000);
+    await o.draai();
+  });
+
+  it('een verwachte stop (herstart) wordt niet als onverwacht gemeld; de uitvoer komt zonder terminal-opmaak', async () => {
+    const o = new Opruimer();
+    /** @type {string[]} */
+    const log = [];
+    const pr = start(process.execPath, ['-e', 'process.stdout.write("\\x1b[38;2;1;2;3mflux\\x1b[0m\\x1b[?25h\\x1b[2J klaar\\n"); setInterval(() => {}, 1000)'], {}, 'flux', o, (s) => log.push(s));
+    await totWaar(() => pr.uitvoer().includes('klaar'), 3000);
+    expect(staart(pr)).toContain('flux klaar');
+    expect(staart(pr)).not.toContain('\x1b');
+    pr.verwachtStop();
+    pr.p.kill('SIGTERM');
+    await new Promise((r) => pr.p.once('exit', r));
+    const onverwacht = start(process.execPath, ['-e', 'process.exit(4)'], {}, 'ander', o, (s) => log.push(s));
+    await new Promise((r) => onverwacht.p.once('exit', r));
+    expect(log).toEqual([expect.stringMatching(/^ander: proces stopte onverwacht \(code 4\)/)]);
     await o.draai();
   });
 

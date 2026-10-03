@@ -110,13 +110,17 @@ export class Opruimer {
 /**
  * @typedef {{
  *   p: import('node:child_process').ChildProcess, naam: string,
- *   uitvoer: () => string, fout: () => Error|null, gestopt: () => boolean,
+ *   uitvoer: () => string, fout: () => Error|null, gestopt: () => boolean, verwachtStop: () => void,
  * }} Proces
+ *   verwachtStop: dit proces gaat zo bewust stoppen (een herstart): niet als "onverwacht" melden.
  */
+
+/** Terminal-opmaak (kleuren, cursor) uit procesuitvoer halen. @param {string} s */
+export const kaal = (s) => s.replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07]*\x07|\x1b[()][A-Z0-9]|\r/g, '');
 
 /** De laatste regels van wat een proces schreef, voor in een foutmelding. @param {Proces} pr @param {number} [n] */
 export function staart(pr, n = 15) {
-  const regels = pr.uitvoer().split('\n').map((x) => x.trimEnd()).filter(Boolean).slice(-n);
+  const regels = kaal(pr.uitvoer()).split('\n').map((x) => x.trimEnd()).filter(Boolean).slice(-n);
   return regels.length ? `\n  laatste uitvoer van ${pr.naam}:\n    ${regels.join('\n    ')}` : `\n  (${pr.naam} schreef niets)`;
 }
 
@@ -140,7 +144,7 @@ export function start(cmd, a, o, naam, opruimer, log) {
   p.stdout?.on('data', (d) => { uitvoer = (uitvoer + d).slice(-8000); });
   p.stderr?.on('data', (d) => { uitvoer = (uitvoer + d).slice(-8000); });
   /** @type {Proces} */
-  const pr = { p, naam, uitvoer: () => uitvoer, fout: () => fout, gestopt: () => gestopt };
+  const pr = { p, naam, uitvoer: () => uitvoer, fout: () => fout, gestopt: () => gestopt, verwachtStop: () => { gestopt = true; } };
   p.on('error', (e) => { fout = e; log?.(`${naam}: ${cmd} starten mislukt: ${e.message}`); });
   p.on('exit', (code, sig) => { if (!gestopt && log) log(`${naam}: proces stopte onverwacht (${sig ?? `code ${code}`})${staart(pr, 8)}`); });
   opruimer.voeg(naam, async () => { gestopt = true; await stopProces(p); });

@@ -375,8 +375,8 @@ async function main() {
     const page = await context.newPage();
     page.on('console', (m) => { if (m.type() === 'error') boek.fouten.push({ t: wandklok(), tekst: metPlek(m) }); });
     page.on('pageerror', (e) => boek.fouten.push({ t: wandklok(), tekst: e.message }));
-    const laad = async () => {
-      await page.goto(adres[app]);
+    /** Wachten tot de app klaar is na het laden (zonder zelf te navigeren). */
+    const klaar = async () => {
       if (app === 'varve-dj') await page.waitForFunction(() => /** @type {any} */ (window).midi && /** @type {any} */ (window).feedback, null, { timeout: 20000 });
       if (app === 'formula-lab') await page.waitForFunction(() => /param\(s\)/.test(document.getElementById('status')?.textContent ?? ''), null, { timeout: 20000 });
       if (app === 'medisynth') {
@@ -387,7 +387,8 @@ async function main() {
         await page.waitForFunction(() => /** @type {any} */ (window).medisynth, null, { timeout: 10000 }).catch(() => {});
       }
     };
-    await laad();
+    await page.goto(adres[app]);
+    await klaar();
     const lezer = /** @type {any} */ (LEZERS)[app];
     deelnemers.set(app, {
       id: app, soort: 'browser',
@@ -399,8 +400,11 @@ async function main() {
       },
       ontvangen: async () => boek.in,
       fouten: async () => boek.fouten,
-      // laad() navigeert zelf al (page.goto): één keer laden, dus één nieuwe verbinding en één nieuwe inst.
-      herstart: async () => { await laad().catch((e) => log(`   ${app}: herladen gaf een fout: ${String(e?.message ?? e).split('\n')[0]}`)); },
+      // Eén keer herladen (reload, niet goto: bij formula-lab verschilt de URL alleen in het #fragment, en dan
+      // navigeert goto niet opnieuw), dus één nieuwe verbinding en één nieuwe inst; daarna alleen wachten.
+      herstart: async () => {
+        try { await page.reload(); await klaar(); } catch (e) { log(`   ${app}: herladen gaf een fout: ${String(/** @type {any} */ (e)?.message ?? e).split('\n')[0]}`); }
+      },
       .../** @type {any} */ (PANIEK)[app] ? { paniek: /** @type {any} */ (PANIEK)[app] } : {},
     });
   }
@@ -451,6 +455,7 @@ async function main() {
         // Zoals een screensaverbeurt eindigt: SIGTERM naar flux zelf (hij vloeit uit en meldt zich af),
         // daarna sluit de pseudo-terminal vanzelf. Pas als dat niet lukt: de hele procesgroep.
         lees();
+        /** @type {any} */ (proces)?.verwachtStop();
         const p = /** @type {any} */ (proces)?.p;
         const weg = p ? new Promise((r) => (p.exitCode !== null ? r(undefined) : p.once('exit', r))) : Promise.resolve();
         if (boek.pid) { try { process.kill(boek.pid, 'SIGTERM'); } catch { /* al weg */ } }
