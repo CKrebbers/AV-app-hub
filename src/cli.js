@@ -1,14 +1,20 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
-//   start [--poort N] [--host H] [--zonder-midi] [--geen-drivers]
-//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers
+//   start [set] [--poort N] [--host H] [--lan] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer] [--zonder-geheugen]
+//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers, geheugen;
+//                            met een set (sets/<set>.json) ook alle apps van die avond (docs/SETS.md)
+//                            --lan: ook op het netwerk (0.0.0.0), met token en mDNS (docs/NETWERK.md)
+//   installeer [--weg] [--lokaal] [--node PAD]  altijd aan: launchd (macOS) / systemd --user (Linux)
+//   token [--nieuw] [--poort N]  het token en de cockpit-adressen voor een tablet
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+//   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
+//                            een opgenomen avond (avondmap, LPD8-pad 4) opnieuw afspelen tegen een draaiende hub
+import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import readline from 'node:readline';
 import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
 import { laadRtMidi } from './ports/rtmidi.js';
@@ -20,7 +26,13 @@ import { voerUit, terminalIO } from './proef/runner.js';
 import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
+import { geheugenPad } from './opslag.js';
 import { NepSysteem } from './ports/nep.js';
+import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen, PADEN_PAD, toonPad } from './sets/index.js';
+import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
+import { doelVanCockpit } from './opname/cockpit-doel.js';
+import { GEBAREN } from './opname/opnemer.js';
+import { leesOfMaakToken, isLoopbackHost, lanNamen, mdnsNaam, lanOrigins, lanAdressen, cockpitAdressen, kondigAan, installeer, dienstVoor } from './lan.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -46,11 +58,21 @@ function nieuwLogboek(soort, naam) {
   return { pad, logboek, sluit: () => new Promise((r) => stroom.end(r)) };
 }
 
-/** Netjes afsluiten bij Ctrl-C: LEDs uit, poorten dicht, logboek dicht. @param {() => Promise<void>|void} opruimen */
+/**
+ * Netjes afsluiten bij Ctrl-C (SIGINT), kill (SIGTERM) en bij het sluiten van het Terminal-venster (SIGHUP):
+ * LEDs uit, poorten dicht, logboek dicht, gestarte apps dicht.
+ * @param {() => Promise<void>|void} opruimen
+ */
 function bijStoppen(opruimen) {
   let bezig = false;
-  const stop = async () => { if (bezig) return; bezig = true; await opruimen(); process.exit(0); };
-  process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  const stop = async () => {
+    // Tweede Ctrl-C terwijl het opruimen nog loopt (bv. een hangende schijf): meteen weg.
+    if (bezig) { console.error('\nNogmaals gestopt — afsluiten zonder verder op te ruimen.'); process.exit(1); }
+    bezig = true;
+    try { await opruimen(); } catch (e) { console.error(e); process.exit(1); }
+    process.exit(0);
+  };
+  for (const sein of /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP'])) process.on(sein, stop);
 }
 
 /**
@@ -67,8 +89,65 @@ function zonderMidi() {
 /** @param {string} naam */
 const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
 
+/**
+ * Start de apps van een set naast een hub (in dit proces of een die al draaide). Ctrl-C ruimt op wat de
+ * starter zelf startte, daarna `naStop` (de hub stoppen, of de cockpitverbinding sluiten).
+ * @param {import('./sets/set.js').SetDef} set @param {import('./sets/toegang.js').KernToegang} hub
+ * @param {number} hubPoort @param {() => Promise<void>|void} naStop
+ */
+function draaiSet(set, hub, hubPoort, naStop) {
+  const log = (/** @type {string} */ r) => console.log(r);
+  const openUrl = args.includes('--zonder-chrome') ? null : openInChrome();
+  // Een venster dat dichtgaat geeft EPIPE/EIO op stdout: dat mag het opruimen niet afbreken.
+  for (const s of [process.stdout, process.stderr]) s.on('error', () => {});
+  let paden = {};
+  if (!existsSync(PADEN_PAD)) console.log(`${toonPad(PADEN_PAD)} ontbreekt — doe eenmalig: cp sets/paden.voorbeeld.json sets/paden.json en zet je mappen erin (docs/SETS.md)`);
+  try { paden = laadPaden(); } catch (e) { console.error(/** @type {Error} */ (e).message); }
+  const s = startSet({ set, config, paden, hub, hubPoort, klok: echteKlok, startProces, openUrl, poortOpen, log, toonUitvoer: args.includes('--uitvoer') });
+  // Vangnet: valt dit proces weg zonder dat stop() kon lopen (een fout, process.exit elders), dan krijgen de
+  // eigen apps toch SIGTERM — anders blijven ze als wees draaien en houden ze hun poort bezet.
+  process.on('exit', () => s.stopNu());
+  bijStoppen(async () => { console.log('\nStoppen…'); await s.stop(); await naStop(); });
+  s.klaar
+    .then((u) => { if (u.some((x) => !x.klaar)) console.log('De hub blijft draaien; start wat mist met de hand of los het op en draai de set opnieuw. Ctrl-C stopt alles wat de set startte.'); })
+    .catch((e) => console.error(`De starter liep vast: ${/** @type {Error} */ (e)?.message ?? e} — de hub draait door; Ctrl-C stopt alles wat de set startte.`));
+}
+
+/** De setnaam: het eerste argument dat geen optie (of de waarde van een optie) is. */
+function setNaam() {
+  const metWaarde = new Set(['--poort', '--host']);
+  for (let i = 0; i < args.length; i++) {
+    if (metWaarde.has(args[i])) { i++; continue; }
+    if (!args[i].startsWith('--')) return args[i];
+  }
+  return undefined;
+}
+
+/** Hoe je de hub stopt die als dienst draait (voor de melding 'poort bezet'), of null op een ander platform. */
+function stopDienstRegel() {
+  try { return dienstVoor({ hubMap: HUB_MAP }).ontlaad; } catch { return null; }
+}
+
+/**
+ * Stoppen met een vaste fout (poort bezet, geen token). Onder launchd (KeepAlive) eerst een minuut wachten: anders
+ * start launchd ons elke paar seconden opnieuw en loopt het logboek vol. systemd stopt zelf (RestartPreventExitStatus).
+ * @param {number} code
+ */
+async function stopMetVasteFout(code) {
+  if (process.env.VARVE_HUB_DIENST === 'launchd') {
+    console.error('(launchd start de hub opnieuw; eerst 60 s wachten)');
+    await new Promise((r) => setTimeout(r, 60000));
+  }
+  process.exit(code);
+}
+
 const opdrachten = {
   async start() {
+    const naam = setNaam();
+    let set = null;
+    if (naam) {
+      try { set = laadSet(naam, { config }); } catch (e) { console.error(/** @type {Error} */ (e).message); process.exit(1); }
+    }
     let systeem;
     if (args.includes('--zonder-midi')) systeem = zonderMidi();
     else {
@@ -78,27 +157,94 @@ const opdrachten = {
     }
     const log = (/** @type {unknown[]} */ ...x) => console.log(...x);
     const poort = optie('--poort') ? Number(optie('--poort')) : config.poorten.http;
+    // Op het netwerk = altijd met token: --lan, maar ook een --host of server.host die niet alleen loopback is.
+    const host = optie('--host') ?? (args.includes('--lan') ? '0.0.0.0' : config.server?.host ?? '127.0.0.1');
+    const lan = !isLoopbackHost(host);
+    let hubConfig = config, token = null, namen = /** @type {string[]} */ ([]);
+    if (lan) {
+      const t = leesOfMaakToken();
+      token = t.token;
+      if (t.nieuw) console.log(`Nieuw token aangemaakt in ${t.pad} (alleen leesbaar voor jou).`);
+      if (t.hersteld) console.log(`Rechten van ${t.pad} waren te ruim; hersteld naar 0600.`);
+      namen = lanNamen({ extra: config.server?.lan_namen ?? [] });
+      hubConfig = { ...config, server: { ...config.server, origins: [...(config.server?.origins ?? []), ...lanOrigins(namen, poort)] } };
+    }
     let hub;
     try {
       hub = await startHub({
-        config, systeem, poort, host: optie('--host'),
+        config: hubConfig, systeem, poort, host, token,
         drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), log,
+        // Snapshots en truth:"hub"-waarden over een herstart heen (config.json → geheugen.pad, $VARVE_HUB_STAAT).
+        geheugen: args.includes('--zonder-geheugen') ? null : geheugenPad(config),
       });
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
+      if (code === 'GEEN_TOKEN') {
+        // Vangnet in de server zelf: zonder token wordt er niet eens op het netwerk geluisterd.
+        console.error(`${/** @type {Error} */ (e).message}. Start met --lan (dan maakt de hub een token).`);
+        return stopMetVasteFout(4);
+      }
       if (code !== 'EADDRINUSE' && code !== 'EACCES') throw e;
+      if (set && code === 'EADDRINUSE') {
+        // Er draait al een hub: niet opnieuw starten, alleen verbinden (als cockpit) en de set erbij zetten.
+        try {
+          const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`, { log: (r) => console.log(r) });
+          console.log(`Er draait al een hub op poort ${poort} — de set "${set.naam}" verbindt daarmee.`);
+          draaiSet(set, toegang, poort, () => toegang.sluit());
+          return;
+        } catch (f) {
+          console.error(`poort ${poort} is bezet, maar daar antwoordt geen hub (${/** @type {Error} */ (f).message}).`);
+        }
+      }
+      const dienst = stopDienstRegel();
       console.error(code === 'EADDRINUSE'
-        ? `poort ${poort} is bezet — draait de hub al (in een ander venster)? Stop die, of start met --poort N (apps dan met ?hub=ws://localhost:N, nep-apps met --url).`
+        ? `poort ${poort} is bezet — draait de hub al (in een ander venster)? Stop die, of start met --poort N (apps dan met ?hub=ws://localhost:N, nep-apps met --url).` +
+          (dienst ? `\nOf draait hij als dienst (node src/cli.js installeer)? Stop die met: ${dienst}` : '')
         : `poort ${poort} mag niet gebruikt worden (${code}) — kies een andere met --poort N.`);
-      process.exit(3);
+      return stopMetVasteFout(3);
     }
     for (const [dev, s] of [['APC40', hub.apparaten.apc], ['LPD8', hub.apparaten.lpd8]]) {
       /** @type {any} */ (s).bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
       /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
     }
     hub.kern.bij('naarApp', () => {});
-    console.log(`varve-hub draait. Cockpit: ${hub.adres}   Apps: ${hub.adres.replace('http', 'ws')}/app   Ctrl-C stopt.`);
-    bijStoppen(() => hub.stop());
+    const lokaal = `http://localhost:${hub.server.poort}`;
+    console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren.');
+    console.log(`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`);
+    /** @type {{ stop: () => void } | null} */
+    let mdns = null;
+    if (lan && token) {
+      const adressen = cockpitAdressen({ namen, adressen: lanAdressen(), poort: hub.server.poort, token });
+      // Het token alleen op een terminal tonen, niet in een logbestand (launchd/systemd).
+      if (process.stdout.isTTY) console.log(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
+      else console.log(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: node src/cli.js token --poort ${hub.server.poort} (in ${HUB_MAP})`);
+      mdns = kondigAan({ poort: hub.server.poort, log });
+    }
+    const stopHub = async () => { mdns?.stop(); await hub.stop(); };
+    if (set) draaiSet(set, kernToegang(hub.kern), hub.server.poort, stopHub);
+    else bijStoppen(stopHub);
+  },
+
+  installeer() {
+    try {
+      // --node: het pad zoals de shell het vindt (deploy/installeer.sh geeft `command -v node` mee).
+      const node = optie('--node');
+      const r = installeer({ hubMap: HUB_MAP, weg: args.includes('--weg'), lan: !args.includes('--lokaal'), ...(node && isAbsolute(node) ? { node } : {}) });
+      console.log(r.regels.join('\n'));
+    } catch (e) {
+      console.error(/** @type {Error} */ (e).message);
+      process.exit(1);
+    }
+  },
+
+  token() {
+    const t = leesOfMaakToken({ opnieuw: args.includes('--nieuw') });
+    if (t.nieuw) console.log(`Nieuw token in ${t.pad}${args.includes('--nieuw') ? ' (herstart de hub; oude tablets moeten het nieuwe adres openen)' : ''}.`);
+    const poort = optie('--poort') ? Number(optie('--poort')) : config.poorten.http;
+    const namen = lanNamen({ extra: config.server?.lan_namen ?? [] });
+    const adressen = cockpitAdressen({ namen, adressen: lanAdressen(), poort, token: t.token });
+    const fluxHost = mdnsNaam(namen) ?? lanAdressen()[0] ?? '<mac>.local';
+    console.log(`Token: ${t.token}\nCockpit op een tablet:\n${adressen.map((a) => `  ${a}`).join('\n')}\nflux: VARVE_HUB=ws://${fluxHost}:${poort}/app?token=${t.token}`);
   },
 
   async doctor() {
@@ -170,13 +316,72 @@ const opdrachten = {
     console.log(`Opname loopt naar ${pad}. Ctrl-C stopt.`);
   },
 
+  async herhaal() {
+    const bestand = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
+    if (!bestand) { console.error('Gebruik: npm run herhaal -- <avondmap of gebaren.jsonl> [--snelheid x] [--hub adres] [--zonder-beginstand]'); process.exit(2); }
+    const ruw = optie('--snelheid');
+    const zonderWaarde = ruw === undefined || ruw.startsWith('--');
+    const snelheid = args.includes('--snelheid') ? (zonderWaarde ? NaN : Number(ruw)) : 1;
+    if (!(snelheid > 0) || !Number.isFinite(snelheid)) { console.error(`--snelheid moet een getal > 0 zijn (bv. 2 = twee keer zo snel), niet "${zonderWaarde ? '' : ruw}"`); process.exit(2); }
+    let opname;
+    try {
+      const pad = statSync(bestand).isDirectory() ? join(bestand, GEBAREN) : bestand;
+      opname = leesOpname(readFileSync(pad, 'utf8'));
+    } catch (e) {
+      const x = /** @type {any} */ (e);
+      console.error(x?.code === 'ENOENT' ? `${bestand} bestaat niet` : `${bestand} is geen leesbare opname: ${x?.message ?? x}`);
+      process.exit(2);
+    }
+    const adres = optie('--hub') ?? `127.0.0.1:${config.poorten.http}`;
+    let doel;
+    try { doel = await doelVanCockpit(adres); } catch (e) { console.error(/** @type {any} */ (e).message); process.exit(2); }
+    const invoer = opname.stappen.filter((s) => 'dev' in s);
+    const laatste = invoer.at(-1)?.ms ?? 0;
+    const eerste = invoer[0]?.ms ?? 0;
+    console.log(`Avond van ${opname.kop.begon ?? '?'} (hub ${String(opname.kop['hub-git'] ?? opname.eind?.['hub-git'] ?? '?').slice(0, 10)}), ${invoer.length} gebaren,`
+      + ` ±${((laatste - eerste) / 1000 / snelheid).toFixed(1)} s afspelen${snelheid !== 1 ? ` (×${snelheid})` : ''}.`);
+    const nu = new Set(doel.apps);
+    const mist = Object.keys(opname.eind?.apps ?? opname.beginstand?.apps ?? {}).filter((a) => !nu.has(a));
+    if (mist.length) console.log(`Let op: niet verbonden met de hub: ${mist.join(', ')}`);
+    if (opname.kapot) console.log(`Let op: ${opname.kapot} onleesbare regel(s) overgeslagen.`);
+    const beginstand = !args.includes('--zonder-beginstand');
+    const toen = Object.keys(opname.beginstand?.snapshots ?? {}).map(Number);
+    if (beginstand) {
+      console.log('Let op: herhaal zet je apps terug op de stand van toen'
+        + (toen.length ? ` en overschrijft snapshot ${toen.join(', ')} in de hub` : '')
+        + ' — doe het niet midden in een set (--zonder-beginstand slaat dit over).');
+    }
+    const extra = doel.snapshots.filter((nr) => !toen.includes(nr));
+    if (extra.length) console.log(`Let op: snapshot ${extra.join(', ')} staat nu in de hub maar was leeg bij het begin van de opname; laden met een korte LPD8-druk op een toen lege plek wordt overgeslagen, laden via de APC-scèneknoppen niet.`);
+    let gedaan = 0, totaal = invoer.length;
+    let r;
+    try {
+      r = await herhaal({
+        opname, doel, klok: echteKlok, snelheid, beginstand, aanwezig: nu,
+        bijStap: (i, n) => { gedaan = i; totaal = n; if (i % 100 === 0 || i === n) process.stdout.write(`\r${i}/${n}`); },
+      });
+      await doel.sluit();
+    } catch (e) {
+      console.error(`\nherhaal afgebroken na ${gedaan}/${totaal} gebaren: ${/** @type {any} */ (e)?.message ?? e}\n`
+        + 'Draait varve-hub nog? Start hem opnieuw (npm start) en herhaal de avond.');
+      process.exit(2);
+    }
+    console.log('\n' + verslag(r));
+    process.exit(r.verschillen?.length ? 1 : 0);
+  },
+
   help() {
     console.log(`varve-hub — opdrachten:
-  start             de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers)
+  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --lan, --zonder-midi, --geen-drivers, --zonder-geheugen);
+                    met een set ook de apps van die avond (${lijstSets().join(', ') || 'geen sets'}; --zonder-chrome, --uitvoer)
+                    --lan: ook op het netwerk, met token (~/.varve-hub/token) en mDNS
+  installeer        altijd aan bij inloggen (launchd/systemd --user); --weg haalt weg, --lokaal zonder --lan
+  token [--nieuw]   token en cockpit-adressen voor een tablet (--nieuw: ander token, --poort N)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt
-  opname [naam]     speelsessie opnemen in proef/`);
+  opname [naam]     speelsessie opnemen in proef/
+  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)`);
   },
 };
 

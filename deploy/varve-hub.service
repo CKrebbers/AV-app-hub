@@ -1,0 +1,18 @@
+# Varve hub als systemd-user-unit (Linux). Sjabloon: `node src/cli.js installeer` vult de paden in en schrijft
+# ~/.config/systemd/user/varve-hub.service. Niet met de hand kopiëren; zie docs/NETWERK.md. Nooit sudo.
+# Geen After=network-online.target/sound.target: dat zijn systeemtargets die de user-manager niet kent. Niet nodig
+# ook: de hub luistert op 0.0.0.0 (werkt zonder netwerk) en vindt controllers die later komen vanzelf.
+[Unit]
+Description=Varve hub (APC40 mkII + LPD8 voor alle Varve-apps)
+
+[Service]
+Type=simple
+WorkingDirectory={{HUB}}
+ExecStart={{EXEC}}
+Restart=on-failure
+RestartSec=5
+# Vaste fouten niet eindeloos herhalen: 3 = poort bezet (draait de hub al met de hand?), 4 = geen token.
+RestartPreventExitStatus=3 4
+
+[Install]
+WantedBy=default.target

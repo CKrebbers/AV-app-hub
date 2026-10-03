@@ -1,0 +1,22 @@
+{
+  "_doc": "Scene Kit-avond: TouchDesigner (av-scene-kit, via de virtuele MIDI-poort van de hub) met Varve DJ als muziek. Uitleg: docs/SETS.md. Paden: sets/paden.json. Poorten: config.json.",
+  "naam": "Scene Kit",
+  "beschrijving": "TD-scènes op de APC (spiegel, datamosh, pixelregen, stil), Varve DJ voor de muziek.",
+  "time_out_s": 60,
+  "apps": {
+    "av-scene-kit": {
+      "start": null,
+      "handmatig": "open TouchDesigner met /project1/hub (nieuw project: Textport, exec(open('{repo}/td/td_build_hub.py').read())); MIDI Device Mapper: device 1 = VARVE-HUB TD (docs/TOUCHDESIGNER.md)",
+      "opmerking": "via een MIDI-driver: de hub ziet alleen dat zijn virtuele poort er is, niet of TD luistert. Zonder echte MIDI (--zonder-midi, de cloud) is er geen poort en wordt hij niet klaar"
+    },
+    "varve-dj": {
+      "start": { "commando": "node server/index.js", "omgeving": { "PORT": "{poort}" } },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "opmerking": "Varve DJ heeft de hub-koppeling als patch (koppelingen/varve-dj/LEESMIJ.md)"
+    }
+  },
+  "snapshot": {
+    "av-scene-kit": { "feedback": 0.85, "mix": 0.5, "glitch": 0.1 }
+  },
+  "focus": "av-scene-kit"
+}

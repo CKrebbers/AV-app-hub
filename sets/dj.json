@@ -1,0 +1,23 @@
+{
+  "_doc": "DJ-avond: Varve DJ (lease: de APC is van Varve DJ zolang hij focus heeft) en Formula Lab (beeld). Uitleg: docs/SETS.md. Paden: sets/paden.json. Poorten: config.json.",
+  "naam": "DJ",
+  "beschrijving": "Varve DJ met de APC, Formula Lab als beeld erbij; Bank + Track Select wisselt.",
+  "time_out_s": 60,
+  "apps": {
+    "varve-dj": {
+      "start": { "commando": "node server/index.js", "omgeving": { "PORT": "{poort}" } },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "opmerking": "Varve DJ heeft de hub-koppeling als patch (koppelingen/varve-dj/LEESMIJ.md) — zonder die patch meldt hij zich niet bij de hub"
+    },
+    "formula-lab": {
+      "start": { "commando": "npm run dev -- --port {poort} --strictPort" },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van formula-lab"
+    }
+  },
+  "snapshot": {
+    "varve-dj": { "master": 0.8, "xfader": 0.5 },
+    "formula-lab": { "smooth": 1 }
+  },
+  "focus": "varve-dj"
+}

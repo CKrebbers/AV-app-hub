@@ -1,0 +1,111 @@
+{
+  "_bron": "flux · claude/varve-hub-koppeling @ 8b5b694 (pty, python3) — vastgelegd door tools/repetitie.mjs op 2026-10-03T16:05:44.828Z",
+  "manifest": {
+    "v": 1,
+    "app": "flux",
+    "naam": "Flux",
+    "kleur": "#9b1b30",
+    "truth": "app",
+    "hb_s": 1,
+    "params": [
+      {
+        "id": "tempo",
+        "naam": "Tempo",
+        "soort": "waarde",
+        "standaard": 0.4737,
+        "hint": "fader",
+        "min": 0.1,
+        "max": 2,
+        "rol": "macro.beweging",
+        "slew_s": 2
+      },
+      {
+        "id": "dichtheid",
+        "naam": "Dichtheid",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "fader",
+        "min": 0,
+        "max": 2,
+        "rol": "macro.dichtheid",
+        "slew_s": 2
+      },
+      {
+        "id": "helderheid",
+        "naam": "Helderheid",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "fader",
+        "min": 0.4,
+        "max": 1.6,
+        "rol": "macro.helderheid",
+        "slew_s": 1
+      },
+      {
+        "id": "tekens",
+        "naam": "Tekens",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "knop",
+        "min": 0,
+        "max": 1.2
+      },
+      {
+        "id": "code",
+        "naam": "Code",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "knop",
+        "min": 0,
+        "max": 2
+      },
+      {
+        "id": "isolijnen",
+        "naam": "Isolijnen",
+        "soort": "waarde",
+        "standaard": 1,
+        "hint": "knop",
+        "min": 0,
+        "max": 1
+      },
+      {
+        "id": "palet",
+        "naam": "Palet",
+        "soort": "keuze",
+        "keuzes": [
+          "bordeaux",
+          "aubergine",
+          "bloedrood",
+          "wijn",
+          "as"
+        ],
+        "standaard": 0,
+        "hint": "kolom",
+        "rol": "macro.kleur"
+      },
+      {
+        "id": "klok",
+        "naam": "Klokkleur",
+        "soort": "schakelaar",
+        "standaard": 1,
+        "hint": "pad"
+      },
+      {
+        "id": "varve",
+        "naam": "Varve",
+        "soort": "trigger",
+        "hint": "pad"
+      }
+    ]
+  },
+  "staat": {
+    "tempo": 0.4736842105263158,
+    "dichtheid": 0.5,
+    "helderheid": 0.4999999999999999,
+    "tekens": 0.5,
+    "code": 0.5,
+    "isolijnen": 1,
+    "palet": 0,
+    "klok": 1
+  }
+}

@@ -1,2 +1,4 @@
-node_modules/
+node_modules
 *.log
+# Rapporten van tools/repetitie.mjs: lokaal. Een rapport dat bewust wordt meegeleverd, voeg je toe met git add -f.
+tools/uitvoer/

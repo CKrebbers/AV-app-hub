@@ -1,0 +1,2535 @@
+{
+  "omgeving": {
+    "datum": "2026-10-03T17:10:07.268Z",
+    "duur": "93 s",
+    "node": "v22.22.0",
+    "chromium": "141.0.7390.37",
+    "hub": "/home/user/wt4/repetitie · claude/golf-4-repetitie @ 9f73f31",
+    "controllers": "NepSysteem: APC40 mkII + LPD8 mk2 (fabrieksprofiel)",
+    "formula-lab": "/home/user/wt3/formula-lab · claude/varve-hub-koppeling @ 3f1f68b",
+    "medisynth": "/home/user/wt3/medisynth · claude/varve-hub-koppeling @ ac8b071",
+    "waterschaal": "/home/user/wt3/waterschaal · claude/varve-hub-koppeling @ 9c5c0f7",
+    "varve-dj": "/home/user/youtube-mixer · origin/main @ 99c7fa2 + 0001-Hub-koppeling-VARVE-als-lease-app-van-de-AV-app-hub-.patch, 0002-Hub-koppeling-reviews-verwerkt-hartslag-op-tijd-K1-l.patch (tijdelijke worktree)",
+    "flux": "/home/user/wt3/flux · claude/varve-hub-koppeling @ 8b5b694 (pty, python3)"
+  },
+  "stappen": [
+    {
+      "naam": "opkomst: alle apps melden zich",
+      "begin": 1791047314107.375,
+      "eind": 1791047314109.0552,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "formula-lab is actief in de hub",
+          "ok": true,
+          "detail": "status actief, slot 1"
+        },
+        {
+          "wat": "waterschaal is actief in de hub",
+          "ok": true,
+          "detail": "status actief, slot 2"
+        },
+        {
+          "wat": "medisynth is actief in de hub",
+          "ok": true,
+          "detail": "status actief, slot 3"
+        },
+        {
+          "wat": "flux is actief in de hub",
+          "ok": true,
+          "detail": "status actief, slot 4"
+        },
+        {
+          "wat": "varve-dj is actief in de hub",
+          "ok": true,
+          "detail": "status actief, slot 5"
+        },
+        {
+          "wat": "elke app een eigen slot",
+          "ok": true,
+          "detail": "1,2,3,4,5"
+        }
+      ],
+      "latency": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "waterschaal": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "medisynth": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "flux": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        },
+        "varve-dj": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "focus: Bank + Track Select door alle apps",
+      "begin": 1791047314109.4685,
+      "eind": 1791047316783.0498,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "Bank + Track Select 1 → focus formula-lab",
+          "ok": true,
+          "detail": "focus is formula-lab"
+        },
+        {
+          "wat": "Bank + Track Select 2 → focus waterschaal",
+          "ok": true,
+          "detail": "focus is waterschaal"
+        },
+        {
+          "wat": "waterschaal kreeg {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "formula-lab kreeg {focus aan:false}",
+          "ok": true
+        },
+        {
+          "wat": "Bank + Track Select 3 → focus medisynth",
+          "ok": true,
+          "detail": "focus is medisynth"
+        },
+        {
+          "wat": "medisynth kreeg {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal kreeg {focus aan:false}",
+          "ok": true
+        },
+        {
+          "wat": "Bank + Track Select 4 → focus flux",
+          "ok": true,
+          "detail": "focus is flux"
+        },
+        {
+          "wat": "flux kreeg {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "medisynth kreeg {focus aan:false}",
+          "ok": true
+        },
+        {
+          "wat": "Bank + Track Select 5 → focus varve-dj",
+          "ok": true,
+          "detail": "focus is varve-dj"
+        },
+        {
+          "wat": "varve-dj kreeg {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "flux kreeg {focus aan:false}",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 143,
+        "p50": 0.81,
+        "p95": 5.84,
+        "max": 12.79
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 28,
+          "p50": 0.53,
+          "p95": 3.76,
+          "max": 4.79
+        },
+        "waterschaal": {
+          "n": 29,
+          "p50": 0.71,
+          "p95": 5.04,
+          "max": 5.05
+        },
+        "medisynth": {
+          "n": 29,
+          "p50": 0.52,
+          "p95": 3.88,
+          "max": 4.93
+        },
+        "flux": {
+          "n": 29,
+          "p50": 3.79,
+          "p95": 9.53,
+          "max": 12.79
+        },
+        "varve-dj": {
+          "n": 28,
+          "p50": 1.14,
+          "p95": 4.23,
+          "max": 4.57
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "bediening: formula-lab",
+      "begin": 1791047316783.7036,
+      "eind": 1791047317249.1462,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op formula-lab",
+          "ok": true
+        },
+        {
+          "wat": "fader1 → zet a 0.299 komt aan (als laatste)",
+          "ok": true,
+          "detail": "157 zet(s), laatste 0.299"
+        },
+        {
+          "wat": "formula-lab leest a zelf terug",
+          "ok": true,
+          "detail": "app leest 0.300, verwacht 0.299"
+        },
+        {
+          "wat": "pad5-4 → trig take aan en uit",
+          "ok": true,
+          "detail": "true,false"
+        },
+        {
+          "wat": "niemand anders kreeg deze bediening",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 181,
+        "p50": 0.61,
+        "p95": 5.67,
+        "max": 7.99
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 164,
+          "p50": 0.65,
+          "p95": 4.59,
+          "max": 6.11
+        },
+        "waterschaal": {
+          "n": 4,
+          "p50": 0.43,
+          "p95": 5.49,
+          "max": 5.49
+        },
+        "medisynth": {
+          "n": 4,
+          "p50": 0.51,
+          "p95": 7.88,
+          "max": 7.88
+        },
+        "flux": {
+          "n": 4,
+          "p50": 0.06,
+          "p95": 0.13,
+          "max": 0.13
+        },
+        "varve-dj": {
+          "n": 5,
+          "p50": 4.56,
+          "p95": 7.99,
+          "max": 7.99
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "bediening: waterschaal",
+      "begin": 1791047317249.2449,
+      "eind": 1791047321179.9346,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op waterschaal",
+          "ok": true
+        },
+        {
+          "wat": "fader1 → zet druk 0.701 komt aan (als laatste)",
+          "ok": true,
+          "detail": "167 zet(s), laatste 0.701"
+        },
+        {
+          "wat": "dk1 → zet tempo 0.299 komt aan (als laatste)",
+          "ok": true,
+          "detail": "218 zet(s), laatste 0.299"
+        },
+        {
+          "wat": "waterschaal leest tempo zelf terug",
+          "ok": true,
+          "detail": "app leest 0.292, verwacht 0.299"
+        },
+        {
+          "wat": "pad5-1 → trig tik1 aan en uit",
+          "ok": true,
+          "detail": "true,false"
+        },
+        {
+          "wat": "Scene 1 → {scene i:0} komt aan",
+          "ok": true
+        },
+        {
+          "wat": "niemand anders kreeg deze bediening",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 590,
+        "p50": 1.31,
+        "p95": 7.64,
+        "max": 14.42
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 41,
+          "p50": 0.46,
+          "p95": 4.25,
+          "max": 11.97
+        },
+        "waterschaal": {
+          "n": 429,
+          "p50": 1.52,
+          "p95": 7.4,
+          "max": 12.23
+        },
+        "medisynth": {
+          "n": 40,
+          "p50": 0.79,
+          "p95": 9.3,
+          "max": 11.81
+        },
+        "flux": {
+          "n": 40,
+          "p50": 0.08,
+          "p95": 12.17,
+          "max": 14.42
+        },
+        "varve-dj": {
+          "n": 40,
+          "p50": 1.28,
+          "p95": 12.89,
+          "max": 14.27
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "bediening: medisynth",
+      "begin": 1791047321180.0112,
+      "eind": 1791047321685.6692,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op medisynth",
+          "ok": true
+        },
+        {
+          "wat": "fader1 → zet niveau 0.299 komt aan (als laatste)",
+          "ok": true,
+          "detail": "93 zet(s), laatste 0.299"
+        },
+        {
+          "wat": "medisynth leest niveau zelf terug",
+          "ok": true,
+          "detail": "app leest 0.299, verwacht 0.299"
+        },
+        {
+          "wat": "dk1 → zet ruimte 0.701 komt aan (als laatste)",
+          "ok": true,
+          "detail": "167 zet(s), laatste 0.701"
+        },
+        {
+          "wat": "niemand anders kreeg deze bediening",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 287,
+        "p50": 0.75,
+        "p95": 3.31,
+        "max": 5.16
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 5,
+          "p50": 0.7,
+          "p95": 1.9,
+          "max": 1.9
+        },
+        "waterschaal": {
+          "n": 6,
+          "p50": 0.76,
+          "p95": 4.37,
+          "max": 4.37
+        },
+        "medisynth": {
+          "n": 266,
+          "p50": 0.76,
+          "p95": 3.28,
+          "max": 5.16
+        },
+        "flux": {
+          "n": 5,
+          "p50": 0.05,
+          "p95": 0.08,
+          "max": 0.08
+        },
+        "varve-dj": {
+          "n": 5,
+          "p50": 1.66,
+          "p95": 3.47,
+          "max": 3.47
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "bediening: flux",
+      "begin": 1791047321685.79,
+      "eind": 1791047322262.6843,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op flux",
+          "ok": true
+        },
+        {
+          "wat": "fader1 → zet tempo 0.701 komt aan (als laatste)",
+          "ok": true,
+          "detail": "109 zet(s), laatste 0.701"
+        },
+        {
+          "wat": "flux leest tempo zelf terug",
+          "ok": true,
+          "detail": "app leest 0.701, verwacht 0.701"
+        },
+        {
+          "wat": "dk1 → zet tekens 0.299 komt aan (als laatste)",
+          "ok": true,
+          "detail": "218 zet(s), laatste 0.299"
+        },
+        {
+          "wat": "flux leest tekens zelf terug",
+          "ok": true,
+          "detail": "app leest 0.299, verwacht 0.299"
+        },
+        {
+          "wat": "pad4-2 → trig varve aan en uit",
+          "ok": true,
+          "detail": "true,false"
+        },
+        {
+          "wat": "niemand anders kreeg deze bediening",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 356,
+        "p50": 0.27,
+        "p95": 5.64,
+        "max": 10.43
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 5,
+          "p50": 0.6,
+          "p95": 4.73,
+          "max": 4.73
+        },
+        "waterschaal": {
+          "n": 5,
+          "p50": 0.72,
+          "p95": 1.38,
+          "max": 1.38
+        },
+        "medisynth": {
+          "n": 6,
+          "p50": 0.5,
+          "p95": 0.86,
+          "max": 0.86
+        },
+        "flux": {
+          "n": 335,
+          "p50": 0.15,
+          "p95": 5.79,
+          "max": 10.43
+        },
+        "varve-dj": {
+          "n": 5,
+          "p50": 1.13,
+          "p95": 3.49,
+          "max": 3.49
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "bediening: varve-dj",
+      "begin": 1791047322262.8452,
+      "eind": 1791047322698.324,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op varve-dj",
+          "ok": true
+        },
+        {
+          "wat": "lease: masterfader komt als ruwe MIDI aan",
+          "ok": true,
+          "detail": "160 midi-berichten"
+        },
+        {
+          "wat": "varve-dj leest master zelf terug",
+          "ok": true,
+          "detail": "app leest 0.598, verwacht 0.598"
+        },
+        {
+          "wat": "lease: de app meldt master terug aan de hub (zet)",
+          "ok": true,
+          "detail": "hub kent 0.5984251968503937"
+        },
+        {
+          "wat": "lease: device-knop en pad komen als MIDI aan",
+          "ok": true,
+          "detail": "41 midi-berichten"
+        },
+        {
+          "wat": "lease: LEDs van de app bereiken de APC",
+          "ok": true,
+          "detail": "13 berichten naar de APC"
+        },
+        {
+          "wat": "niemand anders kreeg deze bediening",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 249,
+        "p50": 1.81,
+        "p95": 7.97,
+        "max": 11.07
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 5,
+          "p50": 1.08,
+          "p95": 2.05,
+          "max": 2.05
+        },
+        "waterschaal": {
+          "n": 5,
+          "p50": 0.8,
+          "p95": 1.83,
+          "max": 1.83
+        },
+        "medisynth": {
+          "n": 5,
+          "p50": 0.81,
+          "p95": 1.5,
+          "max": 1.5
+        },
+        "flux": {
+          "n": 6,
+          "p50": 0,
+          "p95": 0.07,
+          "max": 0.07
+        },
+        "varve-dj": {
+          "n": 228,
+          "p50": 2.01,
+          "p95": 8.23,
+          "max": 11.07
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "LPD8: macro's K1–K8 over alle apps tegelijk",
+      "begin": 1791047322698.4417,
+      "eind": 1791047336712.7146,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "macro.intensiteit → waterschaal.volume eindigt op 0.268",
+          "ok": true,
+          "detail": "135 zet(s), laatste 0.268 (lpd8)"
+        },
+        {
+          "wat": "waterschaal leest volume zelf terug",
+          "ok": true,
+          "detail": "app leest 0.260, verwacht 0.268"
+        },
+        {
+          "wat": "macro.intensiteit → medisynth.niveau eindigt op 0.268",
+          "ok": true,
+          "detail": "235 zet(s), laatste 0.268 (lpd8)"
+        },
+        {
+          "wat": "medisynth leest niveau zelf terug",
+          "ok": true,
+          "detail": "app leest 0.268, verwacht 0.268"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.intensiteit",
+          "ok": true,
+          "detail": "laatste 0.2677165354330709"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.intensiteit",
+          "ok": true,
+          "detail": "laatste 0.2677165354330709"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.intensiteit",
+          "ok": true,
+          "detail": "laatste 0.2677165354330709"
+        },
+        {
+          "wat": "flux kreeg globaal macro.intensiteit",
+          "ok": true,
+          "detail": "laatste 0.2677165354330709"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.intensiteit",
+          "ok": true,
+          "detail": "laatste 0.2677165354330709"
+        },
+        {
+          "wat": "macro.helderheid → medisynth.helderheid eindigt op 0.339",
+          "ok": true,
+          "detail": "177 zet(s), laatste 0.339 (lpd8)"
+        },
+        {
+          "wat": "medisynth leest helderheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.339, verwacht 0.339"
+        },
+        {
+          "wat": "macro.helderheid → flux.helderheid eindigt op 0.339",
+          "ok": true,
+          "detail": "30 zet(s), laatste 0.339 (lpd8)"
+        },
+        {
+          "wat": "flux leest helderheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.339, verwacht 0.339"
+        },
+        {
+          "wat": "macro.helderheid → varve-dj.beeld eindigt op 0.339",
+          "ok": true,
+          "detail": "12 zet(s), laatste 0.339 (lpd8)"
+        },
+        {
+          "wat": "varve-dj leest beeld zelf terug",
+          "ok": true,
+          "detail": "app leest 0.339, verwacht 0.339"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.helderheid",
+          "ok": true,
+          "detail": "laatste 0.33858267716535434"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.helderheid",
+          "ok": true,
+          "detail": "laatste 0.33858267716535434"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.helderheid",
+          "ok": true,
+          "detail": "laatste 0.33858267716535434"
+        },
+        {
+          "wat": "flux kreeg globaal macro.helderheid",
+          "ok": true,
+          "detail": "laatste 0.33858267716535434"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.helderheid",
+          "ok": true,
+          "detail": "laatste 0.33858267716535434"
+        },
+        {
+          "wat": "macro.ruimte → waterschaal.uitklank eindigt op 0.409",
+          "ok": true,
+          "detail": "127 zet(s), laatste 0.409 (lpd8)"
+        },
+        {
+          "wat": "waterschaal leest uitklank zelf terug",
+          "ok": true,
+          "detail": "app leest 0.406, verwacht 0.409"
+        },
+        {
+          "wat": "macro.ruimte → medisynth.ruimte eindigt op 0.409",
+          "ok": true,
+          "detail": "178 zet(s), laatste 0.409 (lpd8)"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.ruimte",
+          "ok": true,
+          "detail": "laatste 0.4094488188976378"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.ruimte",
+          "ok": true,
+          "detail": "laatste 0.4094488188976378"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.ruimte",
+          "ok": true,
+          "detail": "laatste 0.4094488188976378"
+        },
+        {
+          "wat": "flux kreeg globaal macro.ruimte",
+          "ok": true,
+          "detail": "laatste 0.4094488188976378"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.ruimte",
+          "ok": true,
+          "detail": "laatste 0.4094488188976378"
+        },
+        {
+          "wat": "macro.beweging → waterschaal.zweving eindigt op 0.480",
+          "ok": true,
+          "detail": "156 zet(s), laatste 0.480 (lpd8)"
+        },
+        {
+          "wat": "waterschaal leest zweving zelf terug",
+          "ok": true,
+          "detail": "app leest 0.480, verwacht 0.480"
+        },
+        {
+          "wat": "macro.beweging → flux.tempo eindigt op 0.480",
+          "ok": true,
+          "detail": "60 zet(s), laatste 0.480 (lpd8)"
+        },
+        {
+          "wat": "flux leest tempo zelf terug",
+          "ok": true,
+          "detail": "app leest 0.480, verwacht 0.480"
+        },
+        {
+          "wat": "macro.beweging → varve-dj.puls eindigt op 0.480",
+          "ok": true,
+          "detail": "156 zet(s), laatste 0.480 (lpd8)"
+        },
+        {
+          "wat": "varve-dj leest puls zelf terug",
+          "ok": true,
+          "detail": "app leest 0.480, verwacht 0.480"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.beweging",
+          "ok": true,
+          "detail": "laatste 0.48031496062992124"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.beweging",
+          "ok": true,
+          "detail": "laatste 0.48031496062992124"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.beweging",
+          "ok": true,
+          "detail": "laatste 0.48031496062992124"
+        },
+        {
+          "wat": "flux kreeg globaal macro.beweging",
+          "ok": true,
+          "detail": "laatste 0.48031496062992124"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.beweging",
+          "ok": true,
+          "detail": "laatste 0.48031496062992124"
+        },
+        {
+          "wat": "macro.kleur → formula-lab.palette eindigt op 0.500",
+          "ok": true,
+          "detail": "186 zet(s), laatste 0.500 (lpd8)"
+        },
+        {
+          "wat": "macro.kleur → flux.palet eindigt op 0.500",
+          "ok": true,
+          "detail": "186 zet(s), laatste 0.500 (lpd8)"
+        },
+        {
+          "wat": "flux leest palet zelf terug",
+          "ok": true,
+          "detail": "app leest 0.500, verwacht 0.500"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.kleur",
+          "ok": true,
+          "detail": "laatste 0.5511811023622047"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.kleur",
+          "ok": true,
+          "detail": "laatste 0.5511811023622047"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.kleur",
+          "ok": true,
+          "detail": "laatste 0.5511811023622047"
+        },
+        {
+          "wat": "flux kreeg globaal macro.kleur",
+          "ok": true,
+          "detail": "laatste 0.5511811023622047"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.kleur",
+          "ok": true,
+          "detail": "laatste 0.5511811023622047"
+        },
+        {
+          "wat": "macro.dichtheid → medisynth.dichtheid eindigt op 0.622",
+          "ok": true,
+          "detail": "239 zet(s), laatste 0.622 (lpd8)"
+        },
+        {
+          "wat": "medisynth leest dichtheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.622, verwacht 0.622"
+        },
+        {
+          "wat": "macro.dichtheid → flux.dichtheid eindigt op 0.622",
+          "ok": true,
+          "detail": "59 zet(s), laatste 0.622 (lpd8)"
+        },
+        {
+          "wat": "flux leest dichtheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.622, verwacht 0.622"
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.dichtheid",
+          "ok": true,
+          "detail": "laatste 0.6220472440944882"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.dichtheid",
+          "ok": true,
+          "detail": "laatste 0.6220472440944882"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.dichtheid",
+          "ok": true,
+          "detail": "laatste 0.6220472440944882"
+        },
+        {
+          "wat": "flux kreeg globaal macro.dichtheid",
+          "ok": true,
+          "detail": "laatste 0.6220472440944882"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.dichtheid",
+          "ok": true,
+          "detail": "laatste 0.6220472440944882"
+        },
+        {
+          "wat": "klok.adem_periode → waterschaal.tempo eindigt op 0.693",
+          "ok": true,
+          "detail": "97 zet(s), laatste 0.693 (lpd8)"
+        },
+        {
+          "wat": "waterschaal leest tempo zelf terug",
+          "ok": true,
+          "detail": "app leest 0.667, verwacht 0.693"
+        },
+        {
+          "wat": "formula-lab kreeg globaal klok.adem_periode",
+          "ok": true,
+          "detail": "laatste 0.6929133858267716"
+        },
+        {
+          "wat": "waterschaal kreeg globaal klok.adem_periode",
+          "ok": true,
+          "detail": "laatste 0.6929133858267716"
+        },
+        {
+          "wat": "medisynth kreeg globaal klok.adem_periode",
+          "ok": true,
+          "detail": "laatste 0.6929133858267716"
+        },
+        {
+          "wat": "flux kreeg globaal klok.adem_periode",
+          "ok": true,
+          "detail": "laatste 0.6929133858267716"
+        },
+        {
+          "wat": "varve-dj kreeg globaal klok.adem_periode",
+          "ok": true,
+          "detail": "laatste 0.6929133858267716"
+        },
+        {
+          "wat": "macro.balans: geen app met deze rol (alleen globaal)",
+          "ok": true
+        },
+        {
+          "wat": "formula-lab kreeg globaal macro.balans",
+          "ok": true,
+          "detail": "laatste 0.7637795275590551"
+        },
+        {
+          "wat": "waterschaal kreeg globaal macro.balans",
+          "ok": true,
+          "detail": "laatste 0.7637795275590551"
+        },
+        {
+          "wat": "medisynth kreeg globaal macro.balans",
+          "ok": true,
+          "detail": "laatste 0.7637795275590551"
+        },
+        {
+          "wat": "flux kreeg globaal macro.balans",
+          "ok": true,
+          "detail": "laatste 0.7637795275590551"
+        },
+        {
+          "wat": "varve-dj kreeg globaal macro.balans",
+          "ok": true,
+          "detail": "laatste 0.7637795275590551"
+        }
+      ],
+      "latency": {
+        "n": 7738,
+        "p50": 1.48,
+        "p95": 8.73,
+        "max": 29.74
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 1327,
+          "p50": 1.68,
+          "p95": 7.11,
+          "max": 17.44
+        },
+        "waterschaal": {
+          "n": 1656,
+          "p50": 2.09,
+          "p95": 8.06,
+          "max": 15.3
+        },
+        "medisynth": {
+          "n": 1970,
+          "p50": 1.12,
+          "p95": 8.2,
+          "max": 28.1
+        },
+        "flux": {
+          "n": 1476,
+          "p50": 0,
+          "p95": 6.59,
+          "max": 29.74
+        },
+        "varve-dj": {
+          "n": 1309,
+          "p50": 3.28,
+          "p95": 14.03,
+          "max": 23.3
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "LPD8: verder draaien — de knoppen blijven gevangen",
+      "begin": 1791047336712.8774,
+      "eind": 1791047369735.1472,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "K1 twee tikjes verder → waterschaal.volume volgt",
+          "ok": true,
+          "detail": "laatste 0.283"
+        },
+        {
+          "wat": "K1 twee tikjes verder → medisynth.niveau volgt",
+          "ok": true,
+          "detail": "laatste 0.283"
+        },
+        {
+          "wat": "K2 twee tikjes verder → medisynth.helderheid volgt",
+          "ok": true,
+          "detail": "laatste 0.354"
+        },
+        {
+          "wat": "K2 twee tikjes verder → flux.helderheid volgt",
+          "ok": true,
+          "detail": "laatste 0.354"
+        },
+        {
+          "wat": "K2 twee tikjes verder → varve-dj.beeld volgt",
+          "ok": true,
+          "detail": "laatste 0.354"
+        },
+        {
+          "wat": "K3 twee tikjes verder → waterschaal.uitklank volgt",
+          "ok": true,
+          "detail": "laatste 0.425"
+        },
+        {
+          "wat": "K3 twee tikjes verder → medisynth.ruimte volgt",
+          "ok": true,
+          "detail": "laatste 0.425"
+        },
+        {
+          "wat": "K4 twee tikjes verder → waterschaal.zweving volgt",
+          "ok": true,
+          "detail": "laatste 0.496"
+        },
+        {
+          "wat": "K4 twee tikjes verder → flux.tempo volgt",
+          "ok": true,
+          "detail": "laatste 0.496"
+        },
+        {
+          "wat": "K4 twee tikjes verder → varve-dj.puls volgt",
+          "ok": true,
+          "detail": "laatste 0.496"
+        },
+        {
+          "wat": "K6 twee tikjes verder → medisynth.dichtheid volgt",
+          "ok": true,
+          "detail": "laatste 0.638"
+        },
+        {
+          "wat": "K6 twee tikjes verder → flux.dichtheid volgt",
+          "ok": true,
+          "detail": "laatste 0.638"
+        },
+        {
+          "wat": "K7 twee tikjes verder → waterschaal.tempo volgt",
+          "ok": true,
+          "detail": "laatste 0.709"
+        }
+      ],
+      "latency": {
+        "n": 2710,
+        "p50": 0.4,
+        "p95": 5.08,
+        "max": 22.33
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 341,
+          "p50": 0.56,
+          "p95": 4.07,
+          "max": 6.76
+        },
+        "waterschaal": {
+          "n": 349,
+          "p50": 0.75,
+          "p95": 4.92,
+          "max": 8.98
+        },
+        "medisynth": {
+          "n": 1178,
+          "p50": 0.23,
+          "p95": 3.76,
+          "max": 8.69
+        },
+        "flux": {
+          "n": 491,
+          "p50": 0.06,
+          "p95": 7.61,
+          "max": 22.33
+        },
+        "varve-dj": {
+          "n": 351,
+          "p50": 0.87,
+          "p95": 5.65,
+          "max": 9.84
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "snapshot: bewaren (P5 lang), veranderen, laden (P5 kort)",
+      "begin": 1791047369735.307,
+      "eind": 1791047380517.5513,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "snapshot 1 is bewaard",
+          "ok": true,
+          "detail": "formula-lab, waterschaal, medisynth, flux"
+        },
+        {
+          "wat": "er is iets veranderd om terug te zetten",
+          "ok": true,
+          "detail": "4 waarden"
+        },
+        {
+          "wat": "snapshot → medisynth.helderheid terug op 0.354",
+          "ok": true,
+          "detail": "kreeg 0.354"
+        },
+        {
+          "wat": "medisynth leest helderheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.354, verwacht 0.354"
+        },
+        {
+          "wat": "snapshot → medisynth.dichtheid terug op 0.638",
+          "ok": true,
+          "detail": "kreeg 0.638"
+        },
+        {
+          "wat": "medisynth leest dichtheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.638, verwacht 0.638"
+        },
+        {
+          "wat": "snapshot → flux.dichtheid terug op 0.638",
+          "ok": true,
+          "detail": "kreeg 0.638"
+        },
+        {
+          "wat": "flux leest dichtheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.638, verwacht 0.638"
+        },
+        {
+          "wat": "snapshot → flux.helderheid terug op 0.354",
+          "ok": true,
+          "detail": "kreeg 0.354"
+        },
+        {
+          "wat": "flux leest helderheid zelf terug",
+          "ok": true,
+          "detail": "app leest 0.354, verwacht 0.354"
+        }
+      ],
+      "latency": {
+        "n": 1836,
+        "p50": 0.58,
+        "p95": 5.76,
+        "max": 17.32
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 261,
+          "p50": 0.69,
+          "p95": 6.1,
+          "max": 6.94
+        },
+        "waterschaal": {
+          "n": 261,
+          "p50": 0.86,
+          "p95": 4.18,
+          "max": 6.65
+        },
+        "medisynth": {
+          "n": 685,
+          "p50": 0.42,
+          "p95": 4.17,
+          "max": 11.23
+        },
+        "flux": {
+          "n": 358,
+          "p50": 0.06,
+          "p95": 5.94,
+          "max": 17.32
+        },
+        "varve-dj": {
+          "n": 271,
+          "p50": 1.81,
+          "p95": 7.05,
+          "max": 10.42
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "paniek: P1 vasthouden en loslaten",
+      "begin": 1791047380517.6863,
+      "eind": 1791047390931.352,
+      "ok": false,
+      "controles": [
+        {
+          "wat": "waterschaal kreeg trig paniek aan",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal: paniek werkt in de app",
+          "ok": true,
+          "detail": "volume 0"
+        },
+        {
+          "wat": "varve-dj kreeg trig paniek aan",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj: paniek werkt in de app",
+          "ok": true,
+          "detail": "zwart vast = 1"
+        },
+        {
+          "wat": "formula-lab kreeg globaal paniek 1",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal kreeg globaal paniek 1",
+          "ok": true
+        },
+        {
+          "wat": "medisynth kreeg globaal paniek 1",
+          "ok": true
+        },
+        {
+          "wat": "flux kreeg globaal paniek 1",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj kreeg globaal paniek 1",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal kreeg trig paniek uit",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj kreeg trig paniek uit",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj: na paniek weer normaal",
+          "ok": true,
+          "detail": "zwart vast = 0"
+        },
+        {
+          "wat": "formula-lab kreeg globaal paniek 0",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal kreeg globaal paniek 0",
+          "ok": true
+        },
+        {
+          "wat": "medisynth kreeg globaal paniek 0",
+          "ok": true
+        },
+        {
+          "wat": "flux kreeg globaal paniek 0",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj kreeg globaal paniek 0",
+          "ok": true
+        },
+        {
+          "wat": "na paniek: K1 twee tikjes verder → waterschaal.volume volgt",
+          "ok": false,
+          "detail": "geen zet (K1 staat op 0.283, hub kent waterschaal.volume 0.000, medisynth.niveau 0.283)"
+        },
+        {
+          "wat": "na paniek: K1 twee tikjes verder → medisynth.niveau volgt",
+          "ok": false,
+          "detail": "geen zet (K1 staat op 0.283, hub kent waterschaal.volume 0.000, medisynth.niveau 0.283)"
+        }
+      ],
+      "latency": {
+        "n": 529,
+        "p50": 0.53,
+        "p95": 4.31,
+        "max": 16
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 105,
+          "p50": 0.53,
+          "p95": 3.42,
+          "max": 8.05
+        },
+        "waterschaal": {
+          "n": 107,
+          "p50": 0.62,
+          "p95": 3.29,
+          "max": 5.51
+        },
+        "medisynth": {
+          "n": 105,
+          "p50": 0.6,
+          "p95": 3.78,
+          "max": 6.2
+        },
+        "flux": {
+          "n": 105,
+          "p50": 0.07,
+          "p95": 6.03,
+          "max": 16
+        },
+        "varve-dj": {
+          "n": 107,
+          "p50": 0.71,
+          "p95": 4.93,
+          "max": 6.63
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "herstart: formula-lab halverwege",
+      "begin": 1791047390931.3965,
+      "eind": 1791047396708.6748,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "formula-lab is terug met een nieuwe inst",
+          "ok": true,
+          "detail": "status actief"
+        },
+        {
+          "wat": "formula-lab houdt slot 1",
+          "ok": true,
+          "detail": "slot 1"
+        },
+        {
+          "wat": "de focus bleef staan",
+          "ok": true,
+          "detail": "focus varve-dj"
+        },
+        {
+          "wat": "geen dubbele app in de hub",
+          "ok": true
+        },
+        {
+          "wat": "focus op formula-lab",
+          "ok": true
+        },
+        {
+          "wat": "na herstart: fader1 wacht op pickup (geen zet zolang hij a niet kruist)",
+          "ok": true,
+          "detail": "fader 0.701 → 0.724, app 0.500"
+        },
+        {
+          "wat": "na herstart: fader1 → a komt aan",
+          "ok": true
+        },
+        {
+          "wat": "formula-lab leest a zelf terug",
+          "ok": true,
+          "detail": "app leest 0.198, verwacht 0.197"
+        }
+      ],
+      "latency": {
+        "n": 477,
+        "p50": 0.79,
+        "p95": 6.06,
+        "max": 16.91
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 244,
+          "p50": 1.91,
+          "p95": 12.5,
+          "max": 16.91
+        },
+        "waterschaal": {
+          "n": 58,
+          "p50": 0.63,
+          "p95": 3.66,
+          "max": 5.77
+        },
+        "medisynth": {
+          "n": 58,
+          "p50": 0.54,
+          "p95": 2.93,
+          "max": 5.66
+        },
+        "flux": {
+          "n": 58,
+          "p50": 0.06,
+          "p95": 0.43,
+          "max": 3.19
+        },
+        "varve-dj": {
+          "n": 59,
+          "p50": 0.76,
+          "p95": 3.09,
+          "max": 5.31
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "herstart: varve-dj halverwege (met focus)",
+      "begin": 1791047396708.818,
+      "eind": 1791047400489.232,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "focus op varve-dj vóór de herstart",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj is terug met een nieuwe inst",
+          "ok": true,
+          "detail": "status actief"
+        },
+        {
+          "wat": "varve-dj houdt slot 5",
+          "ok": true,
+          "detail": "slot 5"
+        },
+        {
+          "wat": "de focus bleef staan",
+          "ok": true,
+          "detail": "focus varve-dj"
+        },
+        {
+          "wat": "varve-dj kreeg na de herstart weer {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "lease: varve-dj tekent na de herstart weer LEDs op de APC",
+          "ok": true,
+          "detail": "622 berichten"
+        },
+        {
+          "wat": "geen dubbele app in de hub",
+          "ok": true
+        },
+        {
+          "wat": "focus op varve-dj",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 162,
+        "p50": 0.5,
+        "p95": 5.1,
+        "max": 10.99
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 39,
+          "p50": 0.56,
+          "p95": 7.23,
+          "max": 9.05
+        },
+        "waterschaal": {
+          "n": 38,
+          "p50": 0.63,
+          "p95": 5.1,
+          "max": 10.21
+        },
+        "medisynth": {
+          "n": 38,
+          "p50": 0.61,
+          "p95": 5.29,
+          "max": 9.29
+        },
+        "flux": {
+          "n": 38,
+          "p50": 0.05,
+          "p95": 0.08,
+          "max": 0.1
+        },
+        "varve-dj": {
+          "n": 9,
+          "p50": 1.78,
+          "p95": 10.99,
+          "max": 10.99
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "herstart: flux halverwege",
+      "begin": 1791047400489.4226,
+      "eind": 1791047401521.3816,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "flux is terug met een nieuwe inst",
+          "ok": true,
+          "detail": "status actief"
+        },
+        {
+          "wat": "flux houdt slot 4",
+          "ok": true,
+          "detail": "slot 4"
+        },
+        {
+          "wat": "de focus bleef staan",
+          "ok": true,
+          "detail": "focus varve-dj"
+        },
+        {
+          "wat": "geen dubbele app in de hub",
+          "ok": true
+        },
+        {
+          "wat": "focus op flux",
+          "ok": true
+        },
+        {
+          "wat": "na herstart: fader1 wacht op pickup (geen zet zolang hij tempo niet kruist)",
+          "ok": true,
+          "detail": "fader 0.197 → 0.173, app 0.474"
+        },
+        {
+          "wat": "na herstart: fader1 → tempo komt aan",
+          "ok": true
+        },
+        {
+          "wat": "flux leest tempo zelf terug",
+          "ok": true,
+          "detail": "app leest 0.803, verwacht 0.803"
+        }
+      ],
+      "latency": {
+        "n": 148,
+        "p50": 0.35,
+        "p95": 3.45,
+        "max": 7.18
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 10,
+          "p50": 0.4,
+          "p95": 6.25,
+          "max": 6.25
+        },
+        "waterschaal": {
+          "n": 10,
+          "p50": 0.76,
+          "p95": 3.4,
+          "max": 3.4
+        },
+        "medisynth": {
+          "n": 10,
+          "p50": 1.41,
+          "p95": 6.98,
+          "max": 6.98
+        },
+        "flux": {
+          "n": 107,
+          "p50": 0.02,
+          "p95": 2.98,
+          "max": 3.48
+        },
+        "varve-dj": {
+          "n": 11,
+          "p50": 2.35,
+          "p95": 7.18,
+          "max": 7.18
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "eindstand: hub en apps zijn het eens",
+      "begin": 1791047401521.5298,
+      "eind": 1791047402529.1677,
+      "ok": false,
+      "controles": [
+        {
+          "wat": "formula-lab: hub en app eens over 12 waarden",
+          "ok": true
+        },
+        {
+          "wat": "waterschaal: hub en app eens over 9 waarden",
+          "ok": false,
+          "detail": "tempo: hub 0.709, app 0.667"
+        },
+        {
+          "wat": "medisynth: hub en app eens over 3 waarden",
+          "ok": true
+        },
+        {
+          "wat": "flux: hub en app eens over 8 waarden",
+          "ok": true
+        },
+        {
+          "wat": "varve-dj: hub en app eens over 4 waarden",
+          "ok": true
+        },
+        {
+          "wat": "K1 (macro.intensiteit): apps met deze rol lopen uiteen",
+          "ok": true,
+          "opmerking": true,
+          "detail": "waterschaal.volume 0.000, medisynth.niveau 0.283"
+        },
+        {
+          "wat": "K2 (macro.helderheid): apps met deze rol lopen uiteen",
+          "ok": true,
+          "opmerking": true,
+          "detail": "medisynth.helderheid 0.354, flux.helderheid 0.500 (herstart), varve-dj.beeld 1.000 (herstart)"
+        },
+        {
+          "wat": "K4 (macro.beweging): apps met deze rol lopen uiteen",
+          "ok": true,
+          "opmerking": true,
+          "detail": "waterschaal.zweving 0.496, flux.tempo 0.803 (herstart), varve-dj.puls 0.000 (herstart)"
+        },
+        {
+          "wat": "K6 (macro.dichtheid): apps met deze rol lopen uiteen",
+          "ok": true,
+          "opmerking": true,
+          "detail": "medisynth.dichtheid 0.638, flux.dichtheid 0.500 (herstart)"
+        }
+      ],
+      "latency": {
+        "n": 50,
+        "p50": 0.43,
+        "p95": 1.87,
+        "max": 2.72
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 10,
+          "p50": 0.49,
+          "p95": 2.72,
+          "max": 2.72
+        },
+        "waterschaal": {
+          "n": 10,
+          "p50": 0.48,
+          "p95": 1.23,
+          "max": 1.23
+        },
+        "medisynth": {
+          "n": 10,
+          "p50": 0.44,
+          "p95": 1.87,
+          "max": 1.87
+        },
+        "flux": {
+          "n": 10,
+          "p50": 0.07,
+          "p95": 0.12,
+          "max": 0.12
+        },
+        "varve-dj": {
+          "n": 10,
+          "p50": 0.47,
+          "p95": 1.94,
+          "max": 1.94
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "cockpit open",
+      "begin": 1791047402529.1936,
+      "eind": 1791047404872.222,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "cockpit toont alle apps",
+          "ok": true,
+          "detail": "Formula Lab, Waterschaal, MediSynth, Flux, Varve DJ"
+        },
+        {
+          "wat": "cockpit is verbonden met de hub",
+          "ok": true,
+          "detail": "verbonden"
+        },
+        {
+          "wat": "focus vanuit de cockpit → formula-lab",
+          "ok": true,
+          "detail": "focus formula-lab"
+        },
+        {
+          "wat": "formula-lab kreeg {focus aan:true}",
+          "ok": true
+        },
+        {
+          "wat": "cockpit zonder console-fouten",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 117,
+        "p50": 0.51,
+        "p95": 3.94,
+        "max": 4.42
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 24,
+          "p50": 0.53,
+          "p95": 3.82,
+          "max": 4.37
+        },
+        "waterschaal": {
+          "n": 23,
+          "p50": 0.55,
+          "p95": 3.69,
+          "max": 4.14
+        },
+        "medisynth": {
+          "n": 23,
+          "p50": 0.53,
+          "p95": 3.87,
+          "max": 4.42
+        },
+        "flux": {
+          "n": 24,
+          "p50": 0.06,
+          "p95": 0.11,
+          "max": 0.16
+        },
+        "varve-dj": {
+          "n": 23,
+          "p50": 0.88,
+          "p95": 3.95,
+          "max": 4.01
+        }
+      },
+      "fouten": {}
+    },
+    {
+      "naam": "afsluiting: iedereen nog actief",
+      "begin": 1791047404879.9023,
+      "eind": 1791047406882.8833,
+      "ok": true,
+      "controles": [
+        {
+          "wat": "formula-lab actief",
+          "ok": true,
+          "detail": "actief"
+        },
+        {
+          "wat": "waterschaal actief",
+          "ok": true,
+          "detail": "actief"
+        },
+        {
+          "wat": "medisynth actief",
+          "ok": true,
+          "detail": "actief"
+        },
+        {
+          "wat": "flux actief",
+          "ok": true,
+          "detail": "actief"
+        },
+        {
+          "wat": "varve-dj actief",
+          "ok": true,
+          "detail": "actief"
+        },
+        {
+          "wat": "geen app viel onverwacht stil of weg",
+          "ok": true
+        }
+      ],
+      "latency": {
+        "n": 100,
+        "p50": 0.69,
+        "p95": 2.89,
+        "max": 5.32
+      },
+      "perApp": {
+        "formula-lab": {
+          "n": 20,
+          "p50": 0.67,
+          "p95": 2.82,
+          "max": 5.26
+        },
+        "waterschaal": {
+          "n": 20,
+          "p50": 0.91,
+          "p95": 2.72,
+          "max": 2.8
+        },
+        "medisynth": {
+          "n": 20,
+          "p50": 0.71,
+          "p95": 2.52,
+          "max": 3.95
+        },
+        "flux": {
+          "n": 20,
+          "p50": 0.07,
+          "p95": 1.74,
+          "max": 2.03
+        },
+        "varve-dj": {
+          "n": 20,
+          "p50": 1.52,
+          "p95": 4.39,
+          "max": 5.32
+        }
+      },
+      "fouten": {}
+    }
+  ],
+  "perApp": {
+    "formula-lab": {
+      "latency": {
+        "n": 2629,
+        "p50": 1.15,
+        "p95": 6.13,
+        "max": 17.44
+      },
+      "latencyBediening": {
+        "n": 582,
+        "p50": 1.59,
+        "p95": 6.5,
+        "max": 16.91
+      },
+      "verzonden": 2632,
+      "verloren": 3,
+      "verlorenSoorten": {
+        "globaal": 3
+      },
+      "verlorenPerStap": {
+        "herstart: formula-lab halverwege": 3
+      },
+      "herhaaldeZets": {
+        "a": 2,
+        "palette": 179
+      },
+      "fouten": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found) [http://localhost:5174/favicon.ico]"
+      ]
+    },
+    "waterschaal": {
+      "latency": {
+        "n": 3010,
+        "p50": 1.52,
+        "p95": 7.24,
+        "max": 15.3
+      },
+      "latencyBediening": {
+        "n": 917,
+        "p50": 1.99,
+        "p95": 7.66,
+        "max": 15.25
+      },
+      "verzonden": 3010,
+      "verloren": 0,
+      "verlorenSoorten": {},
+      "verlorenPerStap": {},
+      "herhaaldeZets": {
+        "druk": 1,
+        "tempo": 2,
+        "volume": 1,
+        "uitklank": 1,
+        "zweving": 1
+      },
+      "fouten": [
+        "Failed to load resource: net::ERR_CERT_AUTHORITY_INVALID [https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,500;1,400&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap]",
+        "Failed to load resource: the server responded with a status of 404 (File not found) [http://localhost:8080/favicon.ico]"
+      ]
+    },
+    "medisynth": {
+      "latency": {
+        "n": 4447,
+        "p50": 0.59,
+        "p95": 5.92,
+        "max": 28.1
+      },
+      "latencyBediening": {
+        "n": 2354,
+        "p50": 0.31,
+        "p95": 4.05,
+        "max": 18.03
+      },
+      "verzonden": 4447,
+      "verloren": 0,
+      "verlorenSoorten": {},
+      "verlorenPerStap": {},
+      "herhaaldeZets": {
+        "niveau": 1,
+        "ruimte": 1
+      },
+      "fouten": []
+    },
+    "flux": {
+      "latency": {
+        "n": 3106,
+        "p50": 0.04,
+        "p95": 6.46,
+        "max": 29.74
+      },
+      "latencyBediening": {
+        "n": 1013,
+        "p50": 0.03,
+        "p95": 5.18,
+        "max": 22.33
+      },
+      "verzonden": 3106,
+      "verloren": 0,
+      "verlorenSoorten": {},
+      "verlorenPerStap": {},
+      "herhaaldeZets": {
+        "tempo": 2,
+        "tekens": 1,
+        "palet": 179
+      },
+      "fouten": []
+    },
+    "varve-dj": {
+      "latency": {
+        "n": 2481,
+        "p50": 2.19,
+        "p95": 10.01,
+        "max": 23.3
+      },
+      "latencyBediening": {
+        "n": 419,
+        "p50": 2.26,
+        "p95": 11.79,
+        "max": 21.98
+      },
+      "verzonden": 2484,
+      "verloren": 3,
+      "verlorenSoorten": {
+        "globaal": 3
+      },
+      "verlorenPerStap": {
+        "herstart: varve-dj halverwege (met focus)": 3
+      },
+      "herhaaldeZets": {
+        "puls": 1
+      },
+      "fouten": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found) [http://localhost:8777/favicon.ico]"
+      ]
+    }
+  },
+  "wissels": [
+    {
+      "t": 1791047391343.0154,
+      "app": "formula-lab",
+      "van": "actief",
+      "naar": "weg",
+      "verwacht": true
+    },
+    {
+      "t": 1791047395737.5676,
+      "app": "formula-lab",
+      "van": "weg",
+      "naar": "actief",
+      "verwacht": true
+    },
+    {
+      "t": 1791047397087.97,
+      "app": "varve-dj",
+      "van": "actief",
+      "naar": "weg",
+      "verwacht": true
+    },
+    {
+      "t": 1791047400016.8171,
+      "app": "varve-dj",
+      "van": "weg",
+      "naar": "actief",
+      "verwacht": true
+    },
+    {
+      "t": 1791047400511.7915,
+      "app": "flux",
+      "van": "actief",
+      "naar": "weg",
+      "verwacht": true
+    },
+    {
+      "t": 1791047400610.898,
+      "app": "flux",
+      "van": "weg",
+      "naar": "actief",
+      "verwacht": true
+    }
+  ],
+  "totaal": {
+    "ok": false,
+    "controles": 205,
+    "geslaagd": 202,
+    "opmerkingen": 4,
+    "latency": {
+      "n": 15673,
+      "p50": 0.87,
+      "p95": 7.25,
+      "max": 29.74
+    },
+    "latencyBediening": {
+      "n": 5285,
+      "p50": 0.54,
+      "p95": 6.25,
+      "max": 22.33
+    }
+  },
+  "manifesten": {
+    "formula-lab": {
+      "v": 1,
+      "app": "formula-lab",
+      "naam": "Formula Lab",
+      "kleur": "#3fbf5f",
+      "truth": "app",
+      "hb_s": 1,
+      "params": [
+        {
+          "id": "a",
+          "naam": "a",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "b",
+          "naam": "b",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "c",
+          "naam": "c",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "d",
+          "naam": "d",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "e",
+          "naam": "e",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "f",
+          "naam": "f",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "g",
+          "naam": "g",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "h",
+          "naam": "h",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "i",
+          "naam": "i",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "j",
+          "naam": "j",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "k",
+          "naam": "k",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "l",
+          "naam": "l",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "take",
+          "naam": "Take",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "play"
+        },
+        {
+          "id": "dice",
+          "naam": "Dice",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "play"
+        },
+        {
+          "id": "palette",
+          "naam": "Palette",
+          "soort": "keuze",
+          "keuzes": [
+            "hollow",
+            "gameboy",
+            "cga",
+            "amber",
+            "fire"
+          ],
+          "hint": "kolom",
+          "groep": "look",
+          "rol": "macro.kleur"
+        },
+        {
+          "id": "coords",
+          "naam": "Coords",
+          "soort": "keuze",
+          "keuzes": [
+            "cartesian",
+            "polar",
+            "toroidal"
+          ],
+          "hint": "kolom",
+          "groep": "look"
+        },
+        {
+          "id": "smooth",
+          "naam": "Smooth",
+          "soort": "schakelaar",
+          "hint": "pad",
+          "groep": "look"
+        },
+        {
+          "id": "tone",
+          "naam": "Tone",
+          "soort": "keuze",
+          "keuzes": [
+            "clamp",
+            "wrap",
+            "fold"
+          ],
+          "hint": "kolom",
+          "groep": "look"
+        }
+      ]
+    },
+    "waterschaal": {
+      "v": 1,
+      "app": "waterschaal",
+      "naam": "Waterschaal",
+      "truth": "app",
+      "hb_s": 1,
+      "lease": false,
+      "scenes": [
+        "Water en diepte",
+        "Dageraad",
+        "Nacht",
+        "Storm binnen"
+      ],
+      "params": [
+        {
+          "id": "druk",
+          "naam": "Wrijfdruk",
+          "soort": "waarde",
+          "standaard": 0,
+          "hint": "fader",
+          "groep": "wrijven"
+        },
+        {
+          "id": "draai",
+          "naam": "Draaisnelheid",
+          "soort": "waarde",
+          "standaard": 0,
+          "hint": "fader",
+          "groep": "wrijven"
+        },
+        {
+          "id": "tempo",
+          "naam": "Tempo",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "groep": "adem",
+          "hint": "knop",
+          "rol": "klok.adem_periode",
+          "eenheid": "s per adem",
+          "min": 4,
+          "max": 16
+        },
+        {
+          "id": "inuit",
+          "naam": "In : uit",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "groep": "adem",
+          "hint": "knop",
+          "min": 0.3,
+          "max": 0.5
+        },
+        {
+          "id": "leiding",
+          "naam": "Leiding",
+          "soort": "waarde",
+          "standaard": 0.3,
+          "groep": "adem",
+          "hint": "knop",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "morph",
+          "naam": "Karakter",
+          "soort": "waarde",
+          "standaard": 0.1,
+          "groep": "klank",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "zweving",
+          "naam": "Zweving",
+          "soort": "waarde",
+          "standaard": 0.4,
+          "groep": "klank",
+          "rol": "macro.beweging",
+          "min": 0,
+          "max": 2.5
+        },
+        {
+          "id": "hardheid",
+          "naam": "Stok",
+          "soort": "waarde",
+          "standaard": 0.2,
+          "groep": "klank",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "vulling",
+          "naam": "Water",
+          "soort": "waarde",
+          "standaard": 0,
+          "groep": "klank",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "uitklank",
+          "naam": "Uitklank",
+          "soort": "waarde",
+          "standaard": 0.375,
+          "groep": "klank",
+          "rol": "macro.ruimte",
+          "min": 0.4,
+          "max": 2
+        },
+        {
+          "id": "volume",
+          "naam": "Volume",
+          "soort": "waarde",
+          "standaard": 0.7,
+          "groep": "klank",
+          "rol": "macro.intensiteit",
+          "hint": "fader",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "tik1",
+          "naam": "Veld 1",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik2",
+          "naam": "Veld 2",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik3",
+          "naam": "Veld 3",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik4",
+          "naam": "Veld 4",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik5",
+          "naam": "Veld 5",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik6",
+          "naam": "Veld 6",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik7",
+          "naam": "Veld 7",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "tik8",
+          "naam": "Veld 8",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "aanslag",
+          "naam": "Aanslag",
+          "soort": "trigger",
+          "hint": "pad",
+          "groep": "spelen"
+        },
+        {
+          "id": "paniek",
+          "naam": "Paniek",
+          "soort": "trigger"
+        }
+      ]
+    },
+    "medisynth": {
+      "v": 1,
+      "app": "medisynth",
+      "naam": "MediSynth",
+      "truth": "app",
+      "hb_s": 2,
+      "lease": false,
+      "params": [
+        {
+          "id": "ruimte",
+          "naam": "Ruimte",
+          "soort": "waarde",
+          "standaard": 0.3,
+          "hint": "knop",
+          "rol": "macro.ruimte",
+          "slew_s": 6
+        },
+        {
+          "id": "helderheid",
+          "naam": "Helderheid",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "knop",
+          "rol": "macro.helderheid",
+          "slew_s": 6,
+          "eenheid": "donker↔helder",
+          "min": -1,
+          "max": 1
+        },
+        {
+          "id": "dichtheid",
+          "naam": "Dichtheid",
+          "soort": "waarde",
+          "standaard": 1,
+          "hint": "knop",
+          "rol": "macro.dichtheid",
+          "slew_s": 8
+        },
+        {
+          "id": "niveau",
+          "naam": "Niveau",
+          "soort": "waarde",
+          "standaard": 1,
+          "hint": "fader",
+          "rol": "macro.intensiteit",
+          "slew_s": 8,
+          "eenheid": "dB",
+          "min": -12,
+          "max": 0
+        }
+      ]
+    },
+    "flux": {
+      "v": 1,
+      "app": "flux",
+      "naam": "Flux",
+      "kleur": "#9b1b30",
+      "truth": "app",
+      "hb_s": 1,
+      "params": [
+        {
+          "id": "tempo",
+          "naam": "Tempo",
+          "soort": "waarde",
+          "standaard": 0.4737,
+          "hint": "fader",
+          "min": 0.1,
+          "max": 2,
+          "rol": "macro.beweging",
+          "slew_s": 2
+        },
+        {
+          "id": "dichtheid",
+          "naam": "Dichtheid",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "fader",
+          "min": 0,
+          "max": 2,
+          "rol": "macro.dichtheid",
+          "slew_s": 2
+        },
+        {
+          "id": "helderheid",
+          "naam": "Helderheid",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "fader",
+          "min": 0.4,
+          "max": 1.6,
+          "rol": "macro.helderheid",
+          "slew_s": 1
+        },
+        {
+          "id": "tekens",
+          "naam": "Tekens",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "knop",
+          "min": 0,
+          "max": 1.2
+        },
+        {
+          "id": "code",
+          "naam": "Code",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "knop",
+          "min": 0,
+          "max": 2
+        },
+        {
+          "id": "isolijnen",
+          "naam": "Isolijnen",
+          "soort": "waarde",
+          "standaard": 1,
+          "hint": "knop",
+          "min": 0,
+          "max": 1
+        },
+        {
+          "id": "palet",
+          "naam": "Palet",
+          "soort": "keuze",
+          "keuzes": [
+            "bordeaux",
+            "aubergine",
+            "bloedrood",
+            "wijn",
+            "as"
+          ],
+          "standaard": 0,
+          "hint": "kolom",
+          "rol": "macro.kleur"
+        },
+        {
+          "id": "klok",
+          "naam": "Klokkleur",
+          "soort": "schakelaar",
+          "standaard": 1,
+          "hint": "pad"
+        },
+        {
+          "id": "varve",
+          "naam": "Varve",
+          "soort": "trigger",
+          "hint": "pad"
+        }
+      ]
+    },
+    "varve-dj": {
+      "v": 1,
+      "app": "varve-dj",
+      "naam": "Varve DJ",
+      "kleur": "#4ad9c4",
+      "truth": "app",
+      "hb_s": 1,
+      "lease": true,
+      "rings": "host",
+      "params": [
+        {
+          "id": "master",
+          "naam": "Master",
+          "soort": "waarde",
+          "standaard": 0.8,
+          "hint": "fader"
+        },
+        {
+          "id": "xfader",
+          "naam": "Crossfader",
+          "soort": "waarde",
+          "standaard": 0.5,
+          "hint": "fader"
+        },
+        {
+          "id": "beeld",
+          "naam": "Beeld",
+          "soort": "waarde",
+          "standaard": 1,
+          "hint": "knop",
+          "rol": "macro.helderheid",
+          "slew_s": 0.25
+        },
+        {
+          "id": "puls",
+          "naam": "Puls op de tel",
+          "soort": "waarde",
+          "standaard": 0,
+          "hint": "knop",
+          "rol": "macro.beweging"
+        },
+        {
+          "id": "paniek",
+          "naam": "Paniek (beeld zwart)",
+          "soort": "trigger"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "_bron": "youtube-mixer · origin/main @ 99c7fa2 + 0001-Hub-koppeling-VARVE-als-lease-app-van-de-AV-app-hub-.patch, 0002-Hub-koppeling-reviews-verwerkt-hartslag-op-tijd-K1-l.patch (tijdelijke worktree) — vastgelegd door tools/repetitie.mjs op 2026-10-03T16:05:44.828Z",
+  "manifest": {
+    "v": 1,
+    "app": "varve-dj",
+    "naam": "Varve DJ",
+    "kleur": "#4ad9c4",
+    "truth": "app",
+    "hb_s": 1,
+    "lease": true,
+    "rings": "host",
+    "params": [
+      {
+        "id": "master",
+        "naam": "Master",
+        "soort": "waarde",
+        "standaard": 0.8,
+        "hint": "fader"
+      },
+      {
+        "id": "xfader",
+        "naam": "Crossfader",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "fader"
+      },
+      {
+        "id": "beeld",
+        "naam": "Beeld",
+        "soort": "waarde",
+        "standaard": 1,
+        "hint": "knop",
+        "rol": "macro.helderheid",
+        "slew_s": 0.25
+      },
+      {
+        "id": "puls",
+        "naam": "Puls op de tel",
+        "soort": "waarde",
+        "standaard": 0,
+        "hint": "knop",
+        "rol": "macro.beweging"
+      },
+      {
+        "id": "paniek",
+        "naam": "Paniek (beeld zwart)",
+        "soort": "trigger"
+      }
+    ]
+  },
+  "staat": {
+    "master": 0.8,
+    "xfader": 0.5,
+    "beeld": 1,
+    "puls": 0
+  }
+}

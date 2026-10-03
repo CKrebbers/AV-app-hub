@@ -26,7 +26,7 @@ Manifest en mapping: `apps/av-scene-kit.json` (gegenereerd uit `av-scene-kit/con
 
 De L2TD-poort (device 3, Logic → TD) en TD2L (device 2) blijven zoals ze waren.
 
-**Na een herstart van de hub** verdwijnt de virtuele poort even (en de hub begint weer bij de standaardwaarden). Staat de regel in de Device Mapper daarna op
+**Na een herstart van de hub** verdwijnt de virtuele poort even; daarna stuurt de hub de waarden die hij onthield (zie hieronder). Staat de regel in de Device Mapper daarna op
 "not found", kies dan de In Device opnieuw. (TD pakt hem meestal vanzelf weer op.)
 
 ## Wat de hub stuurt
@@ -62,12 +62,13 @@ alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt
   kent die presetwaarden (`driver.presets` in `apps/av-scene-kit.json`, uit `PRESETS` in `td_build_hub.py`)
   en neemt ze bij elke preset-noot over. Ringen en cockpit tonen dus de presetstand, en de pickup van de hub
   wacht net als TD tot de fader de presetwaarde kruist.
-- **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. Zolang de hub draait, speelt hij bij
-  een nieuwe aanmelding van de driver de laatst bekende waarden opnieuw af. Die waarden staan alleen in het
-  geheugen. Herstart de hub zelf terwijl TD blijft draaien, dan houdt TD zijn eigen stand (bijvoorbeeld preset 3);
-  de hub stuurt dan niets en gaat zelf uit van de standaardwaarden (= preset 1). Cockpit en ringen tonen die,
-  en de pickup grijpt pas als een fader de standaardwaarde kruist. Kies een preset of laad een snapshot: dan
-  staan TD en hub weer gelijk.
+- **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. De hub onthoudt ze daarom zelf, ook
+  over een herstart van de hub heen: ze staan in `~/.varve-hub/staat.json` (samen met de snapshots). Herstart de
+  hub terwijl TD blijft draaien, dan stuurt de hub zodra de driver zich aanmeldt de onthouden waarden naar TD;
+  TD en hub staan dan meteen gelijk. Was het geheugen er niet (eerste keer, bestand weggegooid, of gestart met
+  `--zonder-geheugen`), dan stuurt de hub niets: dan houdt TD zijn eigen stand (bijvoorbeeld preset 3) en gaat
+  de hub uit van de standaardwaarden (= preset 1). Kies dan een preset of laad een snapshot: dan staan TD en hub
+  weer gelijk.
 - **Alleen TD herstart?** Dan staat TD weer op preset 1 en weet de hub dat niet. Kies een preset (pad of scène):
   TD en hub staan dan weer gelijk. Of beweeg de faders die je terug wilt. Een snapshot laden helpt alleen voor
   waarden die afwijken van de huidige hub-stand.

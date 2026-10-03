@@ -1,6 +1,8 @@
 // De opdrachtregel: foutmeldingen die Clay begrijpt.
 import { describe, it, expect } from 'vitest';
 import { spawn } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import net from 'node:net';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +12,10 @@ const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js')
 /** @param {string[]} args */
 function draai(args, ms = 8000) {
   return new Promise((goed) => {
-    const p = spawn(process.execPath, [CLI, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn(process.execPath, [CLI, ...args], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, VARVE_HUB_STAAT: join(mkdtempSync(join(tmpdir(), 'varve-cli-')), 'staat.json') }, // nooit het echte geheugen
+  });
     let uit = '', fout = '';
     p.stdout.on('data', (d) => { uit += d; });
     p.stderr.on('data', (d) => { fout += d; });

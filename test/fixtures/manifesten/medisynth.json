@@ -1,0 +1,61 @@
+{
+  "_bron": "medisynth · claude/varve-hub-koppeling @ ac8b071 — vastgelegd door tools/repetitie.mjs op 2026-10-03T16:05:44.828Z",
+  "manifest": {
+    "v": 1,
+    "app": "medisynth",
+    "naam": "MediSynth",
+    "truth": "app",
+    "hb_s": 2,
+    "lease": false,
+    "params": [
+      {
+        "id": "ruimte",
+        "naam": "Ruimte",
+        "soort": "waarde",
+        "standaard": 0.3,
+        "hint": "knop",
+        "rol": "macro.ruimte",
+        "slew_s": 6
+      },
+      {
+        "id": "helderheid",
+        "naam": "Helderheid",
+        "soort": "waarde",
+        "standaard": 0.5,
+        "hint": "knop",
+        "rol": "macro.helderheid",
+        "slew_s": 6,
+        "eenheid": "donker↔helder",
+        "min": -1,
+        "max": 1
+      },
+      {
+        "id": "dichtheid",
+        "naam": "Dichtheid",
+        "soort": "waarde",
+        "standaard": 1,
+        "hint": "knop",
+        "rol": "macro.dichtheid",
+        "slew_s": 8
+      },
+      {
+        "id": "niveau",
+        "naam": "Niveau",
+        "soort": "waarde",
+        "standaard": 1,
+        "hint": "fader",
+        "rol": "macro.intensiteit",
+        "slew_s": 8,
+        "eenheid": "dB",
+        "min": -12,
+        "max": 0
+      }
+    ]
+  },
+  "staat": {
+    "ruimte": 0.3,
+    "helderheid": 0.5,
+    "dichtheid": 1,
+    "niveau": 1
+  }
+}

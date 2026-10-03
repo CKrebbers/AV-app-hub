@@ -95,7 +95,7 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
 | Shape … Resonance bewegen mee met de TD-knoppen | De toewijzing heeft Input *All*, of VARVE-HUB TD staat aan als invoer. Stap 2 en 6. |
 | Leer-modus pakt niets als ik een APC-fader beweeg | Pickup: de hub stuurt pas als de fader de huidige waarde kruist. Leer via de cockpit, of beweeg de fader over zijn hele bereik. |
 | Werkt alleen als het spoor geselecteerd is | In de expertweergave staat *Selected Track*; kies het Sediment-spoor. |
-| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. De hub onthoudt waarden alleen zolang hij draait en stuurt na een herstart niets: dan houdt Sediment zijn eigen stand, maar gaat de hub (cockpit, ringen, pickup) uit van de standaardwaarden uit het manifest. Laad een snapshot, of beweeg de fader over de standaardwaarde heen: dan staan ze weer gelijk. |
+| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. Na een herstart stuurt de hub de waarden die hij onthield (`~/.varve-hub/staat.json`) weer naar Sediment. Zonder geheugen (eerste keer, bestand weg, `--zonder-geheugen`) stuurt hij niets: dan houdt Sediment zijn eigen stand, maar gaat de hub (cockpit, ringen, pickup) uit van de standaardwaarden uit het manifest. Laad een snapshot, of beweeg de fader over de standaardwaarde heen: dan staan ze weer gelijk. |
 
 *Later (ONDERZOEK.md §7):* een vaste CC→parameter-tabel in de Sediment-processor zelf maakt deze Logic-stap
 overbodig. De CC-nummers hierboven zijn dan de tabel.
