@@ -22,6 +22,7 @@
     "@julusian/midi": "^3.8.1"
   },
   "devDependencies": {
+    "playwright-core": "^1.63.0",
     "vitest": "^3.2.0"
   },
   "dependencies": {
