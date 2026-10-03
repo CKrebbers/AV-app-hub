@@ -53,17 +53,28 @@ function bijStoppen(opruimen) {
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }
 
+/**
+ * Zonder echte MIDI: geen controllers (alleen de virtuele in de cockpit) en ook geen virtuele poorten.
+ * Een nep-poort "VARVE-HUB TD" zou alleen in het geheugen bestaan; zonder `virtueel` slaat
+ * startDrivers de MIDI-drivers over en zegt dat (TD en Logic krijgen geen poort).
+ * @returns {import('./ports/poort.js').Systeem}
+ */
+function zonderMidi() {
+  const nep = new NepSysteem();
+  return { soort: 'geen', lijst: () => nep.lijst(), open: (naam) => nep.open(naam) };
+}
+
 /** @param {string} naam */
 const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
 
 const opdrachten = {
   async start() {
     let systeem;
-    if (args.includes('--zonder-midi')) systeem = new NepSysteem();
+    if (args.includes('--zonder-midi')) systeem = zonderMidi();
     else {
       const r = await laadRtMidi();
       if (r.systeem) systeem = r.systeem;
-      else { console.log(`Geen MIDI (${r.reden}) — de hub draait zonder controllers; gebruik de virtuele in de cockpit.`); systeem = new NepSysteem(); }
+      else { console.log(`Geen MIDI (${r.reden}) — de hub draait zonder controllers; gebruik de virtuele in de cockpit.`); systeem = zonderMidi(); }
     }
     const log = (/** @type {unknown[]} */ ...x) => console.log(...x);
     const poort = optie('--poort') ? Number(optie('--poort')) : config.poorten.http;

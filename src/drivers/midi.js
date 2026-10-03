@@ -7,7 +7,7 @@
 //            map: { paramId: {cc, kanaal?} | {noot, kanaal?} },
 //            scenes?: [{noot, kanaal?} | {cc, kanaal?}],                // scène i → korte aanslag
 //            presets?: [{noot, kanaal?, waarden: { paramId: 0..1 }}] }   // wat de app zelf zet bij die noot
-import { DriverBasis, scheidStatisch } from './basis.js';
+import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
 import { klem01 } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../ports/poort.js').Poort} Poort */
@@ -71,7 +71,7 @@ export class MidiDriver extends DriverBasis {
     this.hbTimer = null;
     /** laatste foutmelding bij openen (alleen loggen als die verandert) */
     this.openFout = /** @type {string|null} */ (null);
-    /** @type {number[][]} alles wat de driver verstuurde (ook handig voor diagnose) */
+    /** @type {number[][]} de laatste VERSTUURD_MAX berichten die de driver verstuurde (diagnose/tests) */
     this.verstuurd = [];
   }
 
@@ -95,7 +95,7 @@ export class MidiDriver extends DriverBasis {
   /** @param {number[]} b @returns {boolean} echt verstuurd? */
   #stuur(b) {
     if (!this.poort) return false;
-    try { this.poort.stuur(b); this.verstuurd.push(b); return true; } catch (e) { this.log('driver', this.manifest.app, 'sturen mislukt', /** @type {Error} */ (e).message); return false; }
+    try { this.poort.stuur(b); bewaarBegrensd(this.verstuurd, b); return true; } catch (e) { this.log('driver', this.manifest.app, 'sturen mislukt', /** @type {Error} */ (e).message); return false; }
   }
 
   /** Een nieuwe hallo = voor de kern een herstart: daarna moet alles opnieuw over de draad. */

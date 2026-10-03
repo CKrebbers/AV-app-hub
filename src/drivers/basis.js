@@ -27,6 +27,18 @@ export function scheidStatisch(statisch) {
   return { manifest, driver: driver ?? {} };
 }
 
+/** Hoeveel verstuurde berichten een driver bewaart voor diagnose (ringbuffer: een avond spelen lekt niet). */
+export const VERSTUURD_MAX = 256;
+
+/**
+ * Voeg toe aan een begrensde lijst: daarna weg wat te oud is.
+ * @template T @param {T[]} lijst @param {T} x @param {number} [max]
+ */
+export function bewaarBegrensd(lijst, x, max = VERSTUURD_MAX) {
+  lijst.push(x);
+  if (lijst.length > max) lijst.splice(0, lijst.length - max);
+}
+
 export class DriverBasis {
   /**
    * @param {{ manifest: Record<string, any>, klok: Klok, log?: (...a: unknown[]) => void }} o
