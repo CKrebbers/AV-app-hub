@@ -15,6 +15,7 @@ Eén Node-daemon die als **enige** de APC40 mkII en de LPD8 opent en al Clay's V
 10. Nederlands in code, docs en commits. JS + JSDoc (`// @ts-check`), ESM, Node 22, geen build.
 
 ## Testen
+- Protocol: `PROTOCOL.md` is het contract; `src/protocol/` valideert. Elke app-koppeling moet slagen voor `node tools/nep-hub.mjs --toets`.
 - `npm test` — unit, apparaatsessies, golden, en de volledige F0-proef met een gesimuleerde gebruiker (`test/gesimuleerd.js`).
 - Een nieuwe proefstap moet door de gesimuleerde gebruiker te doorlopen zijn: meld wat de gebruiker moet doen via `h.verwacht(...)` (doen `h.wachtOp`, `h.eerste`, `h.vraag` automatisch).
 - `test/fixtures/synthetisch-f0.jsonl` alleen opnieuw maken (`node test/maak-fixture.mjs`) als het logformaat bewust verandert.

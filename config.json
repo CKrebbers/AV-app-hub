@@ -1,20 +1,118 @@
 {
   "_doc": "Eén bron van waarheid voor de hub: poorten, apparaten, hubtoets. Nooit waarden hardcoden; lees via src/config.js.",
-  "poorten": { "http": 7700, "osc": 7701 },
+  "poorten": {
+    "http": 7700,
+    "osc": 7701
+  },
   "apparaten": {
-    "apc40": { "naam": "apc40", "modus": 66 },
-    "lpd8": { "naam": "lpd8" }
+    "apc40": {
+      "naam": "apc40",
+      "modus": 66
+    },
+    "lpd8": {
+      "naam": "lpd8"
+    }
   },
   "hubtoets": "bank",
   "hotplug_ms": 2000,
-  "led": { "per_burst": 16, "burst_ms": 4 },
+  "led": {
+    "per_burst": 16,
+    "burst_ms": 4
+  },
   "proefmap": "proef",
   "bekende_apps": {
-    "uurwerk": { "tcp": 8766 },
-    "varve-dj": { "tcp": 8777 },
-    "waterschaal-td": { "tcp": 9980 },
-    "td-lab": { "tcp": 9981 },
-    "av-scene-kit-td": { "udp": 9000 },
-    "av-scene-kit-blender": { "udp": 9001 }
+    "uurwerk": {
+      "tcp": 8766
+    },
+    "varve-dj": {
+      "tcp": 8777
+    },
+    "waterschaal-td": {
+      "tcp": 9980
+    },
+    "td-lab": {
+      "tcp": 9981
+    },
+    "av-scene-kit-td": {
+      "udp": 9000
+    },
+    "av-scene-kit-blender": {
+      "udp": 9001
+    }
+  },
+  "apps": {
+    "varve-dj": {
+      "naam": "Varve DJ",
+      "kleur": "#ff7a1a",
+      "koppeling": "lease",
+      "poort": 8777,
+      "repo": "youtube-mixer"
+    },
+    "av-kern": {
+      "naam": "AV-kern",
+      "kleur": "#2e5bff",
+      "koppeling": "lease",
+      "rings": "auto",
+      "poort": 5173,
+      "repo": "av-kern"
+    },
+    "formula-lab": {
+      "naam": "Formula Lab",
+      "kleur": "#3fbf5f",
+      "koppeling": "ws",
+      "poort": 5174,
+      "repo": "formula-lab"
+    },
+    "waterschaal": {
+      "naam": "Waterschaal",
+      "kleur": "#19d3e6",
+      "koppeling": "ws",
+      "poort": 8080,
+      "repo": "waterschaal"
+    },
+    "medisynth": {
+      "naam": "MediSynth",
+      "kleur": "#8b5cff",
+      "koppeling": "ws",
+      "poort": 5175,
+      "repo": "medisynth"
+    },
+    "uurwerk": {
+      "naam": "Uurwerk",
+      "kleur": "#ffb000",
+      "koppeling": "http",
+      "poort": 8766,
+      "repo": "uurwerk"
+    },
+    "av-scene-kit": {
+      "naam": "Scene Kit (TD)",
+      "kleur": "#ff2bd6",
+      "koppeling": "midi",
+      "midipoort": "VARVE-HUB TD",
+      "repo": "av-scene-kit"
+    },
+    "td-lab": {
+      "naam": "TD-lab",
+      "kleur": "#ff3b30",
+      "koppeling": "osc",
+      "repo": "td-lab"
+    },
+    "sediment": {
+      "naam": "Sediment",
+      "kleur": "#ffffff",
+      "koppeling": "midi",
+      "midipoort": "VARVE-HUB Logic",
+      "repo": "sediment"
+    },
+    "flux": {
+      "naam": "Flux",
+      "kleur": "#9b1b30",
+      "koppeling": "osc",
+      "repo": "flux-screensaver"
+    }
+  },
+  "hartslag": {
+    "stil_s": 3,
+    "weg_s": 10
   }
 }
