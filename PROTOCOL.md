@@ -14,8 +14,8 @@
 
 | Wie | Hoe | Adres |
 |---|---|---|
-| browser- en Node-apps | WebSocket, JSON, één bericht per frame | `ws://<hub>:7700/app` |
-| cockpit | WebSocket, JSON | `ws://<hub>:7700/cockpit` |
+| browser- en Node-apps | WebSocket, JSON, één bericht per frame | `ws://<hub>:7700/app` (van buiten de hub-machine met `--lan`: `?token=…` of `token` in `hallo`, §13) |
+| cockpit | WebSocket, JSON | `ws://<hub>:7700/cockpit` (van buiten met `--lan`: `?token=…` of cookie `varve_hub_token`, anders 401 bij de upgrade) |
 | OSC-apps (TD, Python) | OSC/UDP | hub luistert op 7701; app noemt zijn eigen poort in `hallo` |
 | passieve apps (TD via MIDI, uurwerk via HTTP, Logic) | **driver** in de hub + statisch manifest in `apps/<app>.json` | — |
 
@@ -38,7 +38,7 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | hub → app | `{t:"focus", aan}` | de app kreeg of verloor de APC-focus |
 | hub → app | `{t:"globaal", waarden}` | globale macro's en klokken (§6), alleen gewijzigde sleutels |
 | hub → app | `{t:"midi", dev, bytes}` | alleen lease: ruw MIDI-bericht van de APC (`dev:"apc40"`) |
-| hub → app | `{t:"fout", reden}` | bv. ongeldig manifest; de verbinding blijft open |
+| hub → app | `{t:"fout", reden}` | bv. ongeldig manifest; de verbinding blijft open, behalve bij close-code 4001 (§11) en 4003 (§13) |
 
 **Hartslag:** na 3 s zonder bericht is een app `stil` (LED knippert), na 10 s `weg` (LED uit, waarden blijven bewaard). Elk bericht telt als hartslag.
 
@@ -215,3 +215,12 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 
 **Apps per monitor**
 - Een app met `per_monitor: true` in `config.json` (flux) meldt zich per monitor aan als `<app>-<monitor>` (`flux-dp-1`). De hub geeft die de kleur van de basis-app en de naam `"<naam> (<monitor>)"`; staat de monitor niet in de naam uit het manifest, dan zet de hub hem erachter.
+
+## 13. Beslissingen (golf 4 — op het netwerk, docs/NETWERK.md)
+
+- **Token met `--lan`.** Luistert de hub op het netwerk, dan moet elke verbinding van buiten de eigen machine (niet `127.0.0.1`/`::1`) het token tonen. Lokaal blijft alles zonder token werken.
+  - `/app`: `?token=…` in de URL, of `token` in `hallo` (`{t:"hallo", app, inst, v:1, token}`). Het token gaat nooit naar de kern of een logboek.
+  - `/cockpit` en HTTP: `?token=…` in de URL of het cookie `varve_hub_token` (dat de hub zet na een `?token=`). Zonder geldig token: HTTP **401**, ook bij de upgrade van `/cockpit`.
+- **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 10 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs).
+- **Een app die 4003 krijgt** herverbindt met de gewone backoff (0,5 → 5 s); opnieuw proberen helpt pas als het token klopt, dus een app mag ook bewust langzamer gaan of de gebruiker melden dat het token ontbreekt.
+- **Zonder token luistert de hub nooit buiten loopback:** een `host` die niet `127.0.0.1`/`localhost`/`::1` is zonder token wordt geweigerd vóór het luisteren (`start` stopt met exit 4).

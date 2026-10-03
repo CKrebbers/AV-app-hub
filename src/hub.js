@@ -21,14 +21,15 @@ export const OPNAME_SLUIT_MS = 2000;
  * @param {{
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
- *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
+ *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void, token?: string|null,
  *   geheugen?: string|null,
  *   opname?: false | { thuis?: string, bestanden?: import('./opname/schrijver.js').Bestanden, datum?: () => Date, git?: string|null|(() => Promise<string|null>), spoelMs?: number, sluitMs?: number },
  * }} o  opname: avondmap (LPD8-pad 4, zie docs/OPNAME.md); false = niet opnemen
  *       geheugen: pad van het geheugenbestand (snapshots, truth:"hub"-waarden; zie src/opslag.js), null = niet bewaren.
  *       `varve-hub start` geeft `geheugenPad(config)` mee; tests geven een eigen pad of niets.
+ *       token: vereist van elke verbinding van buiten de eigen machine (--lan, docs/NETWERK.md)
  */
-export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, opname = {}, geheugen = null }) {
+export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, opname = {}, geheugen = null, token = null }) {
   const sluitMs = (opname ? opname.sluitMs : undefined) ?? OPNAME_SLUIT_MS;
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
   const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
@@ -80,7 +81,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
   };
 
   const server = await startServer({
-    poort: poort ?? cfg.poorten.http, host: host ?? cfg.server?.host ?? '127.0.0.1', origins: cfg.server?.origins ?? [],
+    poort: poort ?? cfg.poorten.http, host: host ?? cfg.server?.host ?? '127.0.0.1', origins: cfg.server?.origins ?? [], token,
     kern, uiMap: join(HUB_MAP, 'ui'), srcMap: join(HUB_MAP, 'src'), opVirtueel,
   });
   const actieveDrivers = drivers ? startDrivers({ kern, klok, systeem, fetch: f, config: cfg, log }) : null;
