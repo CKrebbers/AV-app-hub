@@ -309,10 +309,10 @@ export class Kern extends Zender {
   #hartslag(a) {
     this.#wisHartslag(a);
     if (a.status === 'stil' || a.status === 'weg') { a.status = a.manifest ? 'actief' : 'nieuw'; this.#statusGewijzigd(a); }
-    // Een app met een trage hartslag (manifest.hb_s) krijgt evenredig meer tijd: 3 en 10 gemiste slagen.
-    const hb = (a.manifest?.hb_s ?? 1) * 1000;
-    a.timers.stil = this.klok.zet(() => { a.timers.stil = null; if (a.status !== 'weg') { a.status = 'stil'; this.#statusGewijzigd(a); } }, Math.max(this.stilMs, 3 * hb));
-    a.timers.weg = this.klok.zet(() => { a.timers.weg = null; a.status = 'weg'; this.#statusGewijzigd(a); }, Math.max(this.wegMs, 10 * hb));
+    // config.hartslag geldt voor hb_s = 1; een app met een tragere hartslag krijgt evenredig meer tijd.
+    const schaal = Math.max(1, a.manifest?.hb_s ?? 1);
+    a.timers.stil = this.klok.zet(() => { a.timers.stil = null; if (a.status !== 'weg') { a.status = 'stil'; this.#statusGewijzigd(a); } }, this.stilMs * schaal);
+    a.timers.weg = this.klok.zet(() => { a.timers.weg = null; a.status = 'weg'; this.#statusGewijzigd(a); }, this.wegMs * schaal);
   }
   /** @param {AppStaat} a */
   #wisHartslag(a) {
@@ -778,7 +778,12 @@ export class Kern extends Zender {
       if (t.rol === 'fader' || t.rol === 'ring') {
         const modus = t.rol === 'ring' && this.overname ? 'direct' : t.takeover;
         if (!a.pickups.has(ctrl)) a.pickups.set(ctrl, nieuwePickup(v, this.fysiek.get(ctrl) ?? null, modus));
-        if (t.rol === 'ring' && c.led === 'ring') m.set(ctrl, { waarde: this.overname ? v : this.fysiek.get(ctrl) ?? 0 });
+        // Zonder overname is de knopstand onbekend tot hij draait: dan de ring alleen tonen als we de stand kennen.
+        if (t.rol === 'ring' && c.led === 'ring') {
+          const f = this.fysiek.get(ctrl);
+          if (this.overname) m.set(ctrl, { waarde: v });
+          else if (f !== undefined) m.set(ctrl, { waarde: f });
+        }
         const strip = /^fader([1-8])$/.exec(ctrl);
         if (strip && !a.pickups.get(ctrl)?.gevangen) m.set(`stop${strip[1]}`, { knipper: true });
       } else if (t.rol === 'keuze') {
@@ -815,7 +820,9 @@ export class Kern extends Zender {
     this.opp.teken();
     // In modus 0x42 zet een ring-CC ook de interne waarde van de knop. Het LED-model stuurt alleen verschillen,
     // dus een knop die zonder echo is gedraaid (hubtoets, ongebonden, andere app) krijgt zijn ring geforceerd.
-    for (const c of RINGEN) {
+    // Zonder overname (config.ringen_nemen_waarde_over = false) neemt de knop geen hub-waarde over:
+    // dan is een ring-CC alleen een lampje en zegt hij niets over de fysieke stand.
+    for (const c of this.overname ? RINGEN : []) {
       const s = /** @type {{ waarde?: number }} */ (m.get(c.id) ?? {}).waarde ?? 0;
       const f = this.fysiek.get(c.id);
       const was = /** @type {{ waarde?: number }} */ (oud.get(c.id) ?? {}).waarde ?? 0;
