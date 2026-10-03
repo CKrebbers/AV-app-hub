@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
-//   start [--poort N] [--host H] [--zonder-midi] [--geen-drivers]
+//   start [--poort N] [--host H] [--lan] [--zonder-midi] [--geen-drivers]
 //                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers
+//                            --lan: ook op het netwerk (0.0.0.0), met token en mDNS (docs/NETWERK.md)
+//   installeer [--weg] [--lokaal]  altijd aan: launchd (macOS) / systemd --user (Linux)
+//   token [--nieuw]          het token en de cockpit-adressen voor een tablet
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
@@ -21,6 +24,7 @@ import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
 import { NepSysteem } from './ports/nep.js';
+import { leesOfMaakToken, isLoopbackHost, lanNamen, lanOrigins, lanAdressen, cockpitAdressen, kondigAan, installeer } from './lan.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -78,12 +82,24 @@ const opdrachten = {
     }
     const log = (/** @type {unknown[]} */ ...x) => console.log(...x);
     const poort = optie('--poort') ? Number(optie('--poort')) : config.poorten.http;
+    // Op het netwerk = altijd met token: --lan, maar ook een --host of server.host die niet alleen loopback is.
+    const host = optie('--host') ?? (args.includes('--lan') ? '0.0.0.0' : config.server?.host ?? '127.0.0.1');
+    const lan = !isLoopbackHost(host);
+    let hubConfig = config, token = null, namen = /** @type {string[]} */ ([]);
+    if (lan) {
+      const t = leesOfMaakToken();
+      token = t.token;
+      if (t.nieuw) console.log(`Nieuw token aangemaakt in ${t.pad} (alleen leesbaar voor jou).`);
+      if (t.hersteld) console.log(`Rechten van ${t.pad} waren te ruim; hersteld naar 0600.`);
+      namen = lanNamen({ extra: config.server?.lan_namen ?? [] });
+      hubConfig = { ...config, server: { ...config.server, origins: [...(config.server?.origins ?? []), ...lanOrigins(namen, poort)] } };
+    }
     let hub;
     try {
-      hub = await startHub({
-        config, systeem, poort, host: optie('--host'),
+      hub = await startHub(/** @type {any} */ ({
+        config: hubConfig, systeem, poort, host, token,
         drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), log,
-      });
+      }));
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
       if (code !== 'EADDRINUSE' && code !== 'EACCES') throw e;
@@ -96,9 +112,43 @@ const opdrachten = {
       /** @type {any} */ (s).bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
       /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
     }
+    if (lan && !hub.server.tokenVereist) {
+      // Vangnet: zonder token nooit op het netwerk blijven luisteren.
+      await hub.stop();
+      console.error('Deze hub geeft het token niet door aan de server (src/hub.js: token → startServer); daarom niet op het netwerk gestart.');
+      process.exit(4);
+    }
     hub.kern.bij('naarApp', () => {});
-    console.log(`varve-hub draait. Cockpit: ${hub.adres}   Apps: ${hub.adres.replace('http', 'ws')}/app   Ctrl-C stopt.`);
-    bijStoppen(() => hub.stop());
+    const lokaal = `http://localhost:${hub.server.poort}`;
+    console.log(`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`);
+    /** @type {{ stop: () => void } | null} */
+    let mdns = null;
+    if (lan && token) {
+      const adressen = cockpitAdressen({ namen, adressen: lanAdressen(), poort: hub.server.poort, token });
+      // Het token alleen op een terminal tonen, niet in een logbestand (launchd/systemd).
+      if (process.stdout.isTTY) console.log(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
+      else console.log(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: varve-hub token`);
+      mdns = kondigAan({ poort: hub.server.poort, log });
+    }
+    bijStoppen(async () => { mdns?.stop(); await hub.stop(); });
+  },
+
+  installeer() {
+    try {
+      const r = installeer({ hubMap: HUB_MAP, weg: args.includes('--weg'), lan: !args.includes('--lokaal') });
+      console.log(r.regels.join('\n'));
+    } catch (e) {
+      console.error(/** @type {Error} */ (e).message);
+      process.exit(1);
+    }
+  },
+
+  token() {
+    const t = leesOfMaakToken({ opnieuw: args.includes('--nieuw') });
+    if (t.nieuw) console.log(`Nieuw token in ${t.pad}${args.includes('--nieuw') ? ' (herstart de hub; oude tablets moeten het nieuwe adres openen)' : ''}.`);
+    const poort = config.poorten.http;
+    const adressen = cockpitAdressen({ namen: lanNamen({ extra: config.server?.lan_namen ?? [] }), adressen: lanAdressen(), poort, token: t.token });
+    console.log(`Token: ${t.token}\nCockpit op een tablet:\n${adressen.map((a) => `  ${a}`).join('\n')}\nflux: VARVE_HUB=ws://${lanNamen()[1] ?? 'mac.local'}:${poort}/app?token=${t.token}`);
   },
 
   async doctor() {
@@ -172,7 +222,10 @@ const opdrachten = {
 
   help() {
     console.log(`varve-hub — opdrachten:
-  start             de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers)
+  start             de hub: cockpit op http://localhost:7700 (--poort, --host, --lan, --zonder-midi, --geen-drivers)
+                    --lan: ook op het netwerk, met token (~/.varve-hub/token) en mDNS
+  installeer        altijd aan bij inloggen (launchd/systemd --user); --weg haalt weg, --lokaal zonder --lan
+  token [--nieuw]   token en cockpit-adressen voor een tablet (--nieuw: ander token)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt

@@ -1,0 +1,16 @@
+# Varve hub als systemd-user-unit (Linux). Sjabloon: `varve-hub installeer` vult de paden in en schrijft
+# ~/.config/systemd/user/varve-hub.service. Niet met de hand kopiëren; zie docs/NETWERK.md. Nooit sudo.
+[Unit]
+Description=Varve hub (APC40 mkII + LPD8 voor alle Varve-apps)
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{HUB}}
+ExecStart={{EXEC}}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
