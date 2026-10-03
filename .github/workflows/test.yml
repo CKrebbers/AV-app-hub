@@ -12,4 +12,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Chromium voor de cockpit-browsertests
+        run: npx playwright-core install --with-deps chromium
       - run: npm test

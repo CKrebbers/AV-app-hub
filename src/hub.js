@@ -1,0 +1,63 @@
+// @ts-check
+// De hub als geheel: apparaten (APC40, LPD8), kern, server (cockpit + apps) en drivers aan elkaar.
+// Geen eigen logica — alleen bedrading. Alles is injecteerbaar, zodat dezelfde hub draait met echte
+// MIDI (Mac), met NepSysteem (tests, cloud) of helemaal zonder controllers (alleen de cockpit).
+import { join } from 'node:path';
+import { Kern } from './core/kern.js';
+import { echteKlok } from './core/klok.js';
+import { maakApparaten } from './apparaten.js';
+import { startServer } from './transports/server.js';
+import { startDrivers } from './drivers/index.js';
+import { HUB_MAP, laadKaarten } from './config.js';
+import * as APC from './devices/apc40mk2.js';
+import * as LPD8 from './devices/lpd8.js';
+
+/**
+ * @param {{
+ *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
+ *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
+ *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
+ * }} o
+ */
+export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {} }) {
+  const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
+  const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
+  const kern = new Kern({ klok, config: cfg, oppervlak: apparaten.apc });
+
+  // Echte controllers → kern; hun stand → cockpit.
+  apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => kern.invoer(g, b));
+  apparaten.lpd8.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => kern.invoer(g, b));
+  const meldApc = () => kern.zetApparaat('apc40', { verbonden: apparaten.apc.verbonden, naam: apparaten.apc.poort?.naam ?? null });
+  const meldLpd8 = () => kern.zetApparaat('lpd8', { verbonden: apparaten.lpd8.verbonden, naam: apparaten.lpd8.poort?.naam ?? null, model: apparaten.lpd8.model });
+  for (const e of ['verbonden', 'weg']) { apparaten.apc.bij(e, meldApc); apparaten.lpd8.bij(e, meldLpd8); }
+  apparaten.lpd8.bij('model', meldLpd8);
+  apparaten.lpd8.bij('weg', () => kern.apparaatWeg('lpd8'));
+
+  // Virtuele controllers uit de cockpit: precies alsof de bytes van USB kwamen.
+  // De virtuele LPD8 stuurt altijd de mk2-fabrieksstand, los van het profiel van de echte LPD8.
+  const virtueleLpd8 = LPD8.maakOntleder(LPD8.standaardProfiel('mk2'));
+  /** @param {'apc40'|'lpd8'} dev @param {number[]} bytes */
+  const opVirtueel = (dev, bytes) => {
+    const g = dev === 'apc40' ? APC.ontleed(bytes) : virtueleLpd8(bytes);
+    logboek?.midi('in', `${dev}-virtueel`, bytes);
+    kern.invoer(g, bytes);
+  };
+
+  const server = await startServer({
+    poort: poort ?? cfg.poorten.http, host: host ?? cfg.server?.host ?? '127.0.0.1', origins: cfg.server?.origins ?? [],
+    kern, uiMap: join(HUB_MAP, 'ui'), srcMap: join(HUB_MAP, 'src'), opVirtueel,
+  });
+  const actieveDrivers = drivers ? startDrivers({ kern, klok, systeem, fetch: f, config: cfg, log }) : null;
+  apparaten.start();
+
+  return {
+    kern, apparaten, server, opVirtueel,
+    adres: server.adres,
+    async stop() {
+      actieveDrivers?.stop();
+      kern.stop();
+      await apparaten.stop();
+      await server.stop();
+    },
+  };
+}

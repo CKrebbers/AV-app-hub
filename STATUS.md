@@ -26,5 +26,24 @@ Klaar als:
   - [ ] V5 welke LPD8, wat zit in de programma's, werken pad-LEDs?
 - [x] CI groen
 
-## Volgende: F2 — kern, manifesten, virtueel oppervlak
-Kan zonder hardware; begint zodra F0 gebouwd is.
+## Golf 0 — contract ✓
+`PROTOCOL.md` + `src/protocol/` (types, manifest- en berichtvalidatie), conformiteitstoets `tools/nep-hub.mjs`, voorbeeld-app `tools/nep-app.mjs`.
+
+## Golf 1 — F2: kern, server, cockpit, drivers ✓ (gebouwd en getest zonder hardware)
+Gebouwd door 5 bouwers + 10 reviewers + 5 verwerkers, samengevoegd en bedraad door Claude.
+- [x] Kern: focus via Bank + Track Select, automatische indeling, fader-pickup, ringen, keuze/schakelaar/trigger, lease voor Varve DJ en av-kern (LED-kaart per app, mode-SysEx ingeslikt, ring-emulatie), LPD8-macro's met rollen en slew, paniek/tap/adem/opname/snapshots, hartslag, truth hub
+- [x] Server: HTTP + WebSocket `/app` en `/cockpit`, Origin- en Host-beveiliging, ingedrukte virtuele toetsen worden losgelaten als de cockpit wegvalt
+- [x] Cockpit op http://localhost:7700: virtuele APC40 + LPD8, apps, focus-parameters, snapshots, globaal, live invoer (`docs/cockpit.png`)
+- [x] Drivers zonder code in de apps: av-scene-kit (TD via virtuele MIDI-poort "VARVE-HUB TD"), Sediment (Logic via "VARVE-HUB Logic"), uurwerk (HTTP); handleidingen `docs/TOUCHDESIGNER.md`, `docs/LOGIC.md`
+- [x] 51 spelerscenario's (zwarte doos) + end-to-end tests van de hele hub — 347 tests
+- [x] `varve-hub start` (`npm start`)
+
+Klaar als (op jouw Mac):
+- [ ] `npm start` → cockpit opent, APC en LPD8 staan op "verbonden"
+- [ ] `node tools/nep-app.mjs --app formula-lab` en `--app waterschaal` in twee terminals → beide verschijnen; Bank + Track Select wisselt; fader 1 pakt op zonder sprong
+- [ ] LPD8-knop 2 verandert "Helderheid" in beide nep-apps
+- [ ] TD: device 1 = "VARVE-HUB TD" → APC-knoppen bewegen de TD-hub (zie `docs/TOUCHDESIGNER.md`)
+
+## Volgende
+- Golf 2: stresstest (proberen te breken) + volledigheidscontrole
+- Golf 3: koppelingen in de apps zelf (Varve DJ, formula-lab, waterschaal, medisynth, flux; av-kern na 25 okt)

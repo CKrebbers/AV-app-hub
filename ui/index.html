@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d12">
+  <title>varve-hub · cockpit</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%232E5BFF'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/ui/stijl.css">
+</head>
+<body class="los">
+  <header class="kop">
+    <div class="merk"><span class="stip" aria-hidden="true"></span>varve-hub <small>cockpit</small></div>
+    <div class="apparaten" aria-label="controllers">
+      <span class="chip" id="dev-apc40">APC40</span>
+      <span class="chip" id="dev-lpd8">LPD8</span>
+    </div>
+    <div class="verbinding" id="verbinding" role="status" aria-live="polite" data-status="verbinden"><i aria-hidden="true"></i><span>verbinden…</span></div>
+  </header>
+
+  <main class="indeling">
+    <section class="paneel controllers" aria-label="virtuele controllers">
+      <div class="apc-houder"><div id="apc" aria-label="virtuele APC40 mkII"></div></div>
+      <p class="hint">klik = indrukken · <kbd>shift</kbd>-klik = vasthouden (bv. Bank), nog eens = los · tablet: vasthouden en met een 2e vinger tikken · slepen/scrollen = draaien</p>
+      <div class="lpd-houder"><div class="lpd-naam">LPD8</div><div id="lpd8" aria-label="virtuele LPD8"></div></div>
+    </section>
+
+    <aside class="zij">
+      <section class="paneel">
+        <h2>Apps</h2>
+        <ol id="apps" class="apps"></ol>
+        <p id="apps-leeg" class="leeg">Nog geen apps verbonden.</p>
+      </section>
+      <section class="paneel">
+        <h2 id="focus-titel">Focus</h2>
+        <div id="params" class="params"></div>
+      </section>
+      <section class="paneel">
+        <h2>Snapshots</h2>
+        <div id="snapshots" class="snapshots"></div>
+        <p class="hint">klik = laden · <kbd>shift</kbd>-klik of lang drukken = bewaren <span id="snapshot-melding" class="melding" aria-live="polite"></span></p>
+      </section>
+      <section class="paneel">
+        <h2>Globaal</h2>
+        <div class="globaal">
+          <div class="adem-doos">
+            <div class="adem"><i id="adem"></i></div>
+            <div class="adem-info">
+              <div><small>adem</small> <span id="adem-tekst">—</span></div>
+              <div><small>bpm</small> <span id="bpm">—</span></div>
+              <div><small>grondtoon</small> <span id="grondtoon">—</span></div>
+            </div>
+          </div>
+          <dl id="macros" class="macros"></dl>
+        </div>
+      </section>
+      <section class="paneel">
+        <h2>Invoer</h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="/ui/cockpit.js"></script>
+</body>
+</html>

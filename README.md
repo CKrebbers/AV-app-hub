@@ -2,7 +2,7 @@
 
 Eén hub voor de **APC40 mkII** en de **LPD8**, zodat al je Varve-projecten (Varve DJ, av-kern, formula-lab, av-scene-kit, uurwerk, waterschaal, …) met die twee controllers te bespelen zijn — zonder dat apps om de controller vechten.
 
-**Stand: fase F0** — de hub bezit de controllers en kan ze meten. Nog geen apps gekoppeld. Zie `STATUS.md`.
+**Stand: golf 1** — kern, cockpit, server en drivers staan; app-koppelingen volgen. Zie `STATUS.md`.
 
 ## Op de Mac
 
@@ -18,6 +18,7 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 
 | Opdracht | Wat |
 |---|---|
+| `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien |
 | `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±30-40 min). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |

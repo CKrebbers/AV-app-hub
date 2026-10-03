@@ -14,7 +14,12 @@ Eén Node-daemon die als **enige** de APC40 mkII en de LPD8 opent en al Clay's V
 9. **Elke fase eindigt speelbaar** en heeft "Klaar als"-criteria in `STATUS.md`. Nieuwe ideeën → `IDEEEN.md`, niet in de lopende fase.
 10. Nederlands in code, docs en commits. JS + JSDoc (`// @ts-check`), ESM, Node 22, geen build.
 
+## Mergen (afspraak met Clay, 3 okt 2026)
+- PR's in **AV-app-hub** met groene CI mag Claude zelf mergen (gewone merge, geen squash: takken bouwen op elkaar voort).
+- Niet zelf mergen: rode CI of open opmerkingen; een PR die hardwaregedrag verandert dat Clay al met een proef heeft bevestigd (eerst opnieuw proeven); PR's in Clay's andere repo's (altijd eerst zijn oké).
+
 ## Testen
+- Protocol: `PROTOCOL.md` is het contract; `src/protocol/` valideert. Elke app-koppeling moet slagen voor `node tools/nep-hub.mjs --toets`.
 - `npm test` — unit, apparaatsessies, golden, en de volledige F0-proef met een gesimuleerde gebruiker (`test/gesimuleerd.js`).
 - Een nieuwe proefstap moet door de gesimuleerde gebruiker te doorlopen zijn: meld wat de gebruiker moet doen via `h.verwacht(...)` (doen `h.wachtOp`, `h.eerste`, `h.vraag` automatisch).
 - `test/fixtures/synthetisch-f0.jsonl` alleen opnieuw maken (`node test/maak-fixture.mjs`) als het logformaat bewust verandert.
