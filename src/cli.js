@@ -54,7 +54,13 @@ function nieuwLogboek(soort, naam) {
 /** Netjes afsluiten bij Ctrl-C: LEDs uit, poorten dicht, logboek dicht. @param {() => Promise<void>|void} opruimen */
 function bijStoppen(opruimen) {
   let bezig = false;
-  const stop = async () => { if (bezig) return; bezig = true; await opruimen(); process.exit(0); };
+  const stop = async () => {
+    // Tweede Ctrl-C terwijl het opruimen nog loopt (bv. een hangende schijf): meteen weg.
+    if (bezig) { console.error('\nNogmaals gestopt — afsluiten zonder verder op te ruimen.'); process.exit(1); }
+    bezig = true;
+    await opruimen();
+    process.exit(0);
+  };
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }
 
@@ -177,9 +183,11 @@ const opdrachten = {
 
   async herhaal() {
     const bestand = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
-    if (!bestand) { console.error('Gebruik: varve-hub herhaal <avondmap of gebaren.jsonl> [--snelheid x] [--hub adres] [--zonder-beginstand]'); process.exit(2); }
-    const snelheid = optie('--snelheid') !== undefined ? Number(optie('--snelheid')) : 1;
-    if (!(snelheid > 0) || !Number.isFinite(snelheid)) { console.error(`--snelheid moet een getal > 0 zijn (bv. 2 = twee keer zo snel), niet "${optie('--snelheid')}"`); process.exit(2); }
+    if (!bestand) { console.error('Gebruik: npm run herhaal -- <avondmap of gebaren.jsonl> [--snelheid x] [--hub adres] [--zonder-beginstand]'); process.exit(2); }
+    const ruw = optie('--snelheid');
+    const zonderWaarde = ruw === undefined || ruw.startsWith('--');
+    const snelheid = args.includes('--snelheid') ? (zonderWaarde ? NaN : Number(ruw)) : 1;
+    if (!(snelheid > 0) || !Number.isFinite(snelheid)) { console.error(`--snelheid moet een getal > 0 zijn (bv. 2 = twee keer zo snel), niet "${zonderWaarde ? '' : ruw}"`); process.exit(2); }
     let opname;
     try {
       const pad = statSync(bestand).isDirectory() ? join(bestand, GEBAREN) : bestand;
@@ -195,17 +203,34 @@ const opdrachten = {
     const invoer = opname.stappen.filter((s) => 'dev' in s);
     const laatste = invoer.at(-1)?.ms ?? 0;
     const eerste = invoer[0]?.ms ?? 0;
-    console.log(`Avond van ${opname.kop.begon ?? '?'} (hub ${String(opname.kop['hub-git'] ?? '?').slice(0, 10)}), ${invoer.length} gebaren,`
+    console.log(`Avond van ${opname.kop.begon ?? '?'} (hub ${String(opname.kop['hub-git'] ?? opname.eind?.['hub-git'] ?? '?').slice(0, 10)}), ${invoer.length} gebaren,`
       + ` ±${((laatste - eerste) / 1000 / snelheid).toFixed(1)} s afspelen${snelheid !== 1 ? ` (×${snelheid})` : ''}.`);
     const nu = new Set(doel.apps);
     const mist = Object.keys(opname.eind?.apps ?? opname.beginstand?.apps ?? {}).filter((a) => !nu.has(a));
     if (mist.length) console.log(`Let op: niet verbonden met de hub: ${mist.join(', ')}`);
     if (opname.kapot) console.log(`Let op: ${opname.kapot} onleesbare regel(s) overgeslagen.`);
-    const r = await herhaal({
-      opname, doel, klok: echteKlok, snelheid, beginstand: !args.includes('--zonder-beginstand'), aanwezig: nu,
-      bijStap: (i, n) => { if (i % 100 === 0 || i === n) process.stdout.write(`\r${i}/${n}`); },
-    });
-    await doel.sluit();
+    const beginstand = !args.includes('--zonder-beginstand');
+    const toen = Object.keys(opname.beginstand?.snapshots ?? {}).map(Number);
+    if (beginstand) {
+      console.log('Let op: herhaal zet je apps terug op de stand van toen'
+        + (toen.length ? ` en overschrijft snapshot ${toen.join(', ')} in de hub` : '')
+        + ' — doe het niet midden in een set (--zonder-beginstand slaat dit over).');
+    }
+    const extra = doel.snapshots.filter((nr) => !toen.includes(nr));
+    if (extra.length) console.log(`Let op: snapshot ${extra.join(', ')} staat nu in de hub maar was leeg bij het begin van de opname; laden met een korte LPD8-druk op een toen lege plek wordt overgeslagen, laden via de APC-scèneknoppen niet.`);
+    let gedaan = 0, totaal = invoer.length;
+    let r;
+    try {
+      r = await herhaal({
+        opname, doel, klok: echteKlok, snelheid, beginstand, aanwezig: nu,
+        bijStap: (i, n) => { gedaan = i; totaal = n; if (i % 100 === 0 || i === n) process.stdout.write(`\r${i}/${n}`); },
+      });
+      await doel.sluit();
+    } catch (e) {
+      console.error(`\nherhaal afgebroken na ${gedaan}/${totaal} gebaren: ${/** @type {any} */ (e)?.message ?? e}\n`
+        + 'Draait varve-hub nog? Start hem opnieuw (npm start) en herhaal de avond.');
+      process.exit(2);
+    }
     console.log('\n' + verslag(r));
     process.exit(r.verschillen?.length ? 1 : 0);
   },

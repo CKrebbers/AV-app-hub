@@ -13,15 +13,19 @@ import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
 import { Opnemer, avondmapPad } from './opname/opnemer.js';
 
+/** Zo lang mag het afsluiten van een lopende opname hub.stop() ophouden (schijf weg of traag). */
+export const OPNAME_SLUIT_MS = 2000;
+
 /**
  * @param {{
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
  *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
- *   opname?: false | { thuis?: string, bestanden?: import('./opname/schrijver.js').Bestanden, datum?: () => Date, git?: string|null|(() => Promise<string|null>), spoelMs?: number },
+ *   opname?: false | { thuis?: string, bestanden?: import('./opname/schrijver.js').Bestanden, datum?: () => Date, git?: string|null|(() => Promise<string|null>), spoelMs?: number, sluitMs?: number },
  * }} o  opname: avondmap (LPD8-pad 4, zie docs/OPNAME.md); false = niet opnemen
  */
 export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, opname = {} }) {
+  const sluitMs = (opname ? opname.sluitMs : undefined) ?? OPNAME_SLUIT_MS;
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
   const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
   // De kern tekent via een poortwachter: zodra stop() begint, komt er van de kern niets meer op de APC.
@@ -45,6 +49,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
     lpd8Profiel: () => apparaten.lpd8.profiel,
   });
   opnemer?.koppel();
+  await opnemer?.gitKlaar;   // kort (git rev-parse): dan staat de commit ook in de kop van een avond die meteen begint
   opnemer?.bij('melding', (/** @type {string} */ t) => log(t));
   apparaten.lpd8.bij('profiel', () => opnemer?.profielGewijzigd());
 
@@ -83,7 +88,17 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
       stoppend = true;
       actieveDrivers?.stop();
       await server.stop();               // geen app- of cockpitberichten meer
-      await opnemer?.sluit();            // een lopende avond netjes afsluiten (eindstaat, samenvatting)
+      // Een lopende avond netjes afsluiten (eindstaat, samenvatting) — maar begrensd: hangt de schijf (extern
+      // volume weg, netwerkschijf), dan moeten de LEDs toch uit en de poorten dicht.
+      if (opnemer) {
+        /** @type {any} */ let t;
+        const opTijd = await Promise.race([
+          opnemer.sluit().then(() => true, () => true),
+          new Promise((r) => { t = setTimeout(() => r(false), sluitMs); }),
+        ]);
+        clearTimeout(t);
+        if (!opTijd) log(`opname niet volledig weggeschreven — de schijf reageerde niet binnen ${sluitMs / 1000} s (${opnemer.map}); de hub stopt toch`);
+      }
       kern.stop();
       await apparaten.stop();            // LEDs uit, poorten dicht
     },

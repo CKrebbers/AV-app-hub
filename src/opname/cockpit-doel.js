@@ -35,14 +35,28 @@ function open(url, maxMs = 3000) {
 
 /**
  * @param {string} adres
- * @returns {Promise<Doel & { apps: Set<string>, sluit: () => Promise<void> }>}
+ * Valt de verbinding weg (hub gestopt of gecrasht), dan lost `weg` op met een fout; herhaal breekt daarop af
+ * in plaats van de rest van de avond de leegte in te sturen.
+ * @returns {Promise<Doel & { apps: Set<string>, snapshots: number[], weg: Promise<Error>, sluit: () => Promise<void> }>}
  */
 export async function doelVanCockpit(adres) {
   const url = cockpitUrl(adres);
   const { ws, beeld } = await open(url);
-  const stuur = (/** @type {object} */ b) => { if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(b)); };
+  let zelfDicht = false;
+  /** @type {(e: Error) => void} */
+  let meldWeg = () => {};
+  /** @type {Promise<Error>} */
+  const weg = new Promise((r) => { meldWeg = r; });
+  ws.on('close', (/** @type {number} */ code) => { if (!zelfDicht) meldWeg(new Error(`verbinding met ${url} verbroken (code ${code})`)); });
+  ws.on('error', (/** @type {any} */ e) => { if (!zelfDicht) meldWeg(new Error(`verbinding met ${url} verbroken (${e?.code ?? e?.message ?? e})`)); });
+  const stuur = (/** @type {object} */ b) => {
+    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(b));
+    else if (!zelfDicht) meldWeg(new Error(`verbinding met ${url} is dicht`));
+  };
   return {
     apps: new Set(beeld.apps.map((/** @type {any} */ a) => a.app)),
+    snapshots: Array.isArray(beeld.snapshots) ? beeld.snapshots : [],
+    weg,
     invoer: (dev, bytes) => stuur({ t: 'virtueel', dev, bytes }),
     cockpit: (b) => stuur(b),
     async eindstaat() {
@@ -53,6 +67,7 @@ export async function doelVanCockpit(adres) {
       return eindstaatUitBeeld(vers.beeld);
     },
     sluit: () => new Promise((r) => {
+      zelfDicht = true;
       if (ws.readyState === WebSocket.CLOSED) return r();
       ws.once('close', () => r());
       ws.close();

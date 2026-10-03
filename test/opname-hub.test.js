@@ -11,6 +11,7 @@ import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
 import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
 import { GEBAREN, SAMENVATTING } from '../src/opname/opnemer.js';
+import { echteBestanden } from '../src/opname/schrijver.js';
 import { cockpitUrl } from '../src/opname/cockpit-doel.js';
 
 const CLI = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'cli.js');
@@ -25,14 +26,14 @@ function tijdelijk() {
   return map;
 }
 
-async function opzet({ thuis, avondmap = '~/avonden' }) {
+async function opzet({ thuis, avondmap = '~/avonden', bestanden = undefined }) {
   const config = { ...laadConfig(), hotplug_ms: 20, avondmap };
   const systeem = new NepSysteem();
   const apc = systeem.voegToe('APC40 mkII');
   const lpd8 = systeem.voegToe('LPD8 mk2');
   lpd8.antwoord = (b) => { if (b[1] === 0x7e) setTimeout(() => lpd8.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7]), 1); };
   const meldingen = [];
-  const hub = await startHub({ config, systeem, poort: 0, drivers: false, opname: { thuis, git: 'test-git' }, log: (t) => meldingen.push(String(t)) });
+  const hub = await startHub({ config, systeem, poort: 0, drivers: false, opname: { thuis, git: 'test-git', bestanden }, log: (t) => meldingen.push(String(t)) });
   lopend.push(() => hub.stop());
   const url = hub.adres.replace('http', 'ws') + '/app';
   const app = (naam) => { const a = new NepApp({ url, manifest: voorbeeldManifest(naam) }).start(); lopend.push(() => a.stop()); return a; };
@@ -134,6 +135,43 @@ describe('avondmap in de hele hub', () => {
     expect(JSON.parse(readFileSync(join(map, GEBAREN), 'utf8').trim().split('\n').at(-1)).e).toBe('eind');
   });
 
+  it('hub.stop() met een schrijfactie die blijft hangen (schijf weg) is binnen een paar seconden klaar: LEDs uit, poorten dicht', async () => {
+    const thuis = tijdelijk();
+    const bestanden = { ...echteBestanden, appendFile: () => new Promise(() => {}) };
+    const { hub, apc, lpd8, meldingen } = await opzet({ thuis, bestanden });
+    p4(lpd8);
+    await tot(() => hub.opnemer.actief);
+    apc.injecteer([0xb0, 7, 20]);
+    await wacht(1100);                           // de eerste spoeling hangt nu
+    const t0 = Date.now();
+    await hub.stop();
+    expect(Date.now() - t0).toBeLessThan(3500);
+    expect(meldingen.join('\n')).toMatch(/opname niet volledig weggeschreven/);
+    expect(hub.apparaten.apc.verbonden).toBe(false);
+  }, 15000);
+
+  it('valt de hub weg tijdens herhaal: korte melding zonder stacktrace, exitcode 2', async () => {
+    const map = tijdelijk();
+    const regels = [
+      { v: 1, soort: 'avond', begon: '2026-10-03T20:00:00.000Z', 'hub-git': null, apps: {}, lpd8: null },
+      { ms: 0, e: 'beginstand', focus: null, globaal: {}, apps: {}, snapshots: {} },
+      ...Array.from({ length: 40 }, (_, i) => [i * 100, 'in', 'apc40', [0xb0, 7, i * 3]]),
+      { ms: 4000, e: 'eind', duur_ms: 4000, apps: {} },
+    ];
+    writeFileSync(join(map, GEBAREN), regels.map((x) => JSON.stringify(x)).join('\n') + '\n');
+    const { hub } = await opzet({ thuis: tijdelijk() });
+    const t0 = Date.now();
+    const loopt = cli(['herhaal', map, '--hub', hub.adres]);
+    await tot(() => hub.kern.beeld().apps.length === 2 && Date.now() - t0 > 1200, 5000);
+    await hub.stop();
+    const uit = await loopt;
+    expect(uit.code).toBe(2);
+    expect(uit.fout).toMatch(/herhaal afgebroken na \d+\/40 gebaren/);
+    expect(uit.fout).toMatch(/Draait varve-hub nog/);
+    expect(uit.fout).not.toMatch(/at .*\.js/);
+    expect(uit.uit).not.toMatch(/40\/40/);
+  }, 20000);
+
   it('herhaal zonder draaiende hub of met een kapot bestand: korte uitleg, exitcode 2', async () => {
     const map = tijdelijk();
     const leeg = await cli(['herhaal', join(map, 'bestaat-niet')]);
@@ -147,6 +185,11 @@ describe('avondmap in de hele hub', () => {
     const snel = await cli(['herhaal', map, '--snelheid', 'nul']);
     expect(snel.code).toBe(2);
     expect(snel.fout).toMatch(/--snelheid/);
+    for (const zonder of [['--snelheid'], ['--snelheid', '--zonder-beginstand']]) {
+      const x = await cli(['herhaal', map, ...zonder]);
+      expect(x.code).toBe(2);
+      expect(x.fout).toMatch(/--snelheid moet een getal/);
+    }
     expect(cockpitUrl('http://127.0.0.1:7700')).toBe('ws://127.0.0.1:7700/cockpit');
     expect(cockpitUrl('localhost:7700/')).toBe('ws://localhost:7700/cockpit');
   });

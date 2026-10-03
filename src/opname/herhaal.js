@@ -5,7 +5,12 @@
 // Alleen de ruwe controller-invoer wordt afgespeeld — precies alsof de controllers het deden. De berichten
 // naar apps in de opname zijn het verwachte gevolg, niet de oorzaak. Overgeslagen:
 // - SysEx (identiteitsantwoorden, programma-dumps): zegt niets over spelen;
-// - LPD8-pad 4 indrukken: dat is de opname-knop zelf (anders start/stopt de herhaling een nieuwe opname).
+// - LPD8-pad 4 indrukken: dat is de opname-knop zelf (anders start/stopt de herhaling een nieuwe opname);
+// - een korte druk op LPD8-P5–P8 op een snapshot-plek die in de opname leeg was: toen gebeurde er niets, maar
+//   op de hub van nu kan daar een snapshot staan (laden zou dan waarden laten springen).
+//
+// Vergeleken wordt op het moment waarop de opname haar eindstaat vastlegde ('eind'.ms, de opnemer wacht daar
+// tot slews en de P1-timer klaar zijn), plus een korte naloop voor de verwerking/het netwerk.
 //
 // Een doel is alles waarmee de hub te bespelen is:
 //   { invoer(dev: 'apc40'|'lpd8', bytes), cockpit(bericht), eindstaat(): Eindstaat | Promise<Eindstaat> }
@@ -14,12 +19,16 @@
 // LPD8 (of welk profiel) de hub van nu heeft.
 import * as APC from '../devices/apc40mk2.js';
 import * as LPD8 from '../devices/lpd8.js';
+import { LANG_MS } from '../core/kern.js';
 import { vergelijkEindstaat } from './staat.js';
 
 /** @typedef {import('../core/klok.js').Klok} Klok @typedef {import('./staat.js').Eindstaat} Eindstaat */
-/** @typedef {{ invoer: (dev: 'apc40'|'lpd8', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat> }} Doel */
+/**
+ * weg: (optioneel) lost op met een fout zodra het doel wegvalt (de hub stopt of crasht) — herhaal breekt dan af.
+ * @typedef {{ invoer: (dev: 'apc40'|'lpd8', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat>, weg?: Promise<Error> }} Doel
+ */
 /** @typedef {{ ms: number, dev: string, bytes: number[] } | { ms: number, profiel: any }} Stap */
-/** @typedef {{ gespeeld: number, overgeslagen: Record<string, number>, verschillen: ReturnType<typeof vergelijkEindstaat>|null, eindstaat: Eindstaat, duurMs: number }} Resultaat */
+/** @typedef {{ gespeeld: number, overgeslagen: Record<string, number>, verschillen: ReturnType<typeof vergelijkEindstaat>|null, eindstaat: Eindstaat, duurMs: number, rust: boolean }} Resultaat */
 
 const FABRIEK = LPD8.standaardProfiel('mk2');
 const fabriekOntleder = LPD8.maakOntleder(FABRIEK);
@@ -86,6 +95,34 @@ export function vertaal(dev, bytes, lpd8Ontleder) {
 }
 
 /**
+ * Houdt bij welke snapshot-plekken in de opname gevuld waren (beginstand + lang drukken op P5–P8), en zegt
+ * of een LPD8-pad-gebeurtenis overgeslagen moet worden: de 'los' van een korte druk op een lege plek.
+ * Tijden zijn die van de opname (zoals de hub van toen besliste).
+ * @param {any} beginstand
+ */
+export function snapshotWachter(beginstand) {
+  const gevuld = new Set(Object.keys(beginstand?.snapshots ?? {}).map(Number));
+  /** @type {Map<string, number>} */
+  const druk = new Map();
+  return {
+    gevuld,
+    /** @param {any} g LPD8-gebeurtenis @param {number} ms tijd in de opname @returns {boolean} overslaan */
+    overslaan(g, ms) {
+      const m = /^p([5-8])$/.exec(g?.el ?? '');
+      if (!m) return false;
+      if (g.kind === 'druk') { druk.set(g.el, ms); return false; }
+      if (g.kind !== 'los') return false;
+      const start = druk.get(g.el);
+      druk.delete(g.el);
+      if (start === undefined) return false;
+      const nr = Number(m[1]) - 4;
+      if (ms - start > LANG_MS) { gevuld.add(nr); return false; }
+      return !gevuld.has(nr);
+    },
+  };
+}
+
+/**
  * Zet de beginstand van de opname klaar via cockpit-opdrachten: eerst de snapshots (waarden zetten en
  * bewaren), dan de waarden van toen, dan de focus. Apps die er nu niet zijn, worden overgeslagen.
  * @param {Doel} doel @param {any} bs beginstand-regel @param {Set<string>|null} aanwezig apps die het doel nu kent (null = onbekend)
@@ -120,6 +157,7 @@ export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, n
   if (!(snelheid > 0) || !Number.isFinite(snelheid)) throw new Error(`snelheid moet een getal > 0 zijn (kreeg ${snelheid})`);
   if (beginstand) herstelBeginstand(doel, opname.beginstand, aanwezig);
   let ontleder = LPD8.maakOntleder(opname.kop.lpd8 ?? LPD8.standaardProfiel(null));
+  const snapshots = snapshotWachter(opname.beginstand);
   const stappen = opname.stappen;
   const n = stappen.filter((s) => 'dev' in s).length;
   /** @type {Record<string, number>} */
@@ -127,31 +165,51 @@ export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, n
   let gespeeld = 0, i = 0, gedaan = 0;
   const t0 = klok.nu();
   const ms0 = stappen.find((s) => 'dev' in s)?.ms ?? 0;
+  // Vergelijken op het moment waarop de opname haar eindstaat nam (niet al bij de laatste invoer: een slew
+  // loopt dan nog), plus de naloop. Zonder 'eind' (afgebroken opname): de laatste invoer plus de naloop.
+  const laatste = stappen.length ? stappen[stappen.length - 1].ms : ms0;
+  const eindMs = Math.max(0, (typeof opname.eind?.ms === 'number' ? Math.max(opname.eind.ms, laatste) : laatste) - ms0) / snelheid;
   return new Promise((goed, fout) => {
+    let afgebroken = false;
+    /** @type {any} */ let timer = null;
+    /** @param {(...a: any[]) => void} fn @param {number} ms */
+    const plan = (fn, ms) => { if (!afgebroken) timer = klok.zet(() => { timer = null; fn(); }, ms); };
+    /** @param {unknown} e */
+    const breekAf = (e) => {
+      if (afgebroken) return;
+      afgebroken = true;
+      if (timer !== null) { klok.wis(timer); timer = null; }
+      fout(e);
+    };
+    void doel.weg?.then((e) => breekAf(new Error(`de hub viel weg na ${gedaan}/${n} gebaren${e?.message ? ` (${e.message})` : ''}`)));
     const eind = async () => {
       try {
         const staat = await doel.eindstaat();
+        if (afgebroken) return;
         const verschillen = opname.eind ? vergelijkEindstaat(opname.eind.apps, staat) : null;
-        goed({ gespeeld, overgeslagen, verschillen, eindstaat: staat, duurMs: klok.nu() - t0 });
-      } catch (e) { fout(e); }
+        afgebroken = true;
+        goed({ gespeeld, overgeslagen, verschillen, eindstaat: staat, duurMs: klok.nu() - t0, rust: opname.eind?.rust !== false });
+      } catch (e) { breekAf(e); }
     };
     const volgende = () => {
+      if (afgebroken) return;
       try {
         const nu = klok.nu() - t0;
         while (i < stappen.length && (stappen[i].ms - ms0) / snelheid <= nu) {
           const s = stappen[i++];
           if ('profiel' in s) { if (s.profiel) ontleder = LPD8.maakOntleder(s.profiel); continue; }
-          const v = vertaal(s.dev, s.bytes, ontleder);
+          let v = vertaal(s.dev, s.bytes, ontleder);
+          if (!('overslaan' in v) && v.dev === 'lpd8' && snapshots.overslaan(fabriekOntleder(v.bytes), s.ms)) v = { overslaan: 'lege snapshot' };
           gedaan++;
           if ('overslaan' in v) overgeslagen[v.overslaan] = (overgeslagen[v.overslaan] ?? 0) + 1;
           else { doel.invoer(v.dev, v.bytes); gespeeld++; }
           bijStap(gedaan, n);
         }
-        if (i < stappen.length) klok.zet(volgende, Math.max(0, (stappen[i].ms - ms0) / snelheid - (klok.nu() - t0)));
-        else klok.zet(eind, naloopMs);
-      } catch (e) { fout(e); }
+        if (i < stappen.length) plan(volgende, Math.max(0, (stappen[i].ms - ms0) / snelheid - (klok.nu() - t0)));
+        else plan(eind, Math.max(0, eindMs - (klok.nu() - t0)) + naloopMs);
+      } catch (e) { breekAf(e); }
     };
-    klok.zet(volgende, 0);
+    plan(volgende, 0);
   });
 }
 
@@ -178,6 +236,7 @@ export function verslag(r) {
   const over = Object.entries(r.overgeslagen);
   if (over.length) regels.push(`overgeslagen: ${over.map(([k, n]) => `${k} ${n}`).join(', ')}`);
   if (r.verschillen === null) regels.push('de opname heeft geen eindstaat (afgebroken?) — niets om te vergelijken');
+  else if (!r.rust && r.verschillen.length) regels.push('let op: toen de opname stopte (de hub ging uit) liep er nog een slew of de P1-timer — een verschil kan daardoor komen');
   else if (!r.verschillen.length) regels.push('eindstaat klopt: elke app heeft dezelfde staat-hash als in de opname');
   else {
     regels.push(`VERSCHILLEN in ${r.verschillen.length} app(s):`);

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Kern, MELDING, Bank, P, manifest } from './spec/hulp.js';
 import * as LPD8 from '../src/devices/lpd8.js';
 import { Opnemer, avondmapPad, mapNaam, duurTekst, GEBAREN, SAMENVATTING } from '../src/opname/opnemer.js';
-import { leesOpname, herhaal, doelVanHub, vertaal, naarFabriek, verslag } from '../src/opname/herhaal.js';
+import { leesOpname, herhaal, doelVanHub, vertaal, naarFabriek, verslag, snapshotWachter } from '../src/opname/herhaal.js';
 import { BufferSchrijver, redenVan } from '../src/opname/schrijver.js';
 import { staatHash, vergelijkEindstaat } from '../src/opname/staat.js';
 import { NepKlok } from '../src/core/klok.js';
@@ -18,7 +18,8 @@ const BEGON = new Date(2026, 9, 3, 21, 4, 5);
 const fsFout = (code) => Object.assign(new Error(`${code}: nep`), { code });
 
 /**
- * Bestandssysteem in het geheugen. `faal` bepaalt per aanroep of hij mislukt (code) of blijft hangen ('hang').
+ * Bestandssysteem in het geheugen. `faal` bepaalt per aanroep of hij mislukt (code), blijft hangen ('hang'),
+ * of — zoals write(2) op een bijna volle schijf — eerst de helft schrijft en dan ENOSPC geeft ('half').
  * @param {{ append?: (n: number) => string|null, mkdir?: (pad: string) => string|null }} [faal]
  */
 function geheugenFs(faal = {}) {
@@ -39,12 +40,15 @@ function geheugenFs(faal = {}) {
       fs.appends++;
       const f = faal.append?.(fs.appends);
       if (f === 'hang') return new Promise(() => {});
+      if (f === 'half') { bestanden.set(pad, (bestanden.get(pad) ?? '') + tekst.slice(0, Math.floor(tekst.length / 2))); return Promise.reject(fsFout('ENOSPC')); }
       if (f) return Promise.reject(fsFout(f));
       bestanden.set(pad, (bestanden.get(pad) ?? '') + tekst);
       return Promise.resolve();
     },
     /** @param {string} pad @param {string} tekst */
     async writeFile(pad, tekst) { bestanden.set(pad, tekst); },
+    /** @param {string} pad @param {number} lengte */
+    async truncate(pad, lengte) { bestanden.set(pad, Buffer.from(bestanden.get(pad) ?? '', 'utf8').subarray(0, lengte).toString('utf8')); },
   };
   return fs;
 }
@@ -116,10 +120,14 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     h.lpdHoud(5, 800);                 // al een snapshot vóór de opname: hoort bij de beginstand
     const fs = geheugenFs();
     const { o } = neemOp(h, fs);
-    h.lpdDruk(4); h.lpdLos(4);
+    h.lpdDruk(4);
+    const vanaf = h.ev.naarApp.length;
+    h.lpdLos(4);
     expect(o.actief).toBe(true);
     speel(h);
-    h.lpdDruk(4); h.lpdLos(4);
+    h.lpdDruk(4);
+    const tot = h.ev.naarApp.length;
+    h.lpdLos(4);
     expect(o.actief).toBe(false);
     const r = await o.afgesloten;
 
@@ -142,9 +150,10 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     for (const x of in_) { expect(typeof x[0]).toBe('number'); expect(x[3].every((/** @type {unknown} */ b) => Number.isInteger(b))).toBe(true); }
     // Alleen zet/trig/scene/focus naar apps (geen globaal/midi/welkom), en elk daarvan.
     expect(new Set(naar.map((x) => x[3].t))).toEqual(new Set(['zet', 'trig', 'focus']));
-    const verwacht = h.ev.naarApp.filter(([, b]) => ['zet', 'trig', 'scene', 'focus'].includes(b.t));
-    expect(naar.length).toBeLessThanOrEqual(verwacht.length);
-    expect(naar.at(-1)?.[3]).toEqual(verwacht.at(-1)?.[1]);
+    // Precies de berichten tussen start en stop, in dezelfde volgorde.
+    const verwacht = h.ev.naarApp.slice(vanaf, tot).filter(([app, b]) => app && ['zet', 'trig', 'scene', 'focus'].includes(b.t));
+    expect(verwacht.length).toBeGreaterThan(50);
+    expect(naar.map((x) => [x[2], x[3]])).toEqual(verwacht.map(([app, b]) => [app, b]));
     // tijd loopt op
     const ms = regels.slice(1).map((x) => (Array.isArray(x) ? x[0] : x.ms));
     expect(ms).toEqual([...ms].sort((a, b) => a - b));
@@ -161,6 +170,138 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     expect(sam).toMatch(/\| formula-lab \|.*\| waterschaal|\| waterschaal \|/s);
     expect(sam).toMatch(/Invoer: \d+ \((apc40 \d+, lpd8 \d+|lpd8 \d+, apc40 \d+)\)/);
     expect(sam).toMatch(/abc123def/);
+    // Een opdracht die zonder `npm link` werkt.
+    expect(sam).toContain(`npm run herhaal -- "${map}"`);
+    expect(sam).not.toMatch(/`varve-hub herhaal/);
+    expect(eind['hub-git']).toBe('abc123def');
+  });
+
+  it('stoppen terwijl een LPD8-macro nog slewt: de eindstaat wordt pas vastgelegd als de slew klaar is, herhalen op snelheid 1 klopt', async () => {
+    const h1 = bank();
+    apps(h1);
+    const fs = geheugenFs();
+    const { o } = neemOp(h1, fs);
+    h1.lpdDruk(4); h1.lpdLos(4);
+    h1.tijd(100);
+    h1.lpdSchuif(3, 0, 1);              // macro.ruimte → galm, slew 1 s
+    h1.tijd(200);
+    h1.lpdDruk(4); h1.lpdLos(4);         // meteen stoppen: de slew loopt nog
+    expect(o.actief).toBe(false);
+    h1.tijd(1500);
+    const r = await o.afgesloten;
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+    expect(opname.eind.rust).toBeUndefined();
+    expect(r.apps.waterschaal.waarden.galm).toBeCloseTo(eindstaat(h1).waterschaal.galm, 6);
+
+    const h2 = bank();
+    apps(h2, true);
+    const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
+    h2.tijd(opname.eind.ms + 1000);
+    const uit = await belofte;
+    expect(uit.verschillen).toEqual([]);
+  });
+
+  it('hub stopt tijdens een slew: niet wachten, eind krijgt rust:false (en het verslag zegt waarom het kan verschillen)', async () => {
+    const h = bank();
+    apps(h);
+    const fs = geheugenFs();
+    const { o } = neemOp(h, fs);
+    h.lpdDruk(4); h.lpdLos(4);
+    h.lpdSchuif(3, 0, 1);
+    const r = await o.sluit();
+    expect(r).not.toBe(null);
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+    expect(opname.eind.rust).toBe(false);
+    expect(verslag({ gespeeld: 1, overgeslagen: {}, verschillen: [{ app: 'x', soort: 'ontbreekt' }], eindstaat: {}, duurMs: 0, rust: false })).toMatch(/slew/);
+  });
+
+  it('LPD8-profiel verandert tijdens de opname: latere LPD8-bytes worden met het nieuwe profiel gelezen en goed afgespeeld', async () => {
+    const h1 = bank();
+    apps(h1);
+    const fs = geheugenFs();
+    const eigen = { model: 'mk1', bron: 'geleerd', pads: Array.from({ length: 8 }, (_, i) => ({ t: 'note', n: 60 + i })), knoppen: Array.from({ length: 8 }, (_, i) => ({ n: 1 + i })) };
+    /** @type {any} */ let profiel = LPD8.standaardProfiel('mk2');
+    const { o } = neemOp(h1, fs, { lpd8Profiel: () => profiel });
+    h1.lpdDruk(4); h1.lpdLos(4);
+    h1.lpdSchuif(2, 0, 0.3);
+    h1.tijd(100);
+    profiel = eigen;                     // een andere LPD8 sluit aan
+    o.profielGewijzigd();
+    const ont = LPD8.maakOntleder(/** @type {any} */ (eigen));
+    for (let v = 40; v <= 120; v += 8) { const b = [0xb0, 2, v]; h1.kern.invoer(ont(b), b); h1.tijd(10); }   // knop 2 in het eigen profiel
+    h1.tijd(100);
+    const helder = eindstaat(h1)['formula-lab'].helder;
+    h1.lpdDruk(4);
+    await o.afgesloten;
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+    expect(opname.stappen.some((x) => 'profiel' in x)).toBe(true);
+    const h2 = bank();
+    apps(h2, true);
+    const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
+    h2.tijd(opname.eind.ms + 1000);
+    expect((await belofte).verschillen).toEqual([]);
+    expect(eindstaat(h2)['formula-lab'].helder).toBe(helder);
+    expect(helder).not.toBe(0.5);
+  });
+
+  it('een korte druk op P5–P8 op een plek die in de opname leeg was, laadt bij herhalen geen snapshot van nu', async () => {
+    const h1 = bank();
+    apps(h1);
+    const fs = geheugenFs();
+    const { o } = neemOp(h1, fs);
+    h1.lpdDruk(4); h1.lpdLos(4);
+    h1.schuif('fader2', 0.2, 0.7);
+    h1.lpdHoud(6, 100);                 // snapshot 2 laden: leeg, er gebeurt niets
+    h1.tijd(100);
+    h1.lpdHoud(7, 800);                 // snapshot 3 bewaren …
+    h1.schuif('fader2', 0.7, 0.1);
+    h1.lpdHoud(7, 100);                 // … en laden: dat moet wel afgespeeld worden
+    h1.tijd(100);
+    h1.lpdDruk(4);
+    await o.afgesloten;
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+
+    const h2 = bank();
+    apps(h2, true);
+    h2.lpdHoud(6, 800);                 // op de hub van nu staat er wél een snapshot 2
+    const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
+    h2.tijd(opname.eind.ms + 1000);
+    const r = await belofte;
+    expect(r.verschillen).toEqual([]);
+    expect(r.overgeslagen).toMatchObject({ 'lege snapshot': 1 });
+    const w = snapshotWachter({ snapshots: { 1: {} } });
+    expect(w.overslaan({ el: 'p5', kind: 'druk' }, 0)).toBe(false);
+    expect(w.overslaan({ el: 'p5', kind: 'los' }, 100)).toBe(false);   // plek 1 was gevuld
+    expect(w.overslaan({ el: 'p8', kind: 'druk' }, 0)).toBe(false);
+    expect(w.overslaan({ el: 'p8', kind: 'los' }, 100)).toBe(true);    // plek 4 leeg, kort = laden
+  });
+
+  it('valt het doel weg tijdens herhalen, dan breekt herhaal af (geen gebaren de leegte in) met een duidelijke fout', async () => {
+    const h1 = bank();
+    apps(h1);
+    const fs = geheugenFs();
+    const { o } = neemOp(h1, fs);
+    h1.lpdDruk(4); h1.lpdLos(4);
+    for (let i = 0; i < 10; i++) { h1.schuif('fader1', 0, 1); h1.tijd(200); }
+    h1.lpdDruk(4);
+    await o.afgesloten;
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+    const klok = new NepKlok();
+    /** @type {(e: Error) => void} */ let valWeg = () => {};
+    let invoer = 0, eindGevraagd = 0;
+    const doel = {
+      invoer: () => { invoer++; }, cockpit: () => {}, eindstaat: () => { eindGevraagd++; return {}; },
+      weg: /** @type {Promise<Error>} */ (new Promise((r) => { valWeg = r; })),
+    };
+    const belofte = herhaal({ opname, doel, klok });
+    klok.loop(700);
+    const voor = invoer;
+    expect(voor).toBeGreaterThan(0);
+    valWeg(new Error('verbinding verbroken'));
+    await expect(belofte).rejects.toThrow(/de hub viel weg na \d+\/\d+ gebaren/);
+    klok.loop(10_000);
+    expect(invoer).toBe(voor);
+    expect(eindGevraagd).toBe(0);
   });
 
   it('opnemen → afspelen tegen een verse hub geeft dezelfde eindstaat (staat-hash per app)', async () => {
@@ -314,6 +455,73 @@ describe.skipIf(!Kern)(`avondmap: schrijven blokkeert nooit${MELDING}`, () => {
     expect(fl.zetten('vorm').length).toBeGreaterThan(0);
   });
 
+  it('schijf vol halverwege een schrijfactie (een deel staat al in het bestand): geen halve of dubbele regels, herhalen klopt', async () => {
+    const h = bank();
+    apps(h);
+    const fs = geheugenFs({ append: (n) => (n === 2 || n === 3 ? 'half' : null) });
+    const { o, meldingen } = neemOp(h, fs, { spoelMs: 200 });
+    h.lpdDruk(4); h.lpdLos(4);
+    for (let i = 0; i < 6; i++) { h.schuif('fader1', 0, 1); h.tijd(200); await new Promise((r) => setImmediate(r)); }
+    h.lpdDruk(4);
+    const r = await o.afgesloten;
+    expect(fs.appends).toBeGreaterThan(3);
+    expect(meldingen.join('\n')).toMatch(/schijf is vol/);
+    expect(r.verloren).toBe(0);
+    const tekst = /** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN)));
+    const opname = leesOpname(tekst);
+    expect(opname.kapot).toBe(0);
+    expect(tekst.trim().split('\n')).toHaveLength(r.regels);
+    const ms = opname.stappen.map((x) => x.ms);
+    expect(ms).toEqual([...ms].sort((a, b) => a - b));
+    const h2 = bank();
+    apps(h2, true);
+    const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
+    h2.tijd(opname.eind.ms + 1000);
+    expect((await belofte).verschillen).toEqual([]);
+  });
+
+  it('een hangende schrijfactie: niet elke volle buffer hangt een nieuwe .then aan dezelfde belofte (geheugen blijft binnen de grens)', async () => {
+    const klok = new NepKlok();
+    const fs = geheugenFs({ append: () => 'hang' });
+    const s = new BufferSchrijver({ klaar: async () => '/x.jsonl', bestanden: fs, klok, spoelTekens: 100 });
+    let spoelingen = 0;
+    const echt = s.spoel.bind(s);
+    s.spoel = () => { spoelingen++; return echt(); };
+    for (let i = 0; i < 5000; i++) s.schrijf('0123456789');
+    await new Promise((r) => setImmediate(r));
+    expect(fs.appends).toBe(1);
+    expect(spoelingen).toBe(1);
+    expect(s.opnieuw).toBe(true);
+  });
+
+  it('pad 4 uit en meteen weer aan, dan stopt de hub: sluit() wacht ook op de afsluiting van de vorige avond', async () => {
+    const h = bank();
+    apps(h);
+    /** @type {() => void} */ let laatGaan = () => {};
+    const poort = new Promise((r) => { laatGaan = () => r(undefined); });
+    const fs = geheugenFs();
+    const echtAppend = fs.appendFile;
+    let eerste = true;
+    fs.appendFile = (pad, tekst) => {
+      if (eerste) { eerste = false; return poort.then(() => echtAppend(pad, tekst)); }   // trage schijf bij avond 1
+      return echtAppend(pad, tekst);
+    };
+    const { o } = neemOp(h, fs);
+    h.lpdDruk(4); h.lpdLos(4);
+    h.tik('pad1-1');
+    h.lpdDruk(4); h.lpdLos(4);          // avond 1 stopt (schrijven hangt nog)
+    h.lpdDruk(4); h.lpdLos(4);          // avond 2 begint
+    h.tik('pad1-2');
+    let klaar = false;
+    const s = o.sluit().then(() => { klaar = true; });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    expect(klaar).toBe(false);          // avond 1 is nog niet weggeschreven
+    laatGaan();
+    await s;
+    expect(fs.bestanden.has(join(MAP, mapNaam(BEGON), SAMENVATTING))).toBe(true);
+    expect(fs.bestanden.has(join(MAP, `${mapNaam(BEGON)}-2`, SAMENVATTING))).toBe(true);
+  });
+
   it('map niet schrijfbaar: melding "niets bewaard", geen crash, en een volgende opname probeert het opnieuw', async () => {
     const h = bank();
     apps(h);
@@ -328,6 +536,10 @@ describe.skipIf(!Kern)(`avondmap: schrijven blokkeert nooit${MELDING}`, () => {
     expect(r.map).toBe(null);
     expect(meldingen.join('\n')).toMatch(/niet schrijfbaar/);
     expect(meldingen.join('\n')).toMatch(/niets bewaard/);
+    // Welke map, en wat te doen; 'opname loopt' pas als de map er is.
+    expect(meldingen.join('\n')).toContain(MAP);
+    expect(meldingen.join('\n')).toMatch(/"avondmap" in config\.json/);
+    expect(meldingen.some((m) => /opname loopt/.test(m))).toBe(false);
     kapot = false;
     h.lpdLos(4);
     h.lpdDruk(4);
@@ -336,6 +548,7 @@ describe.skipIf(!Kern)(`avondmap: schrijven blokkeert nooit${MELDING}`, () => {
     const r2 = await o.afgesloten;
     expect(r2.map).toBe(join(MAP, mapNaam(BEGON)));
     expect(fs.bestanden.has(join(r2.map, SAMENVATTING))).toBe(true);
+    expect(meldingen).toContain(`opname loopt: ${r2.map}`);
   });
 
   it('te grote achterstand: regels vallen weg (geteld, één melding), het geheugen groeit niet onbegrensd', async () => {
@@ -363,9 +576,10 @@ describe.skipIf(!Kern)(`avondmap: schrijven blokkeert nooit${MELDING}`, () => {
 });
 
 describe('avondmap: losse onderdelen', () => {
-  it("avondmap uit config, met '~' uitgeschreven", () => {
+  it("avondmap uit config, met '~' uitgeschreven; relatief = vanaf de hub-map; zonder sleutel geen opname", () => {
     expect(avondmapPad({ avondmap: '~/Movies/varve-avonden' }, '/Users/clay')).toBe('/Users/clay/Movies/varve-avonden');
-    expect(avondmapPad({}, '/Users/clay')).toBe('/Users/clay/Movies/varve-avonden');
+    expect(avondmapPad({}, '/Users/clay')).toBe(null);
+    expect(avondmapPad({ avondmap: 'avonden' }, '/Users/clay', '/Users/clay/AV-app-hub')).toBe('/Users/clay/AV-app-hub/avonden');
     expect(avondmapPad({ avondmap: '/Volumes/X/avonden' }, '/Users/clay')).toBe('/Volumes/X/avonden');
     expect(avondmapPad({ avondmap: '~' }, '/Users/clay')).toBe('/Users/clay');
   });
