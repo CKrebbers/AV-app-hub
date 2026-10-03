@@ -47,5 +47,32 @@ Klaar als (op jouw Mac):
 ## Golf 2 — breken ✓
 6 zoekers (MIDI-chaos, netwerkchaos, levensduur, lease-chaos, protocol-feiten, volledigheid) → 23 bevindingen door een scepticus bevestigd (6 belangrijk, 17 klein, 0 blokkerend) → per gebied opgelost, elk met een test die de fout eerst liet zien. Belangrijkste: slots komen vrij, twee tabs van dezelfde app verdringen elkaar niet meer, LPD8-pickup volgt snapshots en app-wijzigingen, lease-LEDs strikt gefilterd en begrensd, Sediment-waarden op log-schaal in de cockpit, nette foutmelding als poort 7700 bezet is. Beslissingen: `PROTOCOL.md` §11.
 
+## Golf 3 — koppelingen in de apps ✓ (wacht op Clay's OK per repo)
+Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag verandert er niets.
+- formula-lab (poort 5174), waterschaal (`td/waterschaal-lokaal.html`), medisynth (poort 5175), flux (`flux-<monitor>`): tak `claude/varve-hub-koppeling` in elk repo, met een PR.
+- Varve DJ: patch in `koppelingen/varve-dj/` (youtube-mixer: "nooit committen"), lease-modus.
+
+## Golf 4 — een avond spelen ✓ (gebouwd en getest zonder hardware)
+6 onderdelen, elk bouwer + 2 reviewers + verwerker; samengevoegd en opnieuw getest (648 tests, plus de echte repetitie).
+- [x] **Sets en starter** — `npm start -- <set>` (`docs/SETS.md`)
+- [x] **Avondmap** — LPD8-pad 4 neemt de avond op, `npm run herhaal` speelt hem terug en vergelijkt (`docs/OPNAME.md`)
+- [x] **Geheugen** — snapshots en `truth:"hub"`-waarden over een herstart (`~/.varve-hub/staat.json`); slew_s voor alles behalve de APC (PROTOCOL §12)
+- [x] **Altijd aan + netwerk (F5)** — `--lan` met token en mDNS, `installeer` (launchd/systemd), `token` (`docs/NETWERK.md`, PROTOCOL §13)
+- [x] **Generale repetitie** — `npm run repetitie`: de hub met de échte koppelingen in headless Chromium, één avond lang (`docs/REPETITIE.md`); in CI met nep-apps
+- [x] **av-kern** — lease-koppeling als patch in `koppelingen/av-kern/`, toepassen na 25 okt (incl. ◄/►-fix: right = 96, left = 97)
+
+Klaar als (op jouw Mac):
+- [ ] `npm start -- meditatie` start de apps, Chrome-tabs gaan open, beginstand en focus staan; Ctrl-C of het venster sluiten laat geen processen achter
+- [ ] LPD8-pad 4 aan/uit → map in `~/Movies/varve-avonden/`; `npm run herhaal -- <map>` meldt "eindstaat klopt"
+- [ ] hub herstarten → snapshots zijn er nog
+- [ ] `npm start -- --lan` → cockpit op de tablet via het adres uit `node src/cli.js token`
+- [ ] `dns-sd -R` en CoreMIDI werken ook onder launchd (`node src/cli.js installeer`)
+
+Gevonden door de repetitie, nog open (beslissing nodig):
+- Na een paniek doet LPD8-K1 niets meer: waterschaal zet `volume` op 0, en de pickup van K1 volgt de eerste app met `macro.intensiteit`. Staat als `it.fails` in `test/repetitie.test.js`.
+- Waterschaal `tempo` stapt per 0,5/min; hub (0,709) en app (0,667) blijven het oneens, en de globale adem loopt mee uit de pas.
+- Een LPD8-macro op een keuze stuurt bij elke tik een `zet`, ook als de keuze niet verandert (179 van 186 dubbel naar formula-lab `palette`).
+
 ## Volgende
-- Golf 3: koppelingen in de apps zelf (Varve DJ, formula-lab, waterschaal, medisynth, flux; av-kern na 25 okt)
+- Hardware-avond 1 (F0-proef), daarna de koppelings-PR's mergen en een echte avond spelen
+- av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten

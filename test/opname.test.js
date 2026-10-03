@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { Kern, MELDING, Bank, P, manifest } from './spec/hulp.js';
 import * as LPD8 from '../src/devices/lpd8.js';
 import { Opnemer, avondmapPad, mapNaam, duurTekst, GEBAREN, SAMENVATTING } from '../src/opname/opnemer.js';
-import { leesOpname, herhaal, doelVanHub, vertaal, naarFabriek, verslag, snapshotWachter } from '../src/opname/herhaal.js';
+import { leesOpname, herhaal, doelVanHub, langsteSlewMs, vertaal, naarFabriek, verslag, snapshotWachter } from '../src/opname/herhaal.js';
 import { BufferSchrijver, redenVan } from '../src/opname/schrijver.js';
 import { staatHash, vergelijkEindstaat } from '../src/opname/staat.js';
 import { NepKlok } from '../src/core/klok.js';
@@ -105,6 +105,9 @@ function speel(h) {
   h.tijd(300);
 }
 
+/** Zo lang herhaal na de beginstand wacht (die verloopt over slew_s, PROTOCOL §12). @param {Bank} h */
+const beginWacht = (h) => langsteSlewMs(h.kern.beeld().apps);
+
 /** Eindwaarden per app zoals de cockpit ze ziet. @param {Bank} h */
 const eindstaat = (h) => Object.fromEntries(h.kern.beeld().apps.map((/** @type {any} */ a) => [a.app, a.waarden]));
 
@@ -126,9 +129,10 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     expect(o.actief).toBe(true);
     speel(h);
     h.lpdDruk(4);
-    const tot = h.ev.naarApp.length;
     h.lpdLos(4);
     expect(o.actief).toBe(false);
+    h.tijd(1500);                      // de snapshot van speel() slewt nog (galm, slew_s 1): de opname loopt uit
+    const tot = h.ev.naarApp.length;
     const r = await o.afgesloten;
 
     const map = join(MAP, mapNaam(BEGON));
@@ -196,7 +200,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     const h2 = bank();
     apps(h2, true);
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
-    h2.tijd(opname.eind.ms + 1000);
+    h2.tijd(beginWacht(h2) + opname.eind.ms + 1000);
     const uit = await belofte;
     expect(uit.verschillen).toEqual([]);
   });
@@ -238,7 +242,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     const h2 = bank();
     apps(h2, true);
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
-    h2.tijd(opname.eind.ms + 1000);
+    h2.tijd(beginWacht(h2) + opname.eind.ms + 1000);
     expect((await belofte).verschillen).toEqual([]);
     expect(eindstaat(h2)['formula-lab'].helder).toBe(helder);
     expect(helder).not.toBe(0.5);
@@ -265,7 +269,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     apps(h2, true);
     h2.lpdHoud(6, 800);                 // op de hub van nu staat er wél een snapshot 2
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
-    h2.tijd(opname.eind.ms + 1000);
+    h2.tijd(beginWacht(h2) + opname.eind.ms + 1000);
     const r = await belofte;
     expect(r.verschillen).toEqual([]);
     expect(r.overgeslagen).toMatchObject({ 'lege snapshot': 1 });
@@ -312,6 +316,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     h1.lpdDruk(4); h1.lpdLos(4);
     speel(h1);
     h1.lpdDruk(4); h1.lpdLos(4);
+    h1.tijd(1500);                      // uitloop: de snapshot-slew van speel() loopt nog
     await o.afgesloten;
     const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
 
@@ -320,7 +325,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     apps(h2, true);
     expect(eindstaat(h2)).not.toEqual(eindstaat(h1));
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
-    h2.tijd(opname.eind.duur_ms + 1000);
+    h2.tijd(beginWacht(h2) + opname.eind.duur_ms + 1000);
     const r = await belofte;
     expect(r.verschillen).toEqual([]);
     expect(eindstaat(h2)).toEqual(eindstaat(h1));
@@ -345,7 +350,7 @@ describe.skipIf(!Kern)(`avondmap: opnemen${MELDING}`, () => {
     const h2 = bank();
     apps(h2, true);
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok, snelheid: 4, naloopMs: 100 });
-    h2.tijd(opname.eind.duur_ms / 4 + 200);
+    h2.tijd(beginWacht(h2) + opname.eind.duur_ms / 4 + 200);
     const r = await belofte;
     expect(r.verschillen).toEqual([]);
     expect(r.duurMs).toBeLessThanOrEqual(opname.eind.duur_ms / 4 + 200);
@@ -476,7 +481,7 @@ describe.skipIf(!Kern)(`avondmap: schrijven blokkeert nooit${MELDING}`, () => {
     const h2 = bank();
     apps(h2, true);
     const belofte = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
-    h2.tijd(opname.eind.ms + 1000);
+    h2.tijd(beginWacht(h2) + opname.eind.ms + 1000);
     expect((await belofte).verschillen).toEqual([]);
   });
 

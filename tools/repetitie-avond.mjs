@@ -470,7 +470,9 @@ export async function speelAvond(r) {
     c('er is iets veranderd om terug te zetten', veranderd.length > 0, `${veranderd.length} waarden`);
     const t0 = r.nu();
     lpdPad(5, true); await r.wacht(100); lpdPad(5, false);
-    await r.wacht(1000);
+    // Een snapshot laden verloopt over slew_s (PROTOCOL §12): wacht tot de traagste terug is.
+    const terug = veranderd.map(({ app, id }) => ({ p: appStaat(app)?.manifest?.params.find((/** @type {any} */ q) => q.id === id) ?? {} }));
+    await r.wacht(maxSlew(terug) + 1000);
     for (const { app, id, v } of veranderd) {
       const z = await sinds(app, t0, (b) => b.t === 'zet' && b.id === id && b.bron === 'snapshot');
       c(`snapshot → ${app}.${id} terug op ${v.toFixed(3)}`, z.length > 0 && Math.abs(z.at(-1).v - v) < 1e-6, z.length ? `kreeg ${z.at(-1).v.toFixed(3)}` : 'geen zet');

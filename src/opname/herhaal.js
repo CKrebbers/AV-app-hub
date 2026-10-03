@@ -20,12 +20,13 @@
 import * as APC from '../devices/apc40mk2.js';
 import * as LPD8 from '../devices/lpd8.js';
 import { LANG_MS } from '../core/kern.js';
+import { SLEW_TIK_MS } from '../core/slew.js';
 import { vergelijkEindstaat } from './staat.js';
 
 /** @typedef {import('../core/klok.js').Klok} Klok @typedef {import('./staat.js').Eindstaat} Eindstaat */
 /**
  * weg: (optioneel) lost op met een fout zodra het doel wegvalt (de hub stopt of crasht) — herhaal breekt dan af.
- * @typedef {{ invoer: (dev: 'apc40'|'lpd8', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat>, weg?: Promise<Error> }} Doel
+ * @typedef {{ invoer: (dev: 'apc40'|'lpd8', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat>, weg?: Promise<Error>, langsteSlewMs?: () => number }} Doel
  */
 /** @typedef {{ ms: number, dev: string, bytes: number[] } | { ms: number, profiel: any }} Stap */
 /** @typedef {{ gespeeld: number, overgeslagen: Record<string, number>, verschillen: ReturnType<typeof vergelijkEindstaat>|null, eindstaat: Eindstaat, duurMs: number, rust: boolean }} Resultaat */
@@ -146,6 +147,17 @@ export function herstelBeginstand(doel, bs, aanwezig = null) {
 }
 
 /**
+ * Hoe lang de langste slew_s van deze apps duurt (ms, met een tik marge). Een cockpit-`zet` verloopt over slew_s
+ * (PROTOCOL §12), dus de beginstand is pas na zoveel tijd bereikt.
+ * @param {{ params?: { slew_s?: number }[] }[]} apps apps uit een `beeld`
+ */
+export function langsteSlewMs(apps) {
+  let s = 0;
+  for (const a of apps ?? []) for (const p of a.params ?? []) if (typeof p.slew_s === 'number' && p.slew_s > s) s = p.slew_s;
+  return s > 0 ? Math.ceil(s * 1000) + 2 * SLEW_TIK_MS : 0;
+}
+
+/**
  * Speel een opname af. Lost op na de laatste invoer + naloop, met de verschillen in de eindstaat.
  * @param {{
  *   opname: ReturnType<typeof leesOpname>, doel: Doel, klok: Klok, snelheid?: number, beginstand?: boolean,
@@ -156,6 +168,8 @@ export function herstelBeginstand(doel, bs, aanwezig = null) {
 export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, naloopMs = 300, aanwezig = null, bijStap = () => {} }) {
   if (!(snelheid > 0) || !Number.isFinite(snelheid)) throw new Error(`snelheid moet een getal > 0 zijn (kreeg ${snelheid})`);
   if (beginstand) herstelBeginstand(doel, opname.beginstand, aanwezig);
+  // De beginstand verloopt over slew_s: pas als die er staat beginnen de gebaren (anders vangt de pickup anders).
+  const wachtMs = beginstand && opname.beginstand ? (doel.langsteSlewMs?.() ?? 0) : 0;
   let ontleder = LPD8.maakOntleder(opname.kop.lpd8 ?? LPD8.standaardProfiel(null));
   const snapshots = snapshotWachter(opname.beginstand);
   const stappen = opname.stappen;
@@ -163,7 +177,7 @@ export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, n
   /** @type {Record<string, number>} */
   const overgeslagen = {};
   let gespeeld = 0, i = 0, gedaan = 0;
-  const t0 = klok.nu();
+  const t0 = klok.nu() + wachtMs;
   const ms0 = stappen.find((s) => 'dev' in s)?.ms ?? 0;
   // Vergelijken op het moment waarop de opname haar eindstaat nam (niet al bij de laatste invoer: een slew
   // loopt dan nog), plus de naloop. Zonder 'eind' (afgebroken opname): de laatste invoer plus de naloop.
@@ -209,7 +223,7 @@ export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, n
         else plan(eind, Math.max(0, eindMs - (klok.nu() - t0)) + naloopMs);
       } catch (e) { breekAf(e); }
     };
-    plan(volgende, 0);
+    plan(volgende, wachtMs);
   });
 }
 
@@ -227,6 +241,7 @@ export function doelVanHub({ kern, opVirtueel }) {
     },
     cockpit: (b) => kern.cockpit(b),
     eindstaat: () => Object.fromEntries(kern.beeld().apps.map((/** @type {any} */ a) => [a.app, { ...a.waarden }])),
+    langsteSlewMs: () => langsteSlewMs(kern.beeld().apps),
   };
 }
 

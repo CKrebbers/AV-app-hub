@@ -13,7 +13,9 @@ const NEP_APP = join(HUB_MAP, 'tools', 'nep-app.mjs');
 
 /** @param {string[]} args @param {Record<string, string>} [env] */
 function cli(args, env = {}) {
-  const p = spawn(process.execPath, [CLI, ...args], { cwd: HUB_MAP, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  // Eigen geheugenbestand: `npm test` mag ~/.varve-hub/staat.json nooit lezen of schrijven.
+  const staat = join(mkdtempSync(join(tmpdir(), 'varve-set-staat-')), 'staat.json');
+  const p = spawn(process.execPath, [CLI, ...args], { cwd: HUB_MAP, env: { ...process.env, VARVE_HUB_STAAT: staat, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   const r = { uit: '', code: /** @type {number|null|undefined} */ (undefined), p };
   p.stdout.on('data', (d) => { r.uit += d; });
   p.stderr.on('data', (d) => { r.uit += d; });

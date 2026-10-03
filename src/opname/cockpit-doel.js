@@ -4,6 +4,7 @@
 // kern.invoer). De eindstaat komt uit het `beeld` dat een verse cockpitverbinding meteen krijgt.
 import WebSocket from 'ws';
 import { eindstaatUitBeeld } from './staat.js';
+import { langsteSlewMs } from './herhaal.js';
 
 /** @typedef {import('./herhaal.js').Doel} Doel */
 
@@ -59,6 +60,7 @@ export async function doelVanCockpit(adres) {
     weg,
     invoer: (dev, bytes) => stuur({ t: 'virtueel', dev, bytes }),
     cockpit: (b) => stuur(b),
+    langsteSlewMs: () => langsteSlewMs(beeld.apps),
     async eindstaat() {
       // Een verse verbinding krijgt meteen het volledige, actuele beeld (geen throttle). herhaal wacht eerst
       // de naloop af, zodat de hub alle afgespeelde invoer al verwerkt heeft.

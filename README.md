@@ -2,7 +2,7 @@
 
 Eén hub voor de **APC40 mkII** en de **LPD8**, zodat al je Varve-projecten (Varve DJ, av-kern, formula-lab, av-scene-kit, uurwerk, waterschaal, …) met die twee controllers te bespelen zijn — zonder dat apps om de controller vechten.
 
-**Stand: golf 1** — kern, cockpit, server en drivers staan; app-koppelingen volgen. Zie `STATUS.md`.
+**Stand: golf 4** — kern, cockpit, server en drivers staan; koppelingen voor formula-lab, waterschaal, medisynth en flux staan klaar op hun eigen tak, Varve DJ en av-kern als patch (`koppelingen/`). Nieuw: sets (een hele avond met één commando), avondmap, geheugen en het netwerk. Zie `STATUS.md`.
 
 ## Op de Mac
 
@@ -19,6 +19,8 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 | Opdracht | Wat |
 |---|---|
 | `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien, `--zonder-geheugen` om niets te onthouden |
+| `npm start -- meditatie` | **een hele avond**: de hub plus alle apps van de set (`sets/meditatie.json`, `dj`, `scene-kit`): apps starten, Chrome-tabs openen, beginstand en focus zetten; Ctrl-C ruimt op wat de set startte. Eenmalig `cp sets/paden.voorbeeld.json sets/paden.json` en je mappen invullen. Zie `docs/SETS.md` |
+| `npm start -- --lan` | ook op het netwerk (tablet als cockpit, flux op een andere machine), met token en mDNS. `node src/cli.js token` toont de adressen; `node src/cli.js installeer` laat de hub altijd draaien (launchd). Zie `docs/NETWERK.md` |
 | `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±30-40 min). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |

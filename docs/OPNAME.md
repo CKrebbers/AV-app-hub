@@ -76,7 +76,8 @@ van elke avond heeft de regel al klaar. De hub moet draaien en de apps moeten ve
    van toen gezet en de focus teruggezet — via de cockpit, dus de apps krijgen het gewoon mee. De globale stand
    (tempo, paniek, …) komt niet terug. Snapshot-plekken die nu gevuld zijn maar toen leeg waren, blijven staan;
    `herhaal` noemt ze. Een korte LPD8-druk (P5–P8) op zo'n toen lege plek wordt overgeslagen (toen gebeurde er
-   niets); laden via de APC-scèneknoppen (hublaag) wordt wél afgespeeld.
+   niets); laden via de APC-scèneknoppen (hublaag) wordt wél afgespeeld. Een cockpit-`zet` verloopt over
+   `slew_s` (PROTOCOL §12), dus `herhaal` wacht daarna de langste `slew_s` af voordat het eerste gebaar gaat.
 2. **Afspelen**: de ruwe invoer gaat met dezelfde tussenpozen (gedeeld door `--snelheid`) als virtuele
    controller naar de hub, precies alsof de controllers het deden. LPD8-bytes worden eerst gelezen met het
    profiel van toen en dan als mk2-fabrieksstand gestuurd (zoals de virtuele LPD8), dus het maakt niet uit welke
