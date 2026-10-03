@@ -7,7 +7,7 @@
  *   id: string, naam: string, soort: ParamSoort, standaard: number,
  *   keuzes?: string[], hint?: 'fader'|'knop'|'pad'|'kolom', groep?: string,
  *   rol?: string, slew_s?: number, takeover?: 'pickup'|'direct'|'schaal',
- *   eenheid?: string, min?: number, max?: number,
+ *   eenheid?: string, min?: number, max?: number, centre?: number,
  * }} Param
  * @typedef {{
  *   v: 1, app: string, naam: string, kleur?: string, truth: 'app'|'hub', hb_s: number,

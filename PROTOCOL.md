@@ -92,7 +92,7 @@ Parameter:
 | `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"` |
 | `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth) |
 | `takeover` | nee | `"pickup"` (standaard voor faders), `"direct"`, `"schaal"` |
-| `eenheid`, `min`, `max` | nee | alleen voor weergave in de cockpit |
+| `eenheid`, `min`, `max`, `centre` | nee | alleen voor weergave in de cockpit; `centre` = de waarde die op 0,5 ligt (log-schaal zoals JUCE `setSkewForCentre`), zonder `centre` lineair |
 
 ## 5. Lease-modus (Varve DJ, av-kern)
 

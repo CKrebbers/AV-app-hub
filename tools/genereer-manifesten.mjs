@@ -168,6 +168,7 @@ export function sedimentManifest(specs, app) {
       id, naam: s.naam, soort: 'waarde', standaard: rond(naarGenormaliseerd(s.standaard, s.min, s.max, s.centre)),
       hint: extra.hint ?? 'knop', groep: s.groep.toLowerCase(), ...(extra.rol ? { rol: extra.rol } : {}),
       eenheid: EENHEID[s.eenheid] ?? s.eenheid, min: pct ? rond(s.min * 100, 2) : s.min, max: pct ? rond(s.max * 100, 2) : s.max,
+      ...(s.centre > 0 ? { centre: pct ? rond(s.centre * 100, 2) : s.centre } : {}), // log-schaal: de cockpit toont dan wat Sediment toont
     });
     map[id] = { cc: SEDIMENT_CC[i] };
   });
