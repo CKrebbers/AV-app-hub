@@ -35,6 +35,8 @@ h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
   background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--rand); }
 .merk { font-weight: 600; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .merk small { color: var(--zacht); font-weight: 400; }
+.naar-oefen { color: var(--zacht); text-decoration: none; font-size: 13px; border: 1px solid var(--rand); border-radius: 999px; padding: 2px 10px; }
+.naar-oefen:hover { color: var(--tekst); }
 .merk .stip { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
 .apparaten { display: flex; gap: 6px; margin-left: auto; }
 .chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rand); color: var(--stil); }

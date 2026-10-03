@@ -1,6 +1,7 @@
 // @ts-check
 // De netwerkkant van de hub (PROTOCOL.md §2, §3, §8): één HTTP-server met twee WebSocket-paden.
 //   GET /                 → ui/index.html (cockpit)
+//   GET /oefen            → ui/oefen.html (oefenruimte)
 //   GET /ui/<pad>         → statische bestanden uit uiMap
 //   GET /src/devices/*.js, /src/protocol/*.js → gedeelde code voor de cockpit (alleen die twee mappen)
 //   GET /api/beeld        → kern.beeld() als JSON
@@ -375,8 +376,10 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     let pad;
     try { pad = decodeURIComponent(new URL(req.url ?? '/', 'http://hub').pathname); } catch { return eindig(res, 400, 'ongeldig pad'); }
     if (pad === '/' || pad === '/index.html') return stuurBestand(res, veiligPad(uiMap, 'index.html'), hoofd);
+    if (pad === '/oefen' || pad === '/oefen/') return stuurBestand(res, veiligPad(uiMap, 'oefen.html'), hoofd);
     if (pad.startsWith('/ui/')) return stuurBestand(res, veiligPad(uiMap, pad.slice(4)), hoofd);
-    const src = /^\/src\/(devices|protocol)\/([A-Za-z0-9_-]+\.js)$/.exec(pad);
+    // Alleen wat de pagina's importeren: apparaat- en protocolbestanden, en de (pure) APC-indeling voor de oefenruimte.
+    const src = /^\/src\/(devices|protocol)\/([A-Za-z0-9_-]+\.js)$/.exec(pad) ?? (pad === '/src/core/indeling.js' ? [pad, 'core', 'indeling.js'] : null);
     if (src) return stuurBestand(res, veiligPad(path.join(srcMap, src[1]), src[2]), hoofd);
     if (pad === '/api/beeld') {
       let tekst;

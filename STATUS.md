@@ -73,6 +73,12 @@ Gevonden door de repetitie, nog open (beslissing nodig):
 - Waterschaal `tempo` stapt per 0,5/min; hub (0,709) en app (0,667) blijven het oneens, en de globale adem loopt mee uit de pas.
 - Een LPD8-macro op een keuze stuurt bij elke tik een `zet`, ook als de keuze niet verandert (179 van 186 dubbel naar formula-lab `palette`).
 
+## Oefenruimte ✓
+http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 13 lessen met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
+
+Klaar als (op jouw Mac):
+- [ ] alle 13 lessen gehaald met de echte APC40 en LPD8
+
 ## Volgende
 - Hardware-avond 1 (F0-proef), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
