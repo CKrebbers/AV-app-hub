@@ -16,6 +16,7 @@ import path from 'node:path';
 import { isIP } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import { leesVanApp, klem01 } from '../protocol/berichten.js';
+import { vindCC } from '../devices/apc40mk2.js';
 
 /** @typedef {import('../protocol/types.js').Verbinding} Verbinding */
 
@@ -345,6 +346,28 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     wss.handleUpgrade(req, sock, kop, (ws) => wss.emit('connection', ws, req));
   });
 
+  // Twee instanties van dezelfde app (twee tabs): de kern laat de nieuwste winnen en sluit de oude. Een
+  // client volgens §3 verbindt dan opnieuw en zou de winnaar weer verdringen, eindeloos (~2 herstarts/s).
+  // Daarom onthoudt de server welke inst verdrongen is: die wordt geweigerd (fout + close-code 4001) zolang
+  // de app nog via een andere socket verbonden is. Een nieuwe inst (herladen tab) neemt het wel over; is de
+  // winnaar weg, dan mag de verdrongen instantie terug.
+  /** Per app de socket die als laatste een hallo voor die app doorgaf. @type {Map<string, { ws: WebSocket, inst: string }>} */
+  const huidige = new Map();
+  /** Per app de verdrongen insts (begrensd). @type {Map<string, Set<string>>} */
+  const verdrongen = new Map();
+  /** @param {string} app @param {string} inst */
+  const markeerVerdrongen = (app, inst) => {
+    let s = verdrongen.get(app);
+    if (!s) {
+      if (verdrongen.size >= 256) verdrongen.delete(/** @type {string} */ (verdrongen.keys().next().value));
+      verdrongen.set(app, s = new Set());
+    }
+    if (s.size >= 16) s.delete(/** @type {string} */ (s.values().next().value));
+    s.add(inst);
+  };
+  /** @type {WeakSet<WebSocket>} sockets die vervangen zijn: sluiten met 4001 in plaats van 1000 */
+  const vervangen = new WeakSet();
+
   // /app — één Verbinding per socket.
   wssApp.on('connection', (ws) => {
     let welkomGestuurd = false;
@@ -361,7 +384,28 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
         const t = veiligJson(b);
         if (t !== null) try { ws.send(t); } catch { /* weg */ }
       },
-      sluit() { try { ws.close(1000, 'gesloten door hub'); } catch { ws.terminate(); } },
+      sluit() {
+        try { if (vervangen.has(ws)) ws.close(4001, 'vervangen'); else ws.close(1000, 'gesloten door hub'); } catch { ws.terminate(); }
+      },
+    };
+    /** Mag deze hallo door? Zo nee: weigeren en sluiten (zie boven). @param {{ app: string, inst: string }} h */
+    const halloToegestaan = (h) => {
+      if (v.app && v.app !== h.app) return true;               // de kern weigert dit zelf
+      const nu = huidige.get(h.app);
+      const ander = nu && nu.ws !== ws && nu.ws.readyState === WebSocket.OPEN ? nu : null;
+      if (ander && ander.inst !== h.inst) {
+        if (verdrongen.get(h.app)?.has(h.inst)) {
+          v.stuur({ t: 'fout', reden: `vervangen: ${h.app} is al verbonden vanuit een andere instantie (tab); sluit die om deze te gebruiken` });
+          vervangen.add(ws);
+          v.sluit?.();
+          return false;
+        }
+        markeerVerdrongen(h.app, ander.inst);
+        vervangen.add(ander.ws);
+      }
+      verdrongen.get(h.app)?.delete(h.inst);
+      huidige.set(h.app, { ws, inst: h.inst });
+      return true;
     };
     let gehallood = false;
     let dicht = false;
@@ -374,12 +418,16 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
       if (!r.ok) return v.stuur({ t: 'fout', reden: r.fout });
       if ('onbekend' in r) return;
       if (!gehallood && r.bericht.t !== 'hallo') return v.stuur({ t: 'fout', reden: 'eerst hallo sturen' });
-      if (r.bericht.t === 'hallo') gehallood = true;
+      if (r.bericht.t === 'hallo') {
+        if (!halloToegestaan(r.bericht)) return;
+        gehallood = true;
+      }
       veilig('kern.ontvang', () => kern.ontvang(v, r.bericht));
     });
     ws.on('close', () => {
       if (dicht) return;
       dicht = true;
+      for (const [app, h] of huidige) if (h.ws === ws) huidige.delete(app);
       veilig('kern.verbreek', () => kern.verbreek(v));
     });
   });
@@ -397,7 +445,8 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     ws.on('error', () => {});
     const stuur = (/** @type {object} */ b) => { if (ws.readyState === WebSocket.OPEN) try { ws.send(JSON.stringify(b)); } catch { /* weg */ } };
     uitzender.voegToe(ws);
-    /** Noten die deze cockpit virtueel ingedrukt houdt: bij wegvallen loslaten, anders blijft een knop "hangen". */
+    /** Toetsen die deze cockpit virtueel ingedrukt houdt (noten én de voetschakelaar, CC64 op de APC):
+     *  bij wegvallen loslaten, anders blijft een knop "hangen" (§10). Faders en knoppen zijn geen toetsen. */
     const ingedrukt = new Map();
     ws.on('message', (data, binair) => {
       levend.add(ws);
@@ -409,6 +458,12 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
         const st = bytes[0] & 0xf0, sleutel = `${dev}:${bytes[0] & 0x0f}:${bytes[1]}`;
         if (st === 0x90 && bytes[2] > 0) ingedrukt.set(sleutel, { dev, bytes: [0x80 | (bytes[0] & 0x0f), bytes[1], 0] });
         else if (st === 0x80 || st === 0x90) ingedrukt.delete(sleutel);
+        else if (st === 0xb0 && dev === 'apc40' && vindCC(bytes[1], bytes[0] & 0x0f)?.soort === 'voet') {
+          // Zelfde drempel als APC.ontleed: ≥ 64 = ingetrapt.
+          const cc = `${dev}:cc${bytes[0] & 0x0f}:${bytes[1]}`;
+          if (bytes[2] >= 64) ingedrukt.set(cc, { dev, bytes: [bytes[0], bytes[1], 0] });
+          else ingedrukt.delete(cc);
+        }
         return veilig('opVirtueel', () => opVirtueel?.(dev, bytes));
       }
       if ('kern' in r) veilig('kern.cockpit', () => kern.cockpit(r.kern));
