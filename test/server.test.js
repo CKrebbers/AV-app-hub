@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
-import { startServer, originToegestaan, veiligPad, leesVanCockpit, CockpitUitzender, MAX_BERICHT } from '../src/transports/server.js';
+import { startServer, originToegestaan, hostToegestaan, veiligPad, leesVanCockpit, CockpitUitzender, MAX_BERICHT } from '../src/transports/server.js';
 import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
 import { NepKern, wachtOp } from './nepkern.js';
 
@@ -38,10 +38,10 @@ const vind = (c, t) => c.berichten.find((b) => b.t === t);
 const alle = (c, t) => c.berichten.filter((b) => b.t === t);
 
 /** Rauwe HTTP-GET zonder padnormalisatie. */
-function haal(pad, methode = 'GET') {
+function haal(pad, methode = 'GET', headers = {}) {
   const u = new URL(srv.adres);
   return new Promise((goed, fout) => {
-    const req = http.request({ host: u.hostname, port: u.port, path: pad, method: methode }, (res) => {
+    const req = http.request({ host: u.hostname, port: u.port, path: pad, method: methode, headers }, (res) => {
       let lijf = '';
       res.on('data', (d) => { lijf += d; });
       res.on('end', () => goed({ status: res.statusCode, type: res.headers['content-type'], lijf }));
@@ -84,8 +84,12 @@ describe('server: opstarten', () => {
     expect(kern.luisteraars('leds')).toBe(0);
     expect(kern.luisteraars('invoer')).toBe(0);
   });
-  it('bezette poort → startServer weigert netjes', async () => {
-    await expect(startServer({ poort: srv.poort, kern: new NepKern(), uiMap, srcMap: SRC })).rejects.toThrow();
+  it('bezette poort → startServer weigert netjes en laat niets achter op de kern', async () => {
+    const k2 = new NepKern();
+    await expect(startServer({ poort: srv.poort, kern: k2, uiMap, srcMap: SRC })).rejects.toThrow();
+    expect(k2.luisteraars('beeld')).toBe(0);
+    expect(k2.luisteraars('leds')).toBe(0);
+    expect(k2.luisteraars('invoer')).toBe(0);
   });
 });
 
@@ -142,6 +146,12 @@ describe('server: HTTP', () => {
     expect((await haal('/package.json')).status).toBe(404);
     expect((await haal('/api/beeld', 'POST')).status).toBe(404);
   });
+  it('Host-header van een vreemde naam (DNS-rebinding) → 403; localhost/IP/origins mogen', async () => {
+    expect((await haal('/api/beeld', 'GET', { host: 'evil.example:7700' })).status).toBe(403);
+    expect((await haal('/', 'GET', { host: 'aanval.rebind.example' })).status).toBe(403);
+    for (const host of ['localhost:7700', '127.0.0.1:7700', '192.168.1.5:7700', '[::1]:7700', 'cockpit.example'])
+      expect((await haal('/api/beeld', 'GET', { host })).status, host).toBe(200);
+  });
   it('kern.beeld() die faalt → 500, server leeft door', async () => {
     const fout = vi.spyOn(console, 'error').mockImplementation(() => {});
     kern.faal.add('beeld');
@@ -161,9 +171,39 @@ describe('server: Origin', () => {
       expect(originToegestaan(o), o).toBe(false);
     expect(originToegestaan('https://cockpit.example', ['https://cockpit.example'])).toBe(true);
     expect(originToegestaan('https://cockpit.example:444', ['https://cockpit.example'])).toBe(false);
+    // same-origin met de hub zelf op een IP-adres (cockpit op een tablet bij host 0.0.0.0)
+    expect(originToegestaan('http://192.168.1.5:7700', [], '192.168.1.5:7700')).toBe(true);
+    expect(originToegestaan('http://192.168.1.5:7700', [], '192.168.1.5:7701')).toBe(false);
+    expect(originToegestaan('http://[::1]:7700', [], '[::1]:7700')).toBe(true);
+    // maar niet via een domeinnaam: DNS-rebinding geeft Origin en Host dezelfde vreemde naam
+    expect(originToegestaan('http://evil.example:7700', [], 'evil.example:7700')).toBe(false);
+  });
+  it('hostToegestaan', () => {
+    for (const h of [undefined, 'localhost', 'localhost:7700', '127.0.0.1:7700', '10.0.0.2:7700', '[::1]:7700'])
+      expect(hostToegestaan(h), String(h)).toBe(true);
+    expect(hostToegestaan('hub.local:7700', { host: 'hub.local' })).toBe(true);
+    expect(hostToegestaan('cockpit.example', { origins: ['https://cockpit.example'] })).toBe(true);
+    for (const h of ['evil.example', 'localhost.evil.example:7700', '127.0.0.1.nip.io', '', 'a b'])
+      expect(hostToegestaan(h), h).toBe(false);
+  });
+  it('same-origin cockpit via IP-adres mag; geweigerde origin wordt één keer gemeld', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const u = new URL(srv.adres);
+    // De hub luistert op 127.0.0.1, maar een Origin met dezelfde host:poort als de Host-header telt als same-origin.
+    const c = client('/cockpit', { origin: `http://${u.host}`, headers: { host: u.host } });
+    await open(c);
+    for (let i = 0; i < 2; i++) {
+      const e = client('/cockpit', { origin: 'https://evil.example' });
+      await wachtOp(() => e.status || e.fout);
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/origin geweigerd: https:\/\/evil\.example/);
+    warn.mockRestore();
   });
   it('weigert /app en /cockpit van een vreemde website met 403', async () => {
-    for (const pad of ['/app', '/cockpit']) {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    opruimen.push(() => warn.mockRestore());
+    for (const pad of ['/app', '/cockpit', '/']) {
       const c = client(pad, { origin: 'https://evil.example' });
       await wachtOp(() => c.status || c.fout);
       expect(c.status, pad).toBe(403);
@@ -179,9 +219,20 @@ describe('server: Origin', () => {
     expect(kern.van('verbind')).toHaveLength(4);
   });
   it('onbekend WS-pad → 404', async () => {
-    const c = client('/iets');
-    await wachtOp(() => c.status || c.fout);
-    expect(c.status).toBe(404);
+    for (const pad of ['/iets', '/app/iets', '/appx']) {
+      const c = client(pad);
+      await wachtOp(() => c.status || c.fout);
+      expect(c.status, pad).toBe(404);
+    }
+  });
+  it("WS op '/' en met slash erachter telt als /app (?hub=ws://localhost:7700 uit CLAUDE.md)", async () => {
+    for (const pad of ['/', '/app/']) {
+      const c = await open(client(pad));
+      await wachtOp(() => vind(c, 'welkom'));
+    }
+    expect(kern.van('verbind')).toHaveLength(2);
+    const k = await open(client('/cockpit/'));
+    await wachtOp(() => vind(k, 'beeld'));
   });
 });
 
@@ -214,6 +265,17 @@ describe('server: /app', () => {
     expect(kern.van('verbreek')[0].args[0]).toBe(v);
     // stuur na sluiten mag niets doen en niet gooien
     expect(() => v.stuur({ t: 'zet', id: 'helder', v: 0 })).not.toThrow();
+  });
+
+  it('precies één welkom, ook als de kern in verbind() zelf een welkom stuurt', async () => {
+    kern.welkomInVerbind = true;
+    const app = new NepApp({ url: wsUrl('/app'), herverbind: false }).start();
+    opruimen.push(() => app.stop());
+    await wachtOp(() => kern.ontvangen('staat').length);
+    kern.verbindingVan('nep-app').stuur({ t: 'focus', aan: true });
+    await wachtOp(() => app.ontvangen.find((b) => b.t === 'focus'));
+    expect(app.ontvangen.filter((b) => b.t === 'welkom')).toEqual([{ t: 'welkom', hub: 'varve-hub', v: 1 }]);
+    expect(kern.ontvangen('hallo')).toHaveLength(1);
   });
 
   it('eerste bericht moet hallo zijn; fouten krijgen {t:fout}; onbekend wordt genegeerd', async () => {
@@ -338,6 +400,25 @@ describe('server: /cockpit', () => {
     expect(c.berichten[0]).toMatchObject({ t: 'beeld', apps: [{ app: 'nep-app' }], globaal: { bpm: 120 } });
   });
 
+  it('cockpit die (her)verbindt krijgt direct na het beeld de volledige LED-stand', async () => {
+    kern.meld('leds', { dev: 'apc40', staat: { 'pad1-1': { kleur: 5, anim: 'vol' }, 'pad1-2': { kleur: 3, anim: 'vol' } } });
+    kern.meld('leds', { dev: 'apc40', staat: { 'pad1-1': { kleur: 9, anim: 'puls' } } });
+    kern.meld('leds', { dev: 'lpd8', staat: { p1: { aan: true } } });
+    const c = await open(client('/cockpit'));
+    await wachtOp(() => alle(c, 'leds').length >= 2);
+    expect(c.berichten[0].t).toBe('beeld');
+    expect(c.berichten.slice(1)).toEqual([
+      { t: 'leds', dev: 'apc40', staat: { 'pad1-1': { kleur: 9, anim: 'puls' }, 'pad1-2': { kleur: 3, anim: 'vol' } } },
+      { t: 'leds', dev: 'lpd8', staat: { p1: { aan: true } } },
+    ]);
+    // een tweede cockpit later ziet ook wat er inmiddels bij kwam
+    kern.meld('leds', { dev: 'apc40', staat: { 'pad1-2': { kleur: 0, anim: 'uit' } } });
+    await wachtOp(() => alle(c, 'leds').length >= 3);
+    const d = await open(client('/cockpit'));
+    await wachtOp(() => alle(d, 'leds').length >= 2);
+    expect(vind(d, 'leds').staat['pad1-2']).toEqual({ kleur: 0, anim: 'uit' });
+  });
+
   it('kern-events → beeld (vers), leds en invoer naar alle cockpits', async () => {
     const c1 = await open(client('/cockpit'));
     const c2 = await open(client('/cockpit'));
@@ -428,6 +509,36 @@ describe('server: /cockpit', () => {
       expect(fout).toHaveBeenCalled();
       ws.terminate();
     } finally { await s2.stop(); fout.mockRestore(); }
+  });
+});
+
+describe('server: half-open sockets (ping/pong)', () => {
+  /** @type {Awaited<ReturnType<typeof startServer>>} */ let s2;
+  /** @type {NepKern} */ let k2;
+  beforeEach(async () => { k2 = new NepKern(); s2 = await startServer({ poort: 0, kern: k2, uiMap, srcMap: SRC, pingMs: 50 }); });
+  afterEach(async () => { await s2.stop(); });
+  const url = (pad) => s2.adres.replace(/^http/, 'ws') + pad;
+
+  it('een client die geen pong terugstuurt wordt na ~2 pings afgesloten → precies één verbreek', async () => {
+    const ws = new WebSocket(url('/app'), { autoPong: false });
+    opruimen.push(() => ws.terminate());
+    await new Promise((r) => ws.once('open', r));
+    const t0 = Date.now();
+    await wachtOp(() => k2.van('verbreek').length, 2000);
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(40);
+    await new Promise((r) => setTimeout(r, 120));
+    expect(k2.van('verbreek')).toHaveLength(1);
+  });
+
+  it('gewone clients (app en cockpit) blijven na vele intervallen open', async () => {
+    const app = new WebSocket(url('/app'));
+    const cockpit = new WebSocket(url('/cockpit'));
+    opruimen.push(() => app.terminate(), () => cockpit.terminate());
+    await Promise.all([app, cockpit].map((w) => new Promise((r) => w.once('open', r))));
+    await new Promise((r) => setTimeout(r, 400));
+    expect(app.readyState).toBe(WebSocket.OPEN);
+    expect(cockpit.readyState).toBe(WebSocket.OPEN);
+    expect(k2.van('verbreek')).toHaveLength(0);
   });
 });
 

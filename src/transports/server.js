@@ -6,11 +6,14 @@
 //   GET /api/beeld        → kern.beeld() als JSON
 //   WS  /app              → één Verbinding per socket naar de kern
 //   WS  /cockpit          → beeld/leds/invoer naar de cockpit, virtueel/focus/zet/snapshot terug
-// Beveiliging: alleen WebSockets zonder Origin (Node-clients) of van localhost/127.0.0.1 (of `origins`).
+// Beveiliging: alleen WebSockets zonder Origin (Node-clients), van localhost/127.0.0.1, van `origins`, of
+// same-origin met de hub zelf op een IP-adres (cockpit op een tablet bij host 0.0.0.0). HTTP weigert een
+// Host-header die geen localhost/IP/geconfigureerde host is (DNS-rebinding).
 // Robuust: kapotte JSON, te grote berichten, wegvallende sockets en trage cockpits laten de hub nooit vallen.
 import http from 'node:http';
 import { stat, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { isIP } from 'node:net';
 import { WebSocketServer, WebSocket } from 'ws';
 import { leesVanApp, klem01 } from '../protocol/berichten.js';
 
@@ -56,19 +59,42 @@ export const mimeVan = (bestand) => MIME[path.extname(bestand).toLowerCase()] ??
 
 // ── Origin ───────────────────────────────────────────────────────────────────
 
+/** Hostnaam zonder IPv6-haken. @param {string} h */
+const kaal = (h) => h.replace(/^\[(.*)\]$/, '$1');
+/** localhost of een IP-adres: namen die een vreemde site niet via DNS-rebinding naar de hub kan laten wijzen. @param {string} h */
+const lokaleNaam = (h) => h === 'localhost' || isIP(kaal(h)) !== 0;
+
 /**
  * Mag een WebSocket met deze Origin-header verbinden? Geen Origin = Node-client = ja.
- * Toegestaan: http(s)://localhost[:poort], http(s)://127.0.0.1[:poort], en exact wat in `origins` staat.
- * @param {string|undefined} origin @param {string[]} [origins]
+ * Toegestaan: http(s)://localhost[:poort], http(s)://127.0.0.1[:poort], exact wat in `origins` staat, en
+ * same-origin: de Origin wijst naar dezelfde host:poort als de Host-header én die host is localhost of een
+ * IP-adres (zo werkt de cockpit die de hub zelf serveert ook via http://192.168.x.x:7700, maar niet via een
+ * domeinnaam die een aanvaller naar 127.0.0.1 laat wijzen).
+ * @param {string|undefined} origin @param {string[]} [origins] @param {string} [hostKop] Host-header van het verzoek
  */
-export function originToegestaan(origin, origins = []) {
+export function originToegestaan(origin, origins = [], hostKop) {
   if (origin === undefined) return true;
   if (origins.includes(origin)) return true;
   let u;
   try { u = new URL(origin); } catch { return false; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
   if (u.username || u.password || (u.pathname !== '/' && u.pathname !== '')) return false;
-  return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+  if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
+  return typeof hostKop === 'string' && u.host === hostKop.toLowerCase() && lokaleNaam(u.hostname);
+}
+
+/**
+ * Mag een HTTP-verzoek met deze Host-header bediend worden? Tegen DNS-rebinding: alleen localhost,
+ * IP-adressen, de geconfigureerde host en de hosts uit `origins`. Geen Host-header (oude/Node-clients) = ja.
+ * @param {string|undefined} hostKop @param {{ host?: string, origins?: string[] }} [o]
+ */
+export function hostToegestaan(hostKop, { host, origins = [] } = {}) {
+  if (hostKop === undefined) return true;
+  let naam;
+  try { naam = new URL(`http://${hostKop}`).hostname; } catch { return false; }
+  if (lokaleNaam(naam)) return true;
+  if (host && naam === host.toLowerCase()) return true;
+  return origins.some((o) => { try { return new URL(o).hostname === naam; } catch { return false; } });
 }
 
 // ── Statische bestanden ──────────────────────────────────────────────────────
@@ -117,6 +143,8 @@ async function stuurBestand(res, bestand, hoofd) {
  * Verdeelt kern-events over cockpit-sockets. Een trage cockpit (bufferedAmount > maxAchterstand)
  * slaat beeld en leds over; zodra hij bij is krijgt hij het laatste beeld en alle gemiste LED-standen
  * samengevoegd. Invoer is live-weergave en vervalt bij achterstand.
+ * Houdt per dev de samengevoegde LED-stand bij (kern.beeld() bevat die niet): een nieuwe cockpit krijgt
+ * direct na het beeld de volledige stand, zodat een herladen pagina niet donker blijft.
  * Los van ws te testen: een socket is alles met `readyState`, `bufferedAmount` en `send(tekst)`.
  */
 export class CockpitUitzender {
@@ -132,12 +160,15 @@ export class CockpitUitzender {
     this.wis = wis;
     /** @type {Map<{ readyState: number, bufferedAmount: number, send: (s: string) => void }, { beeld: boolean, leds: Map<string, Record<string, unknown>>, timer: any }>} */
     this.sockets = new Map();
+    /** Alles wat de kern ooit op een apparaat zette, per dev samengevoegd. @type {Map<string, Record<string, unknown>>} */
+    this.ledStaat = new Map();
   }
   get aantal() { return this.sockets.size; }
   /** @param {{ readyState: number, bufferedAmount: number, send: (s: string) => void }} ws */
   voegToe(ws) {
     this.sockets.set(ws, { beeld: false, leds: new Map(), timer: null });
     this.#stuur(ws, this.#beeldTekst());
+    for (const [dev, staat] of this.ledStaat) this.#stuur(ws, veiligJson({ t: 'leds', dev, staat }));
   }
   /** @param {any} ws */
   verwijder(ws) {
@@ -158,8 +189,10 @@ export class CockpitUitzender {
   }
   /** @param {{ dev?: string, staat?: Record<string, unknown> }} x */
   leds(x) {
-    if (!this.sockets.size || !x || typeof x !== 'object') return;
+    if (!x || typeof x !== 'object') return;
     const dev = typeof x.dev === 'string' ? x.dev : 'apc40';
+    if (x.staat && typeof x.staat === 'object') this.ledStaat.set(dev, { ...(this.ledStaat.get(dev) ?? {}), ...x.staat });
+    if (!this.sockets.size) return;
     const tekst = veiligJson({ ...x, t: 'leds', dev });
     if (tekst === null) return;
     for (const [ws, s] of this.sockets) {
@@ -264,6 +297,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
   async function veiligeRoute(req, res) {
+    if (!hostToegestaan(req.headers.host, { host, origins })) return eindig(res, 403, 'host niet toegestaan');
     if (req.method !== 'GET' && req.method !== 'HEAD') return eindig(res, 404, 'niet gevonden');
     const hoofd = req.method === 'HEAD';
     let pad;
@@ -286,14 +320,25 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   /** @type {WeakSet<WebSocket>} */
   const levend = new WeakSet();
 
+  /** Eén keer per origin melden waarom een verbinding geweigerd wordt (begrensd tegen spam). @type {Set<string>} */
+  const gemeld = new Set();
+  const waarschuwOrigin = (/** @type {string} */ o) => {
+    if (gemeld.has(o) || gemeld.size >= 100) return;
+    gemeld.add(o);
+    console.warn(`[server] origin geweigerd: ${o} (voeg hem toe aan origins als dit een eigen app is)`);
+  };
+
   server.on('upgrade', (req, sock, kop) => {
     sock.on('error', () => {});
     let pad;
     try { pad = new URL(req.url ?? '/', 'http://hub').pathname; } catch { pad = ''; }
+    // '/' telt als /app (CLAUDE.md noemt ?hub=ws://localhost:7700 zonder pad); een slash erachter mag.
+    pad = pad.replace(/\/+$/, '') || '/app';
     const wss = pad === '/app' ? wssApp : pad === '/cockpit' ? wssCockpit : null;
     if (!wss) { sock.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n'); return; }
     const origin = req.headers.origin;
-    if (!originToegestaan(typeof origin === 'string' ? origin : undefined, origins)) {
+    if (!originToegestaan(typeof origin === 'string' ? origin : undefined, origins, req.headers.host)) {
+      waarschuwOrigin(String(origin));
       sock.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\norigin niet toegestaan');
       return;
     }
@@ -302,13 +347,20 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
 
   // /app — één Verbinding per socket.
   wssApp.on('connection', (ws) => {
+    let welkomGestuurd = false;
     levend.add(ws);
     ws.on('pong', () => levend.add(ws));
     ws.on('error', () => {});
     /** @type {Verbinding} */
     const v = {
       app: null,
-      stuur(b) { if (ws.readyState !== WebSocket.OPEN) return; const t = veiligJson(b); if (t !== null) try { ws.send(t); } catch { /* weg */ } },
+      stuur(b) {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        // Precies één welkom per verbinding: de server stuurt hem, een tweede (bv. van de kern) valt weg.
+        if (b && /** @type {any} */ (b).t === 'welkom') { if (welkomGestuurd) return; welkomGestuurd = true; }
+        const t = veiligJson(b);
+        if (t !== null) try { ws.send(t); } catch { /* weg */ }
+      },
       sluit() { try { ws.close(1000, 'gesloten door hub'); } catch { ws.terminate(); } },
     };
     let gehallood = false;
@@ -366,10 +418,20 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   }, pingMs) : null;
   pinger?.unref();
 
-  await new Promise((goed, fout) => {
-    server.once('error', fout);
-    server.listen(poort, host, () => { server.off('error', fout); goed(undefined); });
-  });
+  try {
+    await new Promise((goed, fout) => {
+      server.once('error', fout);
+      server.listen(poort, host, () => { server.off('error', fout); goed(undefined); });
+    });
+  } catch (e) {
+    // Niets achterlaten op de kern: een volgende poging (andere poort) begint schoon.
+    if (pinger) clearInterval(pinger);
+    for (const f of afmelden) if (typeof f === 'function') f();
+    uitzender.sluit();
+    wssApp.close();
+    wssCockpit.close();
+    throw e;
+  }
   server.on('error', (e) => console.error('[server] fout:', e));
   const info = /** @type {import('node:net').AddressInfo} */ (server.address());
   const hostInUrl = info.family === 'IPv6' ? `[${info.address}]` : info.address;

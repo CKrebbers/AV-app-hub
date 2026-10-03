@@ -17,6 +17,8 @@ export class NepKern extends Zender {
     this.huidigBeeld = { apps: [], focus: null, globaal: { grondtoon: 'D', bpm: 120 }, apparaten: {} };
     /** Laat een aanroep mislukken om de robuustheid van de server te toetsen. @type {Set<string>} */
     this.faal = new Set();
+    /** Stuur in verbind() zelf ook een welkom, zoals de echte kern (claude/golf-1-kern) nu doet. */
+    this.welkomInVerbind = false;
   }
   /** @param {string} naam @param {any[]} args */
   #noteer(naam, args) {
@@ -31,7 +33,11 @@ export class NepKern extends Zender {
   verbindingVan(app) { return [...this.verbindingen].find((v) => v.app === app) ?? null; }
 
   /** @param {Verbinding} v */
-  verbind(v) { this.#noteer('verbind', [v]); this.verbindingen.add(v); }
+  verbind(v) {
+    this.#noteer('verbind', [v]);
+    this.verbindingen.add(v);
+    if (this.welkomInVerbind) v.stuur({ t: 'welkom', hub: 'varve-hub', v: 1 });
+  }
   /** @param {Verbinding} v @param {any} b */
   ontvang(v, b) {
     this.#noteer('ontvang', [v, b]);
