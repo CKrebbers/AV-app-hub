@@ -1,10 +1,10 @@
 {
   "omgeving": {
-    "datum": "2026-10-03T16:10:34.072Z",
-    "duur": "94 s",
+    "datum": "2026-10-03T17:10:07.268Z",
+    "duur": "93 s",
     "node": "v22.22.0",
     "chromium": "141.0.7390.37",
-    "hub": "/home/user/wt4/repetitie · claude/golf-4-repetitie @ ee741bf (+6 gewijzigd)",
+    "hub": "/home/user/wt4/repetitie · claude/golf-4-repetitie @ 9f73f31",
     "controllers": "NepSysteem: APC40 mkII + LPD8 mk2 (fabrieksprofiel)",
     "formula-lab": "/home/user/wt3/formula-lab · claude/varve-hub-koppeling @ 3f1f68b",
     "medisynth": "/home/user/wt3/medisynth · claude/varve-hub-koppeling @ ac8b071",
@@ -15,8 +15,8 @@
   "stappen": [
     {
       "naam": "opkomst: alle apps melden zich",
-      "begin": 1791043739666.776,
-      "eind": 1791043739717.7083,
+      "begin": 1791047314107.375,
+      "eind": 1791047314109.0552,
       "ok": true,
       "controles": [
         {
@@ -51,49 +51,49 @@
         }
       ],
       "latency": {
-        "n": 6,
-        "p50": 10.72,
-        "p95": 12.06,
-        "max": 12.06
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "max": null
       },
       "perApp": {
         "formula-lab": {
-          "n": 1,
-          "p50": 9.17,
-          "p95": 9.17,
-          "max": 9.17
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
         },
         "waterschaal": {
-          "n": 1,
-          "p50": 10.54,
-          "p95": 10.54,
-          "max": 10.54
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
         },
         "medisynth": {
-          "n": 1,
-          "p50": 10.72,
-          "p95": 10.72,
-          "max": 10.72
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
         },
         "flux": {
-          "n": 1,
-          "p50": 11.3,
-          "p95": 11.3,
-          "max": 11.3
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
         },
         "varve-dj": {
-          "n": 2,
-          "p50": 10.94,
-          "p95": 12.06,
-          "max": 12.06
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "max": null
         }
       },
       "fouten": {}
     },
     {
       "naam": "focus: Bank + Track Select door alle apps",
-      "begin": 1791043739717.9724,
-      "eind": 1791043742410.5964,
+      "begin": 1791047314109.4685,
+      "eind": 1791047316783.0498,
       "ok": true,
       "controles": [
         {
@@ -156,48 +156,48 @@
       ],
       "latency": {
         "n": 143,
-        "p50": 0.63,
-        "p95": 4.93,
-        "max": 10.93
+        "p50": 0.81,
+        "p95": 5.84,
+        "max": 12.79
       },
       "perApp": {
         "formula-lab": {
           "n": 28,
-          "p50": 0.63,
-          "p95": 4.97,
-          "max": 5.19
+          "p50": 0.53,
+          "p95": 3.76,
+          "max": 4.79
         },
         "waterschaal": {
           "n": 29,
-          "p50": 0.88,
-          "p95": 5.35,
-          "max": 10.93
+          "p50": 0.71,
+          "p95": 5.04,
+          "max": 5.05
         },
         "medisynth": {
           "n": 29,
-          "p50": 0.66,
-          "p95": 4.93,
-          "max": 5.38
+          "p50": 0.52,
+          "p95": 3.88,
+          "max": 4.93
         },
         "flux": {
           "n": 29,
-          "p50": 0.06,
-          "p95": 0.14,
-          "max": 0.15
+          "p50": 3.79,
+          "p95": 9.53,
+          "max": 12.79
         },
         "varve-dj": {
           "n": 28,
-          "p50": 1.22,
-          "p95": 6.58,
-          "max": 6.88
+          "p50": 1.14,
+          "p95": 4.23,
+          "max": 4.57
         }
       },
       "fouten": {}
     },
     {
       "naam": "bediening: formula-lab",
-      "begin": 1791043742411.1553,
-      "eind": 1791043742886.6821,
+      "begin": 1791047316783.7036,
+      "eind": 1791047317249.1462,
       "ok": true,
       "controles": [
         {
@@ -226,48 +226,48 @@
       ],
       "latency": {
         "n": 181,
-        "p50": 1.33,
-        "p95": 14.15,
-        "max": 18.91
+        "p50": 0.61,
+        "p95": 5.67,
+        "max": 7.99
       },
       "perApp": {
         "formula-lab": {
           "n": 164,
-          "p50": 1.55,
-          "p95": 14.29,
-          "max": 18.91
+          "p50": 0.65,
+          "p95": 4.59,
+          "max": 6.11
         },
         "waterschaal": {
           "n": 4,
-          "p50": 0.75,
-          "p95": 1.19,
-          "max": 1.19
+          "p50": 0.43,
+          "p95": 5.49,
+          "max": 5.49
         },
         "medisynth": {
           "n": 4,
-          "p50": 0.45,
-          "p95": 1.37,
-          "max": 1.37
+          "p50": 0.51,
+          "p95": 7.88,
+          "max": 7.88
         },
         "flux": {
           "n": 4,
           "p50": 0.06,
-          "p95": 0.06,
-          "max": 0.06
+          "p95": 0.13,
+          "max": 0.13
         },
         "varve-dj": {
           "n": 5,
-          "p50": 1.13,
-          "p95": 1.89,
-          "max": 1.89
+          "p50": 4.56,
+          "p95": 7.99,
+          "max": 7.99
         }
       },
       "fouten": {}
     },
     {
       "naam": "bediening: waterschaal",
-      "begin": 1791043742886.8274,
-      "eind": 1791043746821.5586,
+      "begin": 1791047317249.2449,
+      "eind": 1791047321179.9346,
       "ok": true,
       "controles": [
         {
@@ -305,48 +305,48 @@
       ],
       "latency": {
         "n": 590,
-        "p50": 0.62,
-        "p95": 4.69,
-        "max": 8.59
+        "p50": 1.31,
+        "p95": 7.64,
+        "max": 14.42
       },
       "perApp": {
         "formula-lab": {
           "n": 41,
-          "p50": 0.55,
-          "p95": 2.18,
-          "max": 2.98
+          "p50": 0.46,
+          "p95": 4.25,
+          "max": 11.97
         },
         "waterschaal": {
           "n": 429,
-          "p50": 0.76,
-          "p95": 5.74,
-          "max": 8.59
+          "p50": 1.52,
+          "p95": 7.4,
+          "max": 12.23
         },
         "medisynth": {
           "n": 40,
-          "p50": 0.58,
-          "p95": 3.04,
-          "max": 5.63
+          "p50": 0.79,
+          "p95": 9.3,
+          "max": 11.81
         },
         "flux": {
           "n": 40,
-          "p50": 0.06,
-          "p95": 0.79,
-          "max": 2.97
+          "p50": 0.08,
+          "p95": 12.17,
+          "max": 14.42
         },
         "varve-dj": {
           "n": 40,
-          "p50": 0.75,
-          "p95": 3.51,
-          "max": 6.05
+          "p50": 1.28,
+          "p95": 12.89,
+          "max": 14.27
         }
       },
       "fouten": {}
     },
     {
       "naam": "bediening: medisynth",
-      "begin": 1791043746821.6682,
-      "eind": 1791043747333.2275,
+      "begin": 1791047321180.0112,
+      "eind": 1791047321685.6692,
       "ok": true,
       "controles": [
         {
@@ -375,48 +375,48 @@
       ],
       "latency": {
         "n": 287,
-        "p50": 0.9,
-        "p95": 3.41,
-        "max": 6.43
+        "p50": 0.75,
+        "p95": 3.31,
+        "max": 5.16
       },
       "perApp": {
         "formula-lab": {
           "n": 5,
-          "p50": 0.91,
-          "p95": 1.36,
-          "max": 1.36
+          "p50": 0.7,
+          "p95": 1.9,
+          "max": 1.9
         },
         "waterschaal": {
           "n": 6,
-          "p50": 0.48,
-          "p95": 1.42,
-          "max": 1.42
+          "p50": 0.76,
+          "p95": 4.37,
+          "max": 4.37
         },
         "medisynth": {
           "n": 266,
-          "p50": 0.9,
-          "p95": 3.3,
-          "max": 4.75
+          "p50": 0.76,
+          "p95": 3.28,
+          "max": 5.16
         },
         "flux": {
           "n": 5,
-          "p50": 2.37,
-          "p95": 5.35,
-          "max": 5.35
+          "p50": 0.05,
+          "p95": 0.08,
+          "max": 0.08
         },
         "varve-dj": {
           "n": 5,
-          "p50": 1.57,
-          "p95": 6.43,
-          "max": 6.43
+          "p50": 1.66,
+          "p95": 3.47,
+          "max": 3.47
         }
       },
       "fouten": {}
     },
     {
       "naam": "bediening: flux",
-      "begin": 1791043747333.321,
-      "eind": 1791043747866.109,
+      "begin": 1791047321685.79,
+      "eind": 1791047322262.6843,
       "ok": true,
       "controles": [
         {
@@ -455,48 +455,48 @@
       ],
       "latency": {
         "n": 356,
-        "p50": 0.03,
-        "p95": 7.18,
-        "max": 14.18
+        "p50": 0.27,
+        "p95": 5.64,
+        "max": 10.43
       },
       "perApp": {
         "formula-lab": {
           "n": 5,
-          "p50": 0.34,
-          "p95": 4.09,
-          "max": 4.09
+          "p50": 0.6,
+          "p95": 4.73,
+          "max": 4.73
         },
         "waterschaal": {
           "n": 5,
-          "p50": 0.6,
-          "p95": 3.96,
-          "max": 3.96
+          "p50": 0.72,
+          "p95": 1.38,
+          "max": 1.38
         },
         "medisynth": {
           "n": 6,
-          "p50": 0.31,
-          "p95": 4.25,
-          "max": 4.25
+          "p50": 0.5,
+          "p95": 0.86,
+          "max": 0.86
         },
         "flux": {
           "n": 335,
-          "p50": 0.02,
-          "p95": 7.25,
-          "max": 14.18
+          "p50": 0.15,
+          "p95": 5.79,
+          "max": 10.43
         },
         "varve-dj": {
           "n": 5,
-          "p50": 0.74,
-          "p95": 5.14,
-          "max": 5.14
+          "p50": 1.13,
+          "p95": 3.49,
+          "max": 3.49
         }
       },
       "fouten": {}
     },
     {
       "naam": "bediening: varve-dj",
-      "begin": 1791043747868.223,
-      "eind": 1791043748379.0674,
+      "begin": 1791047322262.8452,
+      "eind": 1791047322698.324,
       "ok": true,
       "controles": [
         {
@@ -506,7 +506,7 @@
         {
           "wat": "lease: masterfader komt als ruwe MIDI aan",
           "ok": true,
-          "detail": "169 midi-berichten"
+          "detail": "160 midi-berichten"
         },
         {
           "wat": "varve-dj leest master zelf terug",
@@ -535,48 +535,48 @@
       ],
       "latency": {
         "n": 249,
-        "p50": 1.35,
-        "p95": 4.8,
-        "max": 10.35
+        "p50": 1.81,
+        "p95": 7.97,
+        "max": 11.07
       },
       "perApp": {
         "formula-lab": {
           "n": 5,
-          "p50": 1.6,
-          "p95": 2.95,
-          "max": 2.95
+          "p50": 1.08,
+          "p95": 2.05,
+          "max": 2.05
         },
         "waterschaal": {
           "n": 5,
-          "p50": 1.58,
-          "p95": 2.8,
-          "max": 2.8
+          "p50": 0.8,
+          "p95": 1.83,
+          "max": 1.83
         },
         "medisynth": {
           "n": 5,
-          "p50": 0.48,
-          "p95": 1.66,
-          "max": 1.66
+          "p50": 0.81,
+          "p95": 1.5,
+          "max": 1.5
         },
         "flux": {
           "n": 6,
-          "p50": 0.04,
-          "p95": 1.35,
-          "max": 1.35
+          "p50": 0,
+          "p95": 0.07,
+          "max": 0.07
         },
         "varve-dj": {
           "n": 228,
-          "p50": 1.37,
-          "p95": 6.7,
-          "max": 10.35
+          "p50": 2.01,
+          "p95": 8.23,
+          "max": 11.07
         }
       },
       "fouten": {}
     },
     {
       "naam": "LPD8: macro's K1–K8 over alle apps tegelijk",
-      "begin": 1791043748379.1719,
-      "eind": 1791043762443.3225,
+      "begin": 1791047322698.4417,
+      "eind": 1791047336712.7146,
       "ok": true,
       "controles": [
         {
@@ -627,7 +627,7 @@
         {
           "wat": "macro.helderheid → medisynth.helderheid eindigt op 0.339",
           "ok": true,
-          "detail": "178 zet(s), laatste 0.339 (lpd8)"
+          "detail": "177 zet(s), laatste 0.339 (lpd8)"
         },
         {
           "wat": "medisynth leest helderheid zelf terug",
@@ -637,7 +637,7 @@
         {
           "wat": "macro.helderheid → flux.helderheid eindigt op 0.339",
           "ok": true,
-          "detail": "32 zet(s), laatste 0.339 (lpd8)"
+          "detail": "30 zet(s), laatste 0.339 (lpd8)"
         },
         {
           "wat": "flux leest helderheid zelf terug",
@@ -647,7 +647,7 @@
         {
           "wat": "macro.helderheid → varve-dj.beeld eindigt op 0.339",
           "ok": true,
-          "detail": "13 zet(s), laatste 0.339 (lpd8)"
+          "detail": "12 zet(s), laatste 0.339 (lpd8)"
         },
         {
           "wat": "varve-dj leest beeld zelf terug",
@@ -732,7 +732,7 @@
         {
           "wat": "macro.beweging → flux.tempo eindigt op 0.480",
           "ok": true,
-          "detail": "62 zet(s), laatste 0.480 (lpd8)"
+          "detail": "60 zet(s), laatste 0.480 (lpd8)"
         },
         {
           "wat": "flux leest tempo zelf terug",
@@ -925,49 +925,49 @@
         }
       ],
       "latency": {
-        "n": 7749,
-        "p50": 1.06,
-        "p95": 6.99,
-        "max": 25.78
+        "n": 7738,
+        "p50": 1.48,
+        "p95": 8.73,
+        "max": 29.74
       },
       "perApp": {
         "formula-lab": {
-          "n": 1328,
-          "p50": 2.24,
-          "p95": 7.57,
-          "max": 25.78
+          "n": 1327,
+          "p50": 1.68,
+          "p95": 7.11,
+          "max": 17.44
         },
         "waterschaal": {
-          "n": 1657,
-          "p50": 1.1,
-          "p95": 6.28,
-          "max": 12.35
+          "n": 1656,
+          "p50": 2.09,
+          "p95": 8.06,
+          "max": 15.3
         },
         "medisynth": {
-          "n": 1972,
-          "p50": 0.71,
-          "p95": 6.29,
-          "max": 13.55
+          "n": 1970,
+          "p50": 1.12,
+          "p95": 8.2,
+          "max": 28.1
         },
         "flux": {
-          "n": 1481,
-          "p50": 0.01,
-          "p95": 7.1,
-          "max": 15.57
+          "n": 1476,
+          "p50": 0,
+          "p95": 6.59,
+          "max": 29.74
         },
         "varve-dj": {
-          "n": 1311,
-          "p50": 2.34,
-          "p95": 7.88,
-          "max": 16.32
+          "n": 1309,
+          "p50": 3.28,
+          "p95": 14.03,
+          "max": 23.3
         }
       },
       "fouten": {}
     },
     {
       "naam": "LPD8: verder draaien — de knoppen blijven gevangen",
-      "begin": 1791043762443.4595,
-      "eind": 1791043795468.0962,
+      "begin": 1791047336712.8774,
+      "eind": 1791047369735.1472,
       "ok": true,
       "controles": [
         {
@@ -1037,49 +1037,49 @@
         }
       ],
       "latency": {
-        "n": 2712,
-        "p50": 0.3,
-        "p95": 3.94,
-        "max": 20.88
+        "n": 2710,
+        "p50": 0.4,
+        "p95": 5.08,
+        "max": 22.33
       },
       "perApp": {
         "formula-lab": {
           "n": 341,
-          "p50": 0.45,
-          "p95": 3.65,
-          "max": 7.09
+          "p50": 0.56,
+          "p95": 4.07,
+          "max": 6.76
         },
         "waterschaal": {
           "n": 349,
-          "p50": 0.63,
-          "p95": 4.06,
-          "max": 8.95
+          "p50": 0.75,
+          "p95": 4.92,
+          "max": 8.98
         },
         "medisynth": {
-          "n": 1180,
-          "p50": 0.17,
-          "p95": 3.33,
-          "max": 11.01
+          "n": 1178,
+          "p50": 0.23,
+          "p95": 3.76,
+          "max": 8.69
         },
         "flux": {
           "n": 491,
-          "p50": 0.05,
-          "p95": 4.41,
-          "max": 20.88
+          "p50": 0.06,
+          "p95": 7.61,
+          "max": 22.33
         },
         "varve-dj": {
           "n": 351,
-          "p50": 0.62,
-          "p95": 4.55,
-          "max": 8.08
+          "p50": 0.87,
+          "p95": 5.65,
+          "max": 9.84
         }
       },
       "fouten": {}
     },
     {
       "naam": "snapshot: bewaren (P5 lang), veranderen, laden (P5 kort)",
-      "begin": 1791043795468.2288,
-      "eind": 1791043806239.9453,
+      "begin": 1791047369735.307,
+      "eind": 1791047380517.5513,
       "ok": true,
       "controles": [
         {
@@ -1134,49 +1134,49 @@
         }
       ],
       "latency": {
-        "n": 1826,
-        "p50": 0.74,
-        "p95": 10.37,
-        "max": 27.74
+        "n": 1836,
+        "p50": 0.58,
+        "p95": 5.76,
+        "max": 17.32
       },
       "perApp": {
         "formula-lab": {
-          "n": 260,
-          "p50": 1.49,
-          "p95": 15.55,
-          "max": 27.74
+          "n": 261,
+          "p50": 0.69,
+          "p95": 6.1,
+          "max": 6.94
         },
         "waterschaal": {
-          "n": 260,
-          "p50": 0.96,
-          "p95": 7.06,
-          "max": 22.46
+          "n": 261,
+          "p50": 0.86,
+          "p95": 4.18,
+          "max": 6.65
         },
         "medisynth": {
-          "n": 680,
-          "p50": 0.6,
-          "p95": 9.4,
-          "max": 22.25
+          "n": 685,
+          "p50": 0.42,
+          "p95": 4.17,
+          "max": 11.23
         },
         "flux": {
-          "n": 356,
-          "p50": 0.05,
-          "p95": 7.1,
-          "max": 23.81
+          "n": 358,
+          "p50": 0.06,
+          "p95": 5.94,
+          "max": 17.32
         },
         "varve-dj": {
-          "n": 270,
-          "p50": 1.66,
-          "p95": 14.42,
-          "max": 22.19
+          "n": 271,
+          "p50": 1.81,
+          "p95": 7.05,
+          "max": 10.42
         }
       },
       "fouten": {}
     },
     {
       "naam": "paniek: P1 vasthouden en loslaten",
-      "begin": 1791043806240.0588,
-      "eind": 1791043816680.7327,
+      "begin": 1791047380517.6863,
+      "eind": 1791047390931.352,
       "ok": false,
       "controles": [
         {
@@ -1263,48 +1263,48 @@
       ],
       "latency": {
         "n": 529,
-        "p50": 1.27,
-        "p95": 10.58,
-        "max": 59.36
+        "p50": 0.53,
+        "p95": 4.31,
+        "max": 16
       },
       "perApp": {
         "formula-lab": {
           "n": 105,
-          "p50": 0.88,
-          "p95": 8.6,
-          "max": 42.49
+          "p50": 0.53,
+          "p95": 3.42,
+          "max": 8.05
         },
         "waterschaal": {
           "n": 107,
-          "p50": 0.85,
-          "p95": 7.78,
-          "max": 37.8
+          "p50": 0.62,
+          "p95": 3.29,
+          "max": 5.51
         },
         "medisynth": {
           "n": 105,
-          "p50": 1.11,
-          "p95": 13.9,
-          "max": 42.15
+          "p50": 0.6,
+          "p95": 3.78,
+          "max": 6.2
         },
         "flux": {
           "n": 105,
-          "p50": 1.25,
-          "p95": 12.27,
-          "max": 59.36
+          "p50": 0.07,
+          "p95": 6.03,
+          "max": 16
         },
         "varve-dj": {
           "n": 107,
-          "p50": 2.22,
-          "p95": 13.61,
-          "max": 40.33
+          "p50": 0.71,
+          "p95": 4.93,
+          "max": 6.63
         }
       },
       "fouten": {}
     },
     {
       "naam": "herstart: formula-lab halverwege",
-      "begin": 1791043816680.8196,
-      "eind": 1791043823023.0857,
+      "begin": 1791047390931.3965,
+      "eind": 1791047396708.6748,
       "ok": true,
       "controles": [
         {
@@ -1331,6 +1331,11 @@
           "ok": true
         },
         {
+          "wat": "na herstart: fader1 wacht op pickup (geen zet zolang hij a niet kruist)",
+          "ok": true,
+          "detail": "fader 0.701 → 0.724, app 0.500"
+        },
+        {
           "wat": "na herstart: fader1 → a komt aan",
           "ok": true
         },
@@ -1341,49 +1346,49 @@
         }
       ],
       "latency": {
-        "n": 493,
-        "p50": 0.72,
-        "p95": 5.26,
-        "max": 21.27
+        "n": 477,
+        "p50": 0.79,
+        "p95": 6.06,
+        "max": 16.91
       },
       "perApp": {
         "formula-lab": {
-          "n": 240,
-          "p50": 1.26,
-          "p95": 5.17,
-          "max": 8.25
+          "n": 244,
+          "p50": 1.91,
+          "p95": 12.5,
+          "max": 16.91
         },
         "waterschaal": {
-          "n": 63,
-          "p50": 0.41,
-          "p95": 3.49,
-          "max": 8.57
+          "n": 58,
+          "p50": 0.63,
+          "p95": 3.66,
+          "max": 5.77
         },
         "medisynth": {
-          "n": 63,
-          "p50": 0.47,
-          "p95": 4.77,
-          "max": 7.46
+          "n": 58,
+          "p50": 0.54,
+          "p95": 2.93,
+          "max": 5.66
         },
         "flux": {
-          "n": 63,
-          "p50": 0.08,
-          "p95": 5.99,
-          "max": 21.27
+          "n": 58,
+          "p50": 0.06,
+          "p95": 0.43,
+          "max": 3.19
         },
         "varve-dj": {
-          "n": 64,
-          "p50": 0.85,
-          "p95": 6.17,
-          "max": 9.68
+          "n": 59,
+          "p50": 0.76,
+          "p95": 3.09,
+          "max": 5.31
         }
       },
       "fouten": {}
     },
     {
       "naam": "herstart: varve-dj halverwege (met focus)",
-      "begin": 1791043823023.1914,
-      "eind": 1791043828446.9668,
+      "begin": 1791047396708.818,
+      "eind": 1791047400489.232,
       "ok": true,
       "controles": [
         {
@@ -1424,49 +1429,49 @@
         }
       ],
       "latency": {
-        "n": 226,
-        "p50": 0.55,
-        "p95": 5.21,
-        "max": 15.77
+        "n": 162,
+        "p50": 0.5,
+        "p95": 5.1,
+        "max": 10.99
       },
       "perApp": {
         "formula-lab": {
-          "n": 55,
-          "p50": 0.44,
-          "p95": 4.83,
-          "max": 6.23
+          "n": 39,
+          "p50": 0.56,
+          "p95": 7.23,
+          "max": 9.05
         },
         "waterschaal": {
-          "n": 54,
-          "p50": 0.59,
-          "p95": 6.48,
-          "max": 10.47
+          "n": 38,
+          "p50": 0.63,
+          "p95": 5.1,
+          "max": 10.21
         },
         "medisynth": {
-          "n": 54,
-          "p50": 0.63,
-          "p95": 5.09,
-          "max": 10.76
+          "n": 38,
+          "p50": 0.61,
+          "p95": 5.29,
+          "max": 9.29
         },
         "flux": {
-          "n": 54,
-          "p50": 0.06,
-          "p95": 9.15,
-          "max": 15.77
+          "n": 38,
+          "p50": 0.05,
+          "p95": 0.08,
+          "max": 0.1
         },
         "varve-dj": {
           "n": 9,
-          "p50": 1.73,
-          "p95": 3.96,
-          "max": 3.96
+          "p50": 1.78,
+          "p95": 10.99,
+          "max": 10.99
         }
       },
       "fouten": {}
     },
     {
       "naam": "herstart: flux halverwege",
-      "begin": 1791043828449.3396,
-      "eind": 1791043829159.0535,
+      "begin": 1791047400489.4226,
+      "eind": 1791047401521.3816,
       "ok": true,
       "controles": [
         {
@@ -1493,6 +1498,11 @@
           "ok": true
         },
         {
+          "wat": "na herstart: fader1 wacht op pickup (geen zet zolang hij tempo niet kruist)",
+          "ok": true,
+          "detail": "fader 0.197 → 0.173, app 0.474"
+        },
+        {
           "wat": "na herstart: fader1 → tempo komt aan",
           "ok": true
         },
@@ -1503,53 +1513,53 @@
         }
       ],
       "latency": {
-        "n": 133,
-        "p50": 0.06,
-        "p95": 5.6,
-        "max": 6.15
+        "n": 148,
+        "p50": 0.35,
+        "p95": 3.45,
+        "max": 7.18
       },
       "perApp": {
         "formula-lab": {
-          "n": 7,
-          "p50": 0.58,
-          "p95": 0.8,
-          "max": 0.8
+          "n": 10,
+          "p50": 0.4,
+          "p95": 6.25,
+          "max": 6.25
         },
         "waterschaal": {
-          "n": 7,
-          "p50": 0.33,
-          "p95": 3.52,
-          "max": 3.52
+          "n": 10,
+          "p50": 0.76,
+          "p95": 3.4,
+          "max": 3.4
         },
         "medisynth": {
-          "n": 7,
-          "p50": 0.32,
-          "p95": 2.44,
-          "max": 2.44
+          "n": 10,
+          "p50": 1.41,
+          "p95": 6.98,
+          "max": 6.98
         },
         "flux": {
-          "n": 104,
-          "p50": 0,
-          "p95": 5.69,
-          "max": 6.15
+          "n": 107,
+          "p50": 0.02,
+          "p95": 2.98,
+          "max": 3.48
         },
         "varve-dj": {
-          "n": 8,
-          "p50": 0.52,
-          "p95": 3.1,
-          "max": 3.1
+          "n": 11,
+          "p50": 2.35,
+          "p95": 7.18,
+          "max": 7.18
         }
       },
       "fouten": {}
     },
     {
       "naam": "eindstand: hub en apps zijn het eens",
-      "begin": 1791043829159.195,
-      "eind": 1791043830173.929,
+      "begin": 1791047401521.5298,
+      "eind": 1791047402529.1677,
       "ok": false,
       "controles": [
         {
-          "wat": "formula-lab: hub en app eens over 1 waarden",
+          "wat": "formula-lab: hub en app eens over 12 waarden",
           "ok": true
         },
         {
@@ -1595,49 +1605,49 @@
         }
       ],
       "latency": {
-        "n": 55,
-        "p50": 0.54,
-        "p95": 2.65,
-        "max": 5.6
+        "n": 50,
+        "p50": 0.43,
+        "p95": 1.87,
+        "max": 2.72
       },
       "perApp": {
         "formula-lab": {
-          "n": 11,
-          "p50": 0.44,
-          "p95": 2.1,
-          "max": 2.1
+          "n": 10,
+          "p50": 0.49,
+          "p95": 2.72,
+          "max": 2.72
         },
         "waterschaal": {
-          "n": 11,
-          "p50": 0.71,
-          "p95": 5.6,
-          "max": 5.6
+          "n": 10,
+          "p50": 0.48,
+          "p95": 1.23,
+          "max": 1.23
         },
         "medisynth": {
-          "n": 11,
-          "p50": 0.92,
-          "p95": 2.65,
-          "max": 2.65
+          "n": 10,
+          "p50": 0.44,
+          "p95": 1.87,
+          "max": 1.87
         },
         "flux": {
-          "n": 11,
+          "n": 10,
           "p50": 0.07,
-          "p95": 0.47,
-          "max": 0.47
+          "p95": 0.12,
+          "max": 0.12
         },
         "varve-dj": {
-          "n": 11,
-          "p50": 0.87,
-          "p95": 2.28,
-          "max": 2.28
+          "n": 10,
+          "p50": 0.47,
+          "p95": 1.94,
+          "max": 1.94
         }
       },
       "fouten": {}
     },
     {
       "naam": "cockpit open",
-      "begin": 1791043830173.9558,
-      "eind": 1791043831692.5015,
+      "begin": 1791047402529.1936,
+      "eind": 1791047404872.222,
       "ok": true,
       "controles": [
         {
@@ -1665,49 +1675,49 @@
         }
       ],
       "latency": {
-        "n": 77,
-        "p50": 0.48,
-        "p95": 2.98,
-        "max": 4.07
+        "n": 117,
+        "p50": 0.51,
+        "p95": 3.94,
+        "max": 4.42
       },
       "perApp": {
         "formula-lab": {
-          "n": 16,
-          "p50": 0.32,
-          "p95": 2.71,
-          "max": 2.71
+          "n": 24,
+          "p50": 0.53,
+          "p95": 3.82,
+          "max": 4.37
         },
         "waterschaal": {
-          "n": 15,
-          "p50": 0.52,
-          "p95": 2.98,
-          "max": 2.98
+          "n": 23,
+          "p50": 0.55,
+          "p95": 3.69,
+          "max": 4.14
         },
         "medisynth": {
-          "n": 15,
-          "p50": 0.71,
-          "p95": 4.07,
-          "max": 4.07
+          "n": 23,
+          "p50": 0.53,
+          "p95": 3.87,
+          "max": 4.42
         },
         "flux": {
-          "n": 16,
+          "n": 24,
           "p50": 0.06,
-          "p95": 0.3,
-          "max": 0.3
+          "p95": 0.11,
+          "max": 0.16
         },
         "varve-dj": {
-          "n": 15,
-          "p50": 1.05,
-          "p95": 3.46,
-          "max": 3.46
+          "n": 23,
+          "p50": 0.88,
+          "p95": 3.95,
+          "max": 4.01
         }
       },
       "fouten": {}
     },
     {
       "naam": "afsluiting: iedereen nog actief",
-      "begin": 1791043831692.647,
-      "eind": 1791043833699.061,
+      "begin": 1791047404879.9023,
+      "eind": 1791047406882.8833,
       "ok": true,
       "controles": [
         {
@@ -1742,40 +1752,40 @@
       ],
       "latency": {
         "n": 100,
-        "p50": 0.67,
-        "p95": 4.15,
-        "max": 7.47
+        "p50": 0.69,
+        "p95": 2.89,
+        "max": 5.32
       },
       "perApp": {
         "formula-lab": {
           "n": 20,
-          "p50": 0.76,
-          "p95": 3.91,
-          "max": 7.47
+          "p50": 0.67,
+          "p95": 2.82,
+          "max": 5.26
         },
         "waterschaal": {
           "n": 20,
-          "p50": 0.7,
-          "p95": 4.04,
-          "max": 4.17
+          "p50": 0.91,
+          "p95": 2.72,
+          "max": 2.8
         },
         "medisynth": {
           "n": 20,
-          "p50": 0.95,
-          "p95": 3.96,
-          "max": 4.36
+          "p50": 0.71,
+          "p95": 2.52,
+          "max": 3.95
         },
         "flux": {
           "n": 20,
           "p50": 0.07,
-          "p95": 0.64,
-          "max": 3.47
+          "p95": 1.74,
+          "max": 2.03
         },
         "varve-dj": {
           "n": 20,
-          "p50": 1.26,
-          "p95": 4.63,
-          "max": 6.98
+          "p50": 1.52,
+          "p95": 4.39,
+          "max": 5.32
         }
       },
       "fouten": {}
@@ -1784,24 +1794,24 @@
   "perApp": {
     "formula-lab": {
       "latency": {
-        "n": 2632,
-        "p50": 1.39,
-        "p95": 7.77,
-        "max": 42.49
+        "n": 2629,
+        "p50": 1.15,
+        "p95": 6.13,
+        "max": 17.44
       },
       "latencyBediening": {
         "n": 582,
-        "p50": 2.28,
-        "p95": 7.99,
-        "max": 18.91
+        "p50": 1.59,
+        "p95": 6.5,
+        "max": 16.91
       },
-      "verzonden": 2639,
-      "verloren": 7,
+      "verzonden": 2632,
+      "verloren": 3,
       "verlorenSoorten": {
-        "globaal": 7
+        "globaal": 3
       },
       "verlorenPerStap": {
-        "herstart: formula-lab halverwege": 7
+        "herstart: formula-lab halverwege": 3
       },
       "herhaaldeZets": {
         "a": 2,
@@ -1813,18 +1823,18 @@
     },
     "waterschaal": {
       "latency": {
-        "n": 3022,
-        "p50": 0.93,
-        "p95": 6.08,
-        "max": 37.8
+        "n": 3010,
+        "p50": 1.52,
+        "p95": 7.24,
+        "max": 15.3
       },
       "latencyBediening": {
         "n": 917,
-        "p50": 0.94,
-        "p95": 5.88,
-        "max": 12.13
+        "p50": 1.99,
+        "p95": 7.66,
+        "max": 15.25
       },
-      "verzonden": 3022,
+      "verzonden": 3010,
       "verloren": 0,
       "verlorenSoorten": {},
       "verlorenPerStap": {},
@@ -1842,18 +1852,18 @@
     },
     "medisynth": {
       "latency": {
-        "n": 4458,
-        "p50": 0.5,
-        "p95": 5.68,
-        "max": 42.15
+        "n": 4447,
+        "p50": 0.59,
+        "p95": 5.92,
+        "max": 28.1
       },
       "latencyBediening": {
-        "n": 2353,
-        "p50": 0.27,
-        "p95": 3.97,
-        "max": 19.4
+        "n": 2354,
+        "p50": 0.31,
+        "p95": 4.05,
+        "max": 18.03
       },
-      "verzonden": 4458,
+      "verzonden": 4447,
       "verloren": 0,
       "verlorenSoorten": {},
       "verlorenPerStap": {},
@@ -1865,25 +1875,21 @@
     },
     "flux": {
       "latency": {
-        "n": 3121,
-        "p50": 0.05,
-        "p95": 7,
-        "max": 59.36
+        "n": 3106,
+        "p50": 0.04,
+        "p95": 6.46,
+        "max": 29.74
       },
       "latencyBediening": {
-        "n": 1016,
+        "n": 1013,
         "p50": 0.03,
-        "p95": 7.09,
-        "max": 15.14
+        "p95": 5.18,
+        "max": 22.33
       },
-      "verzonden": 3122,
-      "verloren": 1,
-      "verlorenSoorten": {
-        "globaal": 1
-      },
-      "verlorenPerStap": {
-        "herstart: flux halverwege": 1
-      },
+      "verzonden": 3106,
+      "verloren": 0,
+      "verlorenSoorten": {},
+      "verlorenPerStap": {},
       "herhaaldeZets": {
         "tempo": 2,
         "tekens": 1,
@@ -1893,24 +1899,24 @@
     },
     "varve-dj": {
       "latency": {
-        "n": 2479,
-        "p50": 1.63,
-        "p95": 7.91,
-        "max": 40.33
+        "n": 2481,
+        "p50": 2.19,
+        "p95": 10.01,
+        "max": 23.3
       },
       "latencyBediening": {
-        "n": 420,
-        "p50": 1.41,
-        "p95": 5.67,
-        "max": 14.03
+        "n": 419,
+        "p50": 2.26,
+        "p95": 11.79,
+        "max": 21.98
       },
-      "verzonden": 2480,
-      "verloren": 1,
+      "verzonden": 2484,
+      "verloren": 3,
       "verlorenSoorten": {
-        "globaal": 1
+        "globaal": 3
       },
       "verlorenPerStap": {
-        "herstart: varve-dj halverwege (met focus)": 1
+        "herstart: varve-dj halverwege (met focus)": 3
       },
       "herhaaldeZets": {
         "puls": 1
@@ -1922,42 +1928,42 @@
   },
   "wissels": [
     {
-      "t": 1791043817476.591,
+      "t": 1791047391343.0154,
       "app": "formula-lab",
       "van": "actief",
       "naar": "weg",
       "verwacht": true
     },
     {
-      "t": 1791043822360.0276,
+      "t": 1791047395737.5676,
       "app": "formula-lab",
       "van": "weg",
       "naar": "actief",
       "verwacht": true
     },
     {
-      "t": 1791043823306.463,
+      "t": 1791047397087.97,
       "app": "varve-dj",
       "van": "actief",
       "naar": "weg",
       "verwacht": true
     },
     {
-      "t": 1791043827989.4175,
+      "t": 1791047400016.8171,
       "app": "varve-dj",
       "van": "weg",
       "naar": "actief",
       "verwacht": true
     },
     {
-      "t": 1791043828464.618,
+      "t": 1791047400511.7915,
       "app": "flux",
       "van": "actief",
       "naar": "weg",
       "verwacht": true
     },
     {
-      "t": 1791043828563.482,
+      "t": 1791047400610.898,
       "app": "flux",
       "van": "weg",
       "naar": "actief",
@@ -1966,20 +1972,20 @@
   ],
   "totaal": {
     "ok": false,
-    "controles": 203,
-    "geslaagd": 200,
+    "controles": 205,
+    "geslaagd": 202,
     "opmerkingen": 4,
     "latency": {
-      "n": 15712,
-      "p50": 0.69,
-      "p95": 6.83,
-      "max": 59.36
+      "n": 15673,
+      "p50": 0.87,
+      "p95": 7.25,
+      "max": 29.74
     },
     "latencyBediening": {
-      "n": 5288,
-      "p50": 0.39,
-      "p95": 5.88,
-      "max": 19.4
+      "n": 5285,
+      "p50": 0.54,
+      "p95": 6.25,
+      "max": 22.33
     }
   },
   "manifesten": {
@@ -1994,6 +2000,83 @@
         {
           "id": "a",
           "naam": "a",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "b",
+          "naam": "b",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "c",
+          "naam": "c",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "d",
+          "naam": "d",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "e",
+          "naam": "e",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "f",
+          "naam": "f",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "g",
+          "naam": "g",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "h",
+          "naam": "h",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "i",
+          "naam": "i",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "j",
+          "naam": "j",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "k",
+          "naam": "k",
+          "soort": "waarde",
+          "hint": "fader",
+          "groep": "formula"
+        },
+        {
+          "id": "l",
+          "naam": "l",
           "soort": "waarde",
           "hint": "fader",
           "groep": "formula"
