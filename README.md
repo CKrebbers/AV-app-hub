@@ -22,7 +22,10 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 | `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±30-40 min). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |
-| `node src/cli.js opname [naam]` | speelsessie opnemen in `proef/` |
+| `node src/cli.js opname [naam]` | speelsessie opnemen in `proef/` — voor hardwareproeven (wordt een golden test), niet om een avond te bewaren |
+| `npm run herhaal -- <avondmap>` | een opgenomen avond opnieuw afspelen tegen de draaiende hub en de eindstand per app vergelijken (`--snelheid x`, `--zonder-beginstand`) |
+
+**LPD8-pad 4** = de avond opnemen naar `~/Movies/varve-avonden/<datum-tijd>/` (sleutel `avondmap` in `config.json`), terwijl de hub draait. Zie `docs/OPNAME.md`.
 
 Tijdens de proef: Enter = ja/door, `n` + notitie = klopt niet ("n pad 2-3 werd blauw"), `o` = stap overslaan.
 

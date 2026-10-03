@@ -8,7 +8,9 @@
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
-import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+//   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
+//                            een opgenomen avond (avondmap, LPD8-pad 4) opnieuw afspelen tegen een draaiende hub
+import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import readline from 'node:readline';
 import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
@@ -23,6 +25,9 @@ import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
 import { NepSysteem } from './ports/nep.js';
 import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen, PADEN_PAD, toonPad } from './sets/index.js';
+import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
+import { doelVanCockpit } from './opname/cockpit-doel.js';
+import { GEBAREN } from './opname/opnemer.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -56,7 +61,8 @@ function nieuwLogboek(soort, naam) {
 function bijStoppen(opruimen) {
   let bezig = false;
   const stop = async () => {
-    if (bezig) return;
+    // Tweede Ctrl-C terwijl het opruimen nog loopt (bv. een hangende schijf): meteen weg.
+    if (bezig) { console.error('\nNogmaals gestopt — afsluiten zonder verder op te ruimen.'); process.exit(1); }
     bezig = true;
     try { await opruimen(); } catch (e) { console.error(e); process.exit(1); }
     process.exit(0);
@@ -232,6 +238,60 @@ const opdrachten = {
     console.log(`Opname loopt naar ${pad}. Ctrl-C stopt.`);
   },
 
+  async herhaal() {
+    const bestand = args[0] && !args[0].startsWith('--') ? args[0] : undefined;
+    if (!bestand) { console.error('Gebruik: npm run herhaal -- <avondmap of gebaren.jsonl> [--snelheid x] [--hub adres] [--zonder-beginstand]'); process.exit(2); }
+    const ruw = optie('--snelheid');
+    const zonderWaarde = ruw === undefined || ruw.startsWith('--');
+    const snelheid = args.includes('--snelheid') ? (zonderWaarde ? NaN : Number(ruw)) : 1;
+    if (!(snelheid > 0) || !Number.isFinite(snelheid)) { console.error(`--snelheid moet een getal > 0 zijn (bv. 2 = twee keer zo snel), niet "${zonderWaarde ? '' : ruw}"`); process.exit(2); }
+    let opname;
+    try {
+      const pad = statSync(bestand).isDirectory() ? join(bestand, GEBAREN) : bestand;
+      opname = leesOpname(readFileSync(pad, 'utf8'));
+    } catch (e) {
+      const x = /** @type {any} */ (e);
+      console.error(x?.code === 'ENOENT' ? `${bestand} bestaat niet` : `${bestand} is geen leesbare opname: ${x?.message ?? x}`);
+      process.exit(2);
+    }
+    const adres = optie('--hub') ?? `127.0.0.1:${config.poorten.http}`;
+    let doel;
+    try { doel = await doelVanCockpit(adres); } catch (e) { console.error(/** @type {any} */ (e).message); process.exit(2); }
+    const invoer = opname.stappen.filter((s) => 'dev' in s);
+    const laatste = invoer.at(-1)?.ms ?? 0;
+    const eerste = invoer[0]?.ms ?? 0;
+    console.log(`Avond van ${opname.kop.begon ?? '?'} (hub ${String(opname.kop['hub-git'] ?? opname.eind?.['hub-git'] ?? '?').slice(0, 10)}), ${invoer.length} gebaren,`
+      + ` ±${((laatste - eerste) / 1000 / snelheid).toFixed(1)} s afspelen${snelheid !== 1 ? ` (×${snelheid})` : ''}.`);
+    const nu = new Set(doel.apps);
+    const mist = Object.keys(opname.eind?.apps ?? opname.beginstand?.apps ?? {}).filter((a) => !nu.has(a));
+    if (mist.length) console.log(`Let op: niet verbonden met de hub: ${mist.join(', ')}`);
+    if (opname.kapot) console.log(`Let op: ${opname.kapot} onleesbare regel(s) overgeslagen.`);
+    const beginstand = !args.includes('--zonder-beginstand');
+    const toen = Object.keys(opname.beginstand?.snapshots ?? {}).map(Number);
+    if (beginstand) {
+      console.log('Let op: herhaal zet je apps terug op de stand van toen'
+        + (toen.length ? ` en overschrijft snapshot ${toen.join(', ')} in de hub` : '')
+        + ' — doe het niet midden in een set (--zonder-beginstand slaat dit over).');
+    }
+    const extra = doel.snapshots.filter((nr) => !toen.includes(nr));
+    if (extra.length) console.log(`Let op: snapshot ${extra.join(', ')} staat nu in de hub maar was leeg bij het begin van de opname; laden met een korte LPD8-druk op een toen lege plek wordt overgeslagen, laden via de APC-scèneknoppen niet.`);
+    let gedaan = 0, totaal = invoer.length;
+    let r;
+    try {
+      r = await herhaal({
+        opname, doel, klok: echteKlok, snelheid, beginstand, aanwezig: nu,
+        bijStap: (i, n) => { gedaan = i; totaal = n; if (i % 100 === 0 || i === n) process.stdout.write(`\r${i}/${n}`); },
+      });
+      await doel.sluit();
+    } catch (e) {
+      console.error(`\nherhaal afgebroken na ${gedaan}/${totaal} gebaren: ${/** @type {any} */ (e)?.message ?? e}\n`
+        + 'Draait varve-hub nog? Start hem opnieuw (npm start) en herhaal de avond.');
+      process.exit(2);
+    }
+    console.log('\n' + verslag(r));
+    process.exit(r.verschillen?.length ? 1 : 0);
+  },
+
   help() {
     console.log(`varve-hub — opdrachten:
   start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers);
@@ -239,7 +299,8 @@ const opdrachten = {
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt
-  opname [naam]     speelsessie opnemen in proef/`);
+  opname [naam]     speelsessie opnemen in proef/
+  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)`);
   },
 };
 
