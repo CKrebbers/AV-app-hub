@@ -1,0 +1,765 @@
+From e1484fa2702bd6f905d86a926a1332a1641f22f6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 13:16:15 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?Hub-koppeling:=20VARVE=20als=20lease-app=20?=
+ =?UTF-8?q?van=20de=20AV-app-hub=20(=3Fhub=3Dws://=E2=80=A6)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Alleen met ?hub=ws://…: dan bezit de AV-app-hub de APC40 en de LPD8 en
+is src/control/hub.js de MIDI-poort. HubMidi is een MidiHub met één
+nep-poort "APC40 mkII (hub)", dus mapping, LED-laag, mapjes en leren
+blijven ongewijzigd. Invoer {t:'midi'} alleen met focus (loslaten altijd),
+LED's per beeld gebundeld als {t:'led'}, init-SysEx ingeslikt (de hub zet
+0x42). Nooit requestMIDIAccess, de Web Lock beslist niets over MIDI,
+Clay's bewaarde poortkeuze blijft onaangeroerd. Herverbinden 0,5 → 1 → 2
+→ 5 s, na 4001 30 s; hartslag elke 0,8 s. LPD8-macro's via de bus:
+intensiteit = mixer.master, helderheid = video.master, beweging =
+video.pulse; crossfader zonder rol (slew 2 s). Zonder vlag wordt hub.js
+niet geladen.
+
+Tests: test/hub.test.mjs (42 checks, nep-WebSocket en nep-klok);
+tools/headless/hub.mjs draait toetsApp van de hub (conform) en de echte
+hub met nep-APC/LPD8 in Chromium.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MNPX1p9pByM4NBLEt7Tita
+---
+ CLAUDE.md              |  18 ++++
+ src/control/hub.js     | 194 +++++++++++++++++++++++++++++++++++++++
+ src/ui/app.js          |  13 ++-
+ src/ui/midi-opzet.js   |  16 ++--
+ src/ui/vlag.js         |   9 ++
+ test/hub.test.mjs      | 202 +++++++++++++++++++++++++++++++++++++++++
+ tools/README.md        |   6 ++
+ tools/headless/hub.mjs | 134 +++++++++++++++++++++++++++
+ 8 files changed, 582 insertions(+), 10 deletions(-)
+ create mode 100644 src/control/hub.js
+ create mode 100644 test/hub.test.mjs
+ create mode 100644 tools/headless/hub.mjs
+
+diff --git a/CLAUDE.md b/CLAUDE.md
+index fb1980f..be377c2 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -76,6 +76,7 @@ src/
+                     handelingen.js  het handelingenlog: [t, action, waarde] op de audioklok, per seconde weg
+                     terugspelen.js  een log terugspelen: beginstand, dan elke regel op T0 + t
+                     devices/        apc40mk2.js, generic.js — wat er op het apparaat zit
++                    hub.js          AV-app-hub (alleen ?hub=ws://…): HubMidi = MidiHub met de hub als poort (lease), manifest, herverbinden
+   analysis/         peaks.js        golfvorm-peaks + ruwe RMS
+                     features.js     banden laag/midden/hoog, rms, zwaartepunt, onsets uit een spectrum. Puur, tijd van buiten.
+                     luisteraar.js   leest de master-AnalyserNode uit (alleen lezen) -> features
+@@ -87,6 +88,7 @@ src/
+                     onderpanelen, midi-opzet, opname-knop, video-paneel,
+                     renderloop, mapje-balk — elk een opzet…()-functie
+                     vlag.js + vorm-paneel.js: ?vormen=1 en de VORM-rij (paneel pas geladen als de vlag aan staat)
++                    vlag.js ook ?hub=ws://… (hubAdres): dan laadt app.js control/hub.js, anders niet
+                     waveform.js, controls.js, midi-monitor.js,
+                     mapping-panel.js (de lijst), learn-mode.js (aanwijzen op het scherm),
+                     rack-editor.js (racks bouwen met de muis, werkt op een kopie)
+@@ -205,6 +207,7 @@ test/
+   nep-tijdlijn.mjs  nep-AudioParam die uitrekent wat de param op elk moment doet (geen test zelf)
+   klankschaal.test.mjs  stemming (24 toonsoorten × ladders), toonhoogte gemeten, slapen, wrijven, afval, engine en bus
+   analyse.test.mjs  banden op nep-spectra, klapreeks op 30/60/120 fps, router-offset, react-actions, maatbronnen
++  hub.test.mjs      AV-app-hub: nep-WebSocket + nep-klok; manifest, LED's per beeld, focus, zet, hartslag, 0,5→5 s, 4001→30 s
+   alles.mjs         alle tests in één keer met overzicht
+ docs/
+   HANDOFF.md        stand, wat niet getest is, volgende stap
+@@ -946,6 +949,21 @@ docs/
+   solo, clip stop, track select) melden via het KANAAL welke strip.
+   Na loskoppelen staat hij weer in generic (0x40): init opnieuw bij elke hotplug.
+ 
++- AV-APP-HUB (3 okt 2026, repo AV-app-hub, PROTOCOL.md §5): alleen met
++  `?hub=ws://localhost:7700/app`. De hub bezit APC40 en LPD8; VARVE is een
++  LEASE-app: `HubMidi` (src/control/hub.js) is een MidiHub met één nep-poort
++  "APC40 mkII (hub)", dus mapping, LED-laag, mapjes en leren blijven gelijk.
++  Invoer = `{t:'midi'}` (alleen met focus; loslaten altijd), LED's gaan per
++  beeld gebundeld als `{t:'led'}`. Met de vlag: GEEN requestMIDIAccess, de
++  Web Lock beslist niets over MIDI (twee tabbladen: de hub laat de nieuwste
++  winnen, de oude krijgt 4001 en wacht 30 s), de init-SysEx wordt ingeslikt
++  (de hub zet 0x42), en Clay's bewaarde poortkeuze blijft onaangeroerd.
++  LPD8-macro's via de bus: K1 intensiteit = `mixer.master`, K2 helderheid =
++  `video.master`, K4 beweging = `video.pulse`; crossfader zonder rol (slew 2 s).
++  Geen `paniek`: er is geen veilige stop-alles-action. Zonder vlag wordt
++  hub.js niet geladen. Toets: `node tools/headless/hub.mjs` (toetsApp van de hub
++  + de echte hub met nep-APC/LPD8; `VARVE_HUB_REPO`).
++
+ - VORMLAGEN (24 september 2026, docs/plugins/01-plan.md, stap 1): de
+   Vormmachines uit Clay's artifact als generatief beeld over de video. Alleen
+   met `?vormen=1` (onthouden in localStorage, `?vormen=0` = uit); zonder vlag
+diff --git a/src/control/hub.js b/src/control/hub.js
+new file mode 100644
+index 0000000..a024786
+--- /dev/null
++++ b/src/control/hub.js
+@@ -0,0 +1,194 @@
++import { MidiHub } from './midi.js';
++
++/**
++ * De koppeling met de AV-app-hub (repo AV-app-hub, PROTOCOL.md §5: lease).
++ * Alleen met `?hub=ws://…` (vlag.js); zonder vlag wordt dit bestand niet eens geladen.
++ *
++ * De hub is de enige die de APC40 en de LPD8 opent. Voor VARVE is hij een
++ * vervanger van de Web MIDI-poort: `HubMidi` is een MidiHub met één nep-poort
++ * "APC40 mkII (hub)", dus mapping, LED-laag, mapjes en leren werken zoals altijd.
++ *   invoer:  {t:'midi', dev:'apc40', bytes}  -> poort.onmidimessage -> MidiHub
++ *   uitvoer: poort.send(bytes)  -> per beeld gebundeld -> {t:'led', bytes:[…]}
++ * requestMIDIAccess wordt NOOIT aangeroepen, de Web Lock beslist niets over MIDI
++ * (twee tabbladen regelt de hub: de nieuwste wint, de oude krijgt 4001), en de
++ * init-SysEx gaat niet naar buiten: de modus (0x42) zet de hub.
++ *
++ * Daarnaast een paar parameters met een rol, zodat de LPD8-macro's iets doen.
++ * Die gaan via de action-bus (de engine klemt en glijdt zelf, regel 2), en wat
++ * VARVE zelf verandert gaat terug als `zet` (de app is de bron van waarheid).
++ */
++
++export const APP = 'varve-dj';
++export const HB_S = 1;
++/** Wachttijden bij herverbinden (PROTOCOL.md §3), en na 4001 "vervangen" (§11). */
++export const WACHT_MS = [500, 1000, 2000, 5000];
++export const VERVANGEN = 4001;
++export const VERVANGEN_MS = 30000;
++const BEELD_MS = 16;   // LED's bundelen per beeld (setTimeout, geen rAF: die staat stil op de achtergrond)
++const TIK_MS = 200;    // eigen wijzigingen terugmelden; elke 4e tik een hartslag (0,8 × hb_s)
++
++/** Wat de hub mag zetten: alleen dingen die de APC/muis ook mogen, via de bus. */
++export const PARAMS = [
++  { id: 'master', naam: 'Master', soort: 'waarde', standaard: 0.8, hint: 'fader', rol: 'macro.intensiteit', slew_s: 0.25, action: 'mixer.master' },
++  { id: 'xfader', naam: 'Crossfader', soort: 'waarde', standaard: 0.5, hint: 'fader', slew_s: 2, action: 'mixer.xfader' },
++  { id: 'beeld', naam: 'Beeld', soort: 'waarde', standaard: 1, hint: 'knop', rol: 'macro.helderheid', slew_s: 0.25, action: 'video.master' },
++  { id: 'puls', naam: 'Puls op de tel', soort: 'waarde', standaard: 0, hint: 'knop', rol: 'macro.beweging', action: 'video.pulse' },
++];
++
++export const MANIFEST = {
++  v: 1, app: APP, naam: 'Varve DJ', kleur: '#4ad9c4', truth: 'app', hb_s: HB_S,
++  lease: true, rings: 'host',
++  params: PARAMS.map(({ action: _a, ...p }) => p),
++};
++
++const klem = (v) => Math.max(0, Math.min(1, v));
++const isBytes = (b) => Array.isArray(b) && b.length > 0 && b.length <= 512 && b.every((x) => Number.isInteger(x) && x >= 0 && x <= 255);
++/** Loslaten (note-off) komt ook zonder focus door: dan blijft er nooit een knop hangen. */
++const isLos = (b) => (b[0] & 0xf0) === 0x80 || ((b[0] & 0xf0) === 0x90 && b[2] === 0);
++
++export class HubMidi extends MidiHub {
++  /**
++   * @param url     ws://…/app van de hub
++   * @param invoke  (actionId, waarde) — de action-bus
++   * @param read    (actionId) -> 0..1 of null
++   * @param WS      de WebSocket-klasse (de test geeft een nep)
++   */
++  constructor({ url, invoke, read, WS = globalThis.WebSocket, inst = Math.random().toString(36).slice(2, 10) + Date.now().toString(36) }) {
++    super();
++    Object.assign(this, { url, invoke, read, WS, inst });
++    this.ws = null;
++    this.stap = 0;               // index in WACHT_MS
++    this.focus = false;          // heeft VARVE de APC? (de hub zegt het met {t:'focus'})
++    this.gezet = new Map();      // param-id -> laatste waarde die de hub van ons kent
++    this.leds = [];              // LED-berichten van dit beeld
++    this.ledTimer = null;
++    this.tikker = null;
++    this.tikken = 0;
++    this.herverbind = null;
++    this.ingeslikt = 0;          // SysEx die niet naar de hub ging (de init)
++    this.gestopt = false;
++    const poort = (type) => ({ id: `hub-apc40-${type}`, name: 'APC40 mkII (hub)', manufacturer: 'varve-hub', type, state: 'disconnected', connection: 'closed' });
++    this.poortIn = { ...poort('input'), onmidimessage: null };
++    this.poortUit = { ...poort('output'), send: (b) => this._led(b) };
++  }
++
++  get supported() { return true; }
++  // Clay's eigen poortkeuze (localStorage) blijft van de echte APC.
++  _save() {}
++  _restore() {}
++
++  async _request() {
++    this.access = { inputs: new Map([[this.poortIn.id, this.poortIn]]), outputs: new Map([[this.poortUit.id, this.poortUit]]),
++      sysexEnabled: true, onstatechange: null };
++    this.sysex = true;
++    this.enabled = true;
++    this.access.onstatechange = () => this._sync();
++    this._sync();
++    this.tikker = setInterval(() => this._tik(), TIK_MS);
++    this._verbind();
++    return true;
++  }
++
++  stop() {
++    this.gestopt = true;
++    clearInterval(this.tikker); clearTimeout(this.herverbind); clearTimeout(this.ledTimer);
++    this.ws?.close();
++  }
++
++  status() {
++    return { ...super.status(), hub: { url: this.url, verbonden: this.poortIn.state === 'connected', focus: this.focus, ingeslikt: this.ingeslikt } };
++  }
++
++  // ---- verbinding ----------------------------------------------------------
++
++  get open() { return this.ws?.readyState === 1; }
++  _stuur(b) { if (this.open) this.ws.send(JSON.stringify(b)); }
++
++  _verbind() {
++    if (this.gestopt) return;
++    let ws;
++    try { ws = new this.WS(this.url); } catch (err) { this.error = `hub: ${err?.message || err}`; this._opnieuw(); return; }
++    this.ws = ws;
++    ws.onopen = () => {
++      this.stap = 0;
++      this.focus = false;
++      this._stuur({ t: 'hallo', app: APP, inst: this.inst, v: 1 });
++      this._stuur({ t: 'manifest', manifest: MANIFEST });
++      this._stuur({ t: 'staat', waarden: this._waarden() });
++      this._poorten('connected');   // -> MidiHub 'output' -> feedback.init(): alle LED's opnieuw
++    };
++    ws.onmessage = (e) => this._bericht(e.data);
++    ws.onerror = () => {};
++    ws.onclose = (e) => {
++      if (this.ws !== ws) return;
++      this.ws = null;
++      this._poorten('disconnected');   // -> mapping.losgekoppeld(): shift en ingedrukte knoppen los
++      this._opnieuw(e?.code);
++    };
++  }
++
++  _opnieuw(code) {
++    if (this.gestopt) return;
++    const ms = code === VERVANGEN ? VERVANGEN_MS : WACHT_MS[Math.min(this.stap++, WACHT_MS.length - 1)];
++    this.herverbind = setTimeout(() => this._verbind(), ms);
++  }
++
++  _poorten(state) {
++    for (const p of [this.poortIn, this.poortUit]) { p.state = state; p.connection = state === 'connected' ? 'open' : 'closed'; }
++    this.access?.onstatechange?.();
++  }
++
++  // ---- van de hub ----------------------------------------------------------
++
++  _bericht(tekst) {
++    let b;
++    try { b = JSON.parse(tekst); } catch (_) { return; }
++    if (!b || typeof b !== 'object') return;
++    if (b.t === 'midi') {
++      if (b.dev !== 'apc40' || !isBytes(b.bytes) || this.poortIn.state !== 'connected') return;
++      if (this.focus || isLos(b.bytes)) this.poortIn.onmidimessage?.({ data: Uint8Array.from(b.bytes), timeStamp: performance.now() });
++    } else if (b.t === 'focus') {
++      this.focus = b.aan === true;     // focus weg: niets uitzetten, alleen geen invoer meer
++    } else if (b.t === 'zet' || b.t === 'trig') {
++      const p = PARAMS.find((x) => x.id === b.id);
++      if (!p) return;
++      if (b.t === 'trig' && p.soort === 'trigger') this.invoke(p.action, b.aan === true);
++      if (b.t === 'zet' && p.soort !== 'trigger' && Number.isFinite(b.v)) {
++        this.invoke(p.action, klem(b.v));
++        this.gezet.set(p.id, this.read(p.action) ?? klem(b.v));   // niet terugkaatsen
++      }
++    } else if (b.t === 'fout') console.warn('[hub]', b.reden);
++    // welkom, globaal, scene en alles wat nog komt: negeren
++  }
++
++  // ---- naar de hub ---------------------------------------------------------
++
++  _waarden() {
++    const w = {};
++    for (const p of PARAMS) if (p.soort !== 'trigger') { w[p.id] = klem(this.read(p.action) ?? p.standaard); this.gezet.set(p.id, w[p.id]); }
++    return w;
++  }
++
++  /** Wat VARVE zelf veranderde (APC, muis, auto-DJ) als `zet`, en de hartslag. */
++  _tik() {
++    if (!this.open) return;
++    for (const p of PARAMS) {
++      const v = p.soort === 'trigger' ? null : this.read(p.action);
++      if (v === null || Math.abs(v - (this.gezet.get(p.id) ?? -1)) < 1e-4) continue;
++      this.gezet.set(p.id, v);
++      this._stuur({ t: 'zet', id: p.id, v: klem(v) });
++    }
++    if (++this.tikken % Math.round((HB_S * 800) / TIK_MS) === 0) this._stuur({ t: 'hb' });
++  }
++
++  _led(bytes) {
++    const b = [...bytes];
++    if (b[0] === 0xf0) { this.ingeslikt++; return; }   // init-SysEx: de hub zet de modus
++    this.leds.push(b);
++    this.ledTimer ??= setTimeout(() => {
++      this.ledTimer = null;
++      if (this.leds.length) this._stuur({ t: 'led', bytes: this.leds });
++      this.leds = [];
++    }, BEELD_MS);
++  }
++}
+diff --git a/src/ui/app.js b/src/ui/app.js
+index d8ac0cb..b4e6042 100644
+--- a/src/ui/app.js
++++ b/src/ui/app.js
+@@ -22,7 +22,7 @@ import { opzetMidi } from './midi-opzet.js';
+ import { startRenderloop } from './renderloop.js';
+ import { tabblad } from './tabblad.js';
+ import { startStatusZender } from './status-zender.js';
+-import { vormenAan } from './vlag.js';
++import { vormenAan, hubAdres } from './vlag.js';
+ 
+ /**
+  * Het instappunt van de schermlaag: maakt de engine en zet de modules in
+@@ -50,14 +50,17 @@ window.meld = meld;
+ // Een tweede tabblad krijgt anders elke knopdruk ook, en stuurt zijn eigen
+ // LED's. Wie de lock heeft is het eerste (zie tabblad.js); midi-opzet.js
+ // vraagt het met isEersteTabblad().
++// Met ?hub= bezit de AV-app-hub de APC (src/control/hub.js): dan beslist de
++// lock niets over MIDI (de hub laat het nieuwste tabblad winnen) en past deze melding niet.
++const hubUrl = hubAdres();
+ {
+   const t = tabblad();
+   let melding = null;
+-  t.on('tweede', () => {
++  if (!hubUrl) t.on('tweede', () => {
+     document.body.classList.add('tweede-tabblad');
+     melding = meld('er is al een VARVE-tabblad open — dit tabblad luistert niet naar de APC (sluit het andere, dan neemt dit het over)', 'fout');
+   });
+-  t.on('eerste', () => {
++  if (!hubUrl) t.on('eerste', () => {
+     if (!document.body.classList.contains('tweede-tabblad')) return;
+     document.body.classList.remove('tweede-tabblad');
+     melding?.remove();
+@@ -170,7 +173,9 @@ attachKeyboard(engine, { onHelp: toggleHelp, venster: (v) => staat.venster[v] })
+ const lagen = new Lagen();
+ bindLagen(lagen);
+ window.lagen = lagen;
+-const midiDelen = opzetMidi({ engine, sluitOnderpanelen: onderpanelen.sluitOnderpanelen, lagen,
++// AV-app-hub: alleen met ?hub=ws://… wordt hub.js geladen (zie hierboven).
++const hub = hubUrl ? { url: hubUrl, HubMidi: (await import('../control/hub.js')).HubMidi } : null;
++const midiDelen = opzetMidi({ engine, sluitOnderpanelen: onderpanelen.sluitOnderpanelen, lagen, hub,
+   geraakt: (sig, regelSig) => spiegel.markeer(sig, regelSig) });
+ spiegel.koppel({ mapping: midiDelen.mapping, lagen });
+ // Het mapje "vorm" op de APC komt als fragment BIJ de mapping, niet erin:
+diff --git a/src/ui/midi-opzet.js b/src/ui/midi-opzet.js
+index 061852b..8bf27bc 100644
+--- a/src/ui/midi-opzet.js
++++ b/src/ui/midi-opzet.js
+@@ -27,12 +27,14 @@ import { uitgangsVertraging } from '../engine/hoorbaar.js';
+  * @param geraakt  (sig, regelSig) -> void: een control op de controller is
+  *                 aangeraakt en deed iets. De spiegel op het scherm licht dan
+  *                 het bijbehorende element even op.
++ * @param hub      null, of { url, HubMidi } met ?hub= (app.js): dan is de APC
++ *                 van de AV-app-hub: geen Web MIDI, en de lock beslist niets over MIDI.
+  */
+-export function opzetMidi({ engine, sluitOnderpanelen, lagen, geraakt = null }) {
++export function opzetMidi({ engine, sluitOnderpanelen, lagen, geraakt = null, hub = null }) {
+   const DEVICES = [apc40mk2, generic];   // generic matcht alles, dus als laatste
+   const pickDevice = (naam) => DEVICES.find((d) => d.match.test(naam || '')) || generic;
+ 
+-  const midi = new MidiHub();
++  const midi = hub ? new hub.HubMidi({ url: hub.url, invoke, read: readAction }) : new MidiHub();
+   /*
+    * Maar één VARVE-tabblad praat met de APC (tabblad.js, Web Lock). Een tweede
+    * tabblad vraagt helemaal GEEN MIDI-toegang aan: dan kan het ook niets
+@@ -41,9 +43,11 @@ export function opzetMidi({ engine, sluitOnderpanelen, lagen, geraakt = null })
+    * vier crashes op 22 sep). Wordt dit tabblad later het eerste (het andere
+    * sloot), dan pas MIDI openen.
+    */
+-  const echteInit = midi.init.bind(midi);
+-  midi.init = (...a) => (isEersteTabblad() ? echteInit(...a) : Promise.resolve(false));
+-  tabblad().on('eerste', () => { echteInit().catch(() => {}); });
++  if (!hub) {
++    const echteInit = midi.init.bind(midi);
++    midi.init = (...a) => (isEersteTabblad() ? echteInit(...a) : Promise.resolve(false));
++    tabblad().on('eerste', () => { echteInit().catch(() => {}); });
++  }
+   const mapping = new Mapping({
+     read: readAction,
+     invoke,
+@@ -82,7 +86,7 @@ export function opzetMidi({ engine, sluitOnderpanelen, lagen, geraakt = null })
+   // LED's lopen op hun eigen klok, niet op de renderloop. requestAnimationFrame
+   // staat stil zodra het venster naar de achtergrond gaat, en dan zouden de
+   // lampjes op de controller bevriezen terwijl de muziek doorspeelt.
+-  setInterval(() => { if (isEersteTabblad()) feedback.tick(); }, 33);
++  setInterval(() => { if (hub || isEersteTabblad()) feedback.tick(); }, 33);
+ 
+   // Laat de controller niet met oude lampjes achter. Bij het sluiten is er geen
+   // volgende tik meer, dus dit gaat direct — en alleen wat echt brandt, niet de
+diff --git a/src/ui/vlag.js b/src/ui/vlag.js
+index 94a883f..9220eb6 100644
+--- a/src/ui/vlag.js
++++ b/src/ui/vlag.js
+@@ -17,3 +17,12 @@ export function vormenAan(url = location.href) {
+   }
+ }
+ 
++/**
++ * De vlag voor de AV-app-hub (?hub=ws://localhost:7700/app): de APC komt dan
++ * van de hub (src/control/hub.js), niet van Web MIDI. Niet onthouden: zonder
++ * de vlag in de adresbalk is het gewoon VARVE, en wordt hub.js niet geladen.
++ */
++export function hubAdres(url = location.href) {
++  const v = new URL(url).searchParams.get('hub');
++  return v && /^wss?:\/\//.test(v) ? v : null;
++}
+diff --git a/test/hub.test.mjs b/test/hub.test.mjs
+new file mode 100644
+index 0000000..3ac2eea
+--- /dev/null
++++ b/test/hub.test.mjs
+@@ -0,0 +1,202 @@
++// De koppeling met de AV-app-hub (src/control/hub.js, ?hub=ws://…): een nep-WebSocket
++// en een nep-klok, de echte MidiHub en Feedback erachter. De conformiteitstoets van de
++// hub zelf (in een echte Chromium) staat in tools/headless/hub.mjs.
++// Draai met: node test/hub.test.mjs
++import { readFileSync, existsSync } from 'node:fs';
++import { fileURLToPath } from 'node:url';
++
++const fails = [];
++const ok = (naam, cond) => { if (!cond) fails.push(naam); console.log((cond ? '  ok  ' : 'FAIL  ') + naam); };
++
++// ---- nep-klok: setTimeout/setInterval op een eigen tijdlijn ---------------
++const echteTimeout = setTimeout;
++const echteWacht = (ms) => new Promise((r) => echteTimeout(r, ms));   // de echte klok, vóór de nep-klok
++let nu = 0, volg = 0;
++const rij = [];
++globalThis.setTimeout = (fn, ms = 0) => { rij.push({ id: ++volg, fn, op: nu + ms }); return volg; };
++globalThis.setInterval = (fn, ms) => { rij.push({ id: ++volg, fn, op: nu + ms, elke: ms }); return volg; };
++globalThis.clearTimeout = globalThis.clearInterval = (id) => { const i = rij.findIndex((t) => t.id === id); if (i >= 0) rij.splice(i, 1); };
++const vooruit = (ms) => {
++  const eind = nu + ms;
++  for (;;) {
++    rij.sort((a, b) => a.op - b.op || a.id - b.id);
++    const t = rij[0];
++    if (!t || t.op > eind) break;
++    nu = t.op;
++    if (t.elke) t.op += t.elke; else rij.shift();
++    t.fn();
++  }
++  nu = eind;
++};
++
++// Web MIDI mag NOOIT gevraagd worden met de vlag.
++let midiGevraagd = 0;
++Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { requestMIDIAccess: async () => { midiGevraagd++; throw new Error('niet vragen'); } } });
++
++class NepWS {
++  static alle = [];
++  constructor(url) { this.url = url; this.readyState = 0; this.uit = []; this.gemaakt = nu; NepWS.alle.push(this); }
++  send(s) { this.uit.push(JSON.parse(s)); }
++  close(code = 1000) { if (this.readyState === 3) return; this.readyState = 3; this.onclose?.({ code }); }
++  open() { this.readyState = 1; this.onopen?.(); }
++  krijg(b) { this.onmessage?.({ data: typeof b === 'string' ? b : JSON.stringify(b) }); }
++  soort(t) { return this.uit.filter((b) => b.t === t); }
++}
++const laatste = () => NepWS.alle.at(-1);
++
++const { HubMidi, MANIFEST, PARAMS, WACHT_MS, VERVANGEN_MS } = await import('../src/control/hub.js');
++const { hubAdres } = await import('../src/ui/vlag.js');
++const { Feedback } = await import('../src/control/feedback.js');
++const apc40mk2 = (await import('../src/control/devices/apc40mk2.js')).default;
++
++console.log('de vlag');
++ok('?hub=ws://… geeft het adres', hubAdres('http://localhost:8777/?hub=ws://localhost:7700/app') === 'ws://localhost:7700/app');
++ok('zonder ?hub= niets', hubAdres('http://localhost:8777/') === null);
++ok('?hub= met iets anders dan ws:// of wss:// telt niet', hubAdres('http://localhost:8777/?hub=http://x') === null && hubAdres('http://localhost:8777/?hub=1') === null);
++
++console.log('\nzonder vlag verandert er niets (bron)');
++{
++  const lees = (p) => readFileSync(fileURLToPath(new URL(`../src/${p}`, import.meta.url)), 'utf8');
++  const app = lees('ui/app.js'), opzet = lees('ui/midi-opzet.js');
++  ok('niemand importeert hub.js statisch (geen byte zonder vlag)', ![app, opzet, lees('ui/vlag.js')].some((s) => /^\s*import\s[^;]*control\/hub\.js/m.test(s)));
++  ok('app.js laadt hub.js alleen als hubAdres() iets gaf', /hubUrl \? \{[^}]*await import\('\.\.\/control\/hub\.js'\)/.test(app));
++  ok('midi-opzet: zonder hub de gewone MidiHub', /hub \? new hub\.HubMidi\([^)]*\) : new MidiHub\(\)/.test(opzet));
++  ok('midi-opzet: zonder hub blijft de Web Lock MIDI bewaken', /if \(!hub\) \{\s*const echteInit = midi\.init\.bind\(midi\);\s*midi\.init = \(\.\.\.a\) => \(isEersteTabblad\(\)/.test(opzet));
++}
++
++console.log('\nhet manifest');
++ok('lease, rings host, app varve-dj, hb_s 1', MANIFEST.lease === true && MANIFEST.rings === 'host' && MANIFEST.app === 'varve-dj' && MANIFEST.hb_s === 1);
++ok('geen action-namen op de draad', MANIFEST.params.every((p) => !('action' in p)));
++ok('master -> macro.intensiteit via mixer.master', PARAMS.some((p) => p.id === 'master' && p.rol === 'macro.intensiteit' && p.action === 'mixer.master'));
++{
++  const hubRepo = process.env.VARVE_HUB_REPO || fileURLToPath(new URL('../../av-app-hub', import.meta.url));
++  const pad = `${hubRepo}/src/protocol/manifest.js`;
++  if (existsSync(pad)) {
++    const { valideerManifest } = await import(pad);
++    const v = valideerManifest(MANIFEST);
++    ok('geldig volgens de hub (valideerManifest)', v.ok);
++  } else console.log('  --  valideerManifest overgeslagen (geen av-app-hub naast deze map; zet VARVE_HUB_REPO)');
++}
++
++// ---- de koppeling -----------------------------------------------------------
++const stand = { 'mixer.master': 0.8, 'mixer.xfader': 0.5, 'video.master': 1, 'video.pulse': 0 };
++const aangeroepen = [];
++const invoke = (id, v) => { aangeroepen.push([id, v]); if (id in stand) stand[id] = Math.max(0, Math.min(1, v)); return true; };
++const read = (id) => stand[id] ?? null;
++
++const midi = new HubMidi({ url: 'ws://hub.test/app', invoke, read, WS: NepWS });
++const feedback = new Feedback({ device: apc40mk2, mapping: { rules: new Map(), vars: () => ({}) }, read, meta: () => null,
++  send: (b, o) => midi.send(b, o), sendSysex: (b, o) => midi.sendSysex(b, o) });
++let uitvoer = 0, invoer = [];
++midi.on('output', (p) => { if (p) { uitvoer++; feedback.init(); } });
++midi.onInput((m) => invoer.push(m));
++
++console.log('\nverbinden');
++await midi.init();
++ok('requestMIDIAccess niet aangeroepen', midiGevraagd === 0);
++ok('één verbinding naar het adres uit de vlag', NepWS.alle.length === 1 && laatste().url === 'ws://hub.test/app');
++ok('nog geen poort zolang de hub niet antwoordt', midi.output() === null && uitvoer === 0);
++laatste().open();
++const [h, m, s] = laatste().uit;
++ok('eerst hallo (app + inst), dan manifest, dan staat', h?.t === 'hallo' && h.app === 'varve-dj' && !!h.inst && m?.t === 'manifest' && s?.t === 'staat');
++ok('staat noemt elke waarde', PARAMS.filter((p) => p.soort !== 'trigger').every((p) => typeof s.waarden[p.id] === 'number'));
++ok('staat = wat VARVE nu heeft (master 0,8)', s.waarden.master === 0.8);
++ok('de poort heet APC40: het gewone profiel en de LED-laag', midi.output()?.name.includes('APC40') && uitvoer === 1);
++
++console.log('\nLED\'s naar de hub');
++vooruit(100);
++const led = laatste().soort('led');
++ok('LED\'s gebundeld per beeld (meerdere berichten per led)', led.length >= 1 && led.length < 30 && led.every((b) => b.bytes.length >= 1));
++ok('init-SysEx niet verstuurd (de hub zet de modus)', midi.ingeslikt === 1 && !led.some((b) => b.bytes.some((x) => x[0] === 0xf0)));
++ok('alleen geldige 3-byte LED-berichten', led.every((b) => b.bytes.every((x) => x.length === 3 && [0x80, 0x90, 0xb0].includes(x[0] & 0xf0))));
++ok('de veegbeurt komt helemaal aan', led.reduce((n, b) => n + b.bytes.length, 0) === apc40mk2.allLeds().length);
++
++console.log('\nAPC-invoer');
++await echteWacht(80);   // het echofilter van MidiHub (60 ms na wat wij stuurden) laten verlopen
++const druk = { t: 'midi', dev: 'apc40', bytes: [0x90, 0x5b, 0x7f] };
++laatste().krijg(druk);
++ok('zonder focus geen invoer', invoer.length === 0);
++laatste().krijg({ t: 'focus', aan: true });
++laatste().krijg(druk);
++ok('met focus: bytes -> MidiHub -> onInput', invoer.length === 1 && invoer[0].sig === 'note:0:91' && invoer[0].on === true);
++laatste().krijg({ t: 'focus', aan: false });
++laatste().krijg(druk);
++laatste().krijg({ t: 'midi', dev: 'apc40', bytes: [0x90, 0x5b, 0x00] });
++ok('focus weg: geen nieuwe invoer, loslaten komt nog door', invoer.length === 2 && invoer[1].on === false);
++ok('focus weg: niets uitgezet (geen action)', aangeroepen.length === 0);
++laatste().krijg({ t: 'focus', aan: true });
++laatste().krijg({ t: 'midi', dev: 'lpd8', bytes: [0x90, 1, 1] });
++laatste().krijg({ t: 'midi', dev: 'apc40', bytes: [0x90, 999, 1] });
++ok('andere apparaten en kapotte bytes: genegeerd', invoer.length === 2);
++
++console.log('\nwaarden van de hub');
++laatste().krijg({ t: 'zet', id: 'master', v: 0.25, bron: 'lpd8' });
++ok('zet master -> mixer.master over de bus', aangeroepen.at(-1)?.[0] === 'mixer.master' && aangeroepen.at(-1)[1] === 0.25);
++laatste().krijg({ t: 'zet', id: 'beeld', v: 7 });
++ok('buiten 0..1 wordt geklemd', stand['video.master'] === 1 && aangeroepen.at(-1)[1] === 1);
++const voor = aangeroepen.length;
++laatste().krijg({ t: 'zet', id: 'bestaat-niet', v: 0.5 });
++laatste().krijg({ t: 'zet', id: 'master', v: 'veel' });
++laatste().krijg({ t: 'zet', id: 'master', v: NaN });
++laatste().krijg({ t: 'trig', id: 'master', aan: true });
++laatste().krijg('{kapot');
++laatste().krijg('null');
++laatste().krijg({ t: 'globaal', waarden: { 'macro.ruimte': 0.5, adem: 0.1 } });
++laatste().krijg({ t: 'scene', i: 2 });
++laatste().krijg({ t: 'iets-uit-de-toekomst', x: 1 });
++laatste().krijg({ t: 'welkom', hub: 'varve-hub', v: 1 });
++ok('onbekend, kapot en ongeldig: genegeerd, geen action', aangeroepen.length === voor);
++const zetVoor = laatste().soort('zet').length;
++vooruit(1000);
++ok('wat de hub zette kaatst niet terug', laatste().soort('zet').length === zetVoor);
++stand['mixer.xfader'] = 0.9;   // Clay schuift de crossfader (APC of muis)
++vooruit(250);
++ok('eigen wijziging gaat terug als zet', laatste().soort('zet').some((b) => b.id === 'xfader' && b.v === 0.9));
++
++console.log('\nhartslag');
++{
++  const ws = laatste();
++  const t0 = nu, hb0 = ws.soort('hb').length;
++  vooruit(5000);
++  ok('elke 0,8 s een hb (hb_s = 1)', ws.soort('hb').length - hb0 >= 6 && nu - t0 === 5000);
++}
++
++console.log('\nherverbinden');
++{
++  const wachttijden = [];
++  for (let i = 0; i < 5; i++) {
++    const ws = laatste(), t = nu;
++    ws.close(1006);
++    if (i === 0) ok('verbinding weg: poort weg (mapping laat shift en knoppen los)', midi.output() === null && midi.input() === null);
++    vooruit(10000);
++    wachttijden.push(laatste().gemaakt - t);
++    if (i < 4) laatste().readyState = 0;   // weer niet gelukt
++  }
++  ok(`0,5 → 1 → 2 → 5 → 5 s (${wachttijden.join(', ')} ms)`, JSON.stringify(wachttijden) === JSON.stringify([...WACHT_MS, 5000]));
++  laatste().open();
++  ok('terug: opnieuw hallo/manifest/staat en de LED-laag opnieuw', laatste().uit[0].t === 'hallo' && laatste().uit[1].t === 'manifest' && uitvoer === 2);
++  ok('focus begint weer uit tot de hub hem geeft', midi.focus === false);
++  vooruit(100);
++  ok('alle LED\'s opnieuw naar de hub', laatste().soort('led').reduce((n, b) => n + b.bytes.length, 0) >= apc40mk2.allLeds().length);
++  let t = nu;
++  laatste().close(1006);
++  vooruit(600);
++  ok('na een gelukte verbinding weer vanaf 0,5 s', laatste().gemaakt - t === 500);
++  laatste().open();
++  t = nu;
++  laatste().close(4001);
++  const aantal = NepWS.alle.length;
++  vooruit(29000);
++  ok('4001 (vervangen door een nieuwer tabblad): niet binnen 29 s', NepWS.alle.length === aantal);
++  vooruit(1000);
++  ok('4001: na 30 s opnieuw', NepWS.alle.length === aantal + 1 && laatste().gemaakt - t === VERVANGEN_MS);
++  laatste().open();
++  midi.stop();
++  const n = NepWS.alle.length;
++  vooruit(60000);
++  ok('stop: dicht en geen nieuwe pogingen', NepWS.alle.length === n && laatste().readyState === 3);
++}
++ok('requestMIDIAccess ook daarna nooit aangeroepen', midiGevraagd === 0);
++
++console.log(fails.length ? `\n${fails.length} FOUT(EN): ${fails.join(', ')}` : '\nAlle checks groen.');
++process.exit(fails.length ? 1 : 0);
+diff --git a/tools/README.md b/tools/README.md
+index 8dd69e3..73a5a13 100644
+--- a/tools/README.md
++++ b/tools/README.md
+@@ -71,6 +71,12 @@ worktree: de media-map komt via git) en knipt audio naar de tijdelijke map van h
+   dezelfde headless Chromium (Web Lock en BroadcastChannel zoals bij Clay): mixer open/dicht, een tweede mixer
+   rood, de knop "mixer openen", wat er in de mixer staat, afvinken en notities na herladen. Eigen server
+   (8796), tijdelijke database en speellijst, MIDI eruit vóór elke pagina. Schermafdruk `controle.png`.
++- `hub.mjs` — de koppeling met de AV-app-hub (`?hub=`, src/control/hub.js) in Chromium via
++  playwright-core uit de AV-app-hub (`VARVE_HUB_REPO`, standaard `../av-app-hub`). Zonder vlag:
++  Web MIDI zoals altijd, geen WebSocket, hub.js niet geladen. Met vlag: `toetsApp` (de
++  conformiteitstoets van de hub) als TWEEDE tabblad, requestMIDIAccess nooit, LED's toch naar de
++  hub; daarna de echte hub (`startHub`) met nep-APC en nep-LPD8: masterfader en LPD8 K1 zetten de
++  master. requestMIDIAccess is overal een spion die weigert: veilig met de APC aangesloten.
+ - `noodknoppen.mjs` — zwart, bevriezen, master en flits (A4) pixel voor pixel, in het hoofdvenster én
+   in het losse venster (video.html, dat zelf mengt). Geen ingest: een canvas met vier gekleurde kwarten
+   als nep-video op track 1 (demotrack eronder, stil). De fade en de flits worden op EXACTE tijden gemeten
+diff --git a/tools/headless/hub.mjs b/tools/headless/hub.mjs
+new file mode 100644
+index 0000000..8f8671f
+--- /dev/null
++++ b/tools/headless/hub.mjs
+@@ -0,0 +1,134 @@
++// De koppeling met de AV-app-hub (src/control/hub.js) in een echte Chromium,
++// met de conformiteitstoets van de hub zelf (tools/nep-hub.mjs: toetsApp).
++//
++//   1. ZONDER ?hub=: alles zoals altijd. Web MIDI wordt gevraagd (zoals nu),
++//      er gaat geen WebSocket open en hub.js wordt niet eens geladen.
++//   2. MET ?hub=<nep-hub>: toetsApp moet slagen (hallo, geldig manifest, staat,
++//      hartslag, onbekende berichten, geen mode-SysEx, herverbinden). Het
++//      hub-tabblad is hier het TWEEDE tabblad (een gewoon VARVE-tabblad heeft
++//      de Web Lock): toch gaan de LED's naar de hub, want de lock beslist met
++//      de vlag niets over MIDI. requestMIDIAccess wordt NOOIT aangeroepen.
++//
++// VEILIG MET DE APC AANGESLOTEN: requestMIDIAccess is in elke pagina een spion
++// die telt en weigert (er komt nooit een MIDI-client). Eigen server op een
++// eigen poort met een tijdelijke database, zoals kijk.mjs.
++//
++// Nodig: de repo AV-app-hub (voor toetsApp en playwright-core uit zijn node_modules).
++// Gebruik:  node tools/headless/hub.mjs
++//   VARVE_HUB_REPO=<map>  de AV-app-hub (standaard ../av-app-hub naast deze repo)
++//   VARVE_CHROME=<pad>    een eigen Chromium (standaard /opt/pw-browsers/chromium,
++//                         anders kiest playwright-core zelf)
++//   VARVE_KIJK_POORT      andere poort (standaard 8798)
++import { spawn } from 'node:child_process';
++import { mkdtempSync, rmSync, existsSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++
++const WORTEL = fileURLToPath(new URL('../..', import.meta.url));
++const HUB = process.env.VARVE_HUB_REPO || join(WORTEL, '../av-app-hub');
++const POORT = Number(process.env.VARVE_KIJK_POORT) || 8798;
++const CHROME = process.env.VARVE_CHROME || (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
++if (!existsSync(join(HUB, 'tools/nep-hub.mjs'))) { console.error(`geen AV-app-hub in ${HUB} (zet VARVE_HUB_REPO)`); process.exit(2); }
++const { toetsApp } = await import(join(HUB, 'tools/nep-hub.mjs'));
++const { chromium } = await import(join(HUB, 'node_modules/playwright-core/index.mjs'));
++
++const tmp = mkdtempSync(join(tmpdir(), 'varve-hub-'));
++const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
++const fails = [];
++const ok = (naam, cond, extra = '') => { if (!cond) fails.push(naam); console.log(`${cond ? '  ok  ' : 'FAIL  '}${naam}${extra ? ` (${extra})` : ''}`); };
++
++// In elke pagina vóór alles: MIDI-spion (telt, weigert) en WebSocket-spion (telt adressen).
++const SPIONNEN = () => {
++  window.__midi = 0;
++  window.__ws = [];
++  const weiger = () => { window.__midi++; return Promise.reject(new DOMException('geen MIDI in de test', 'SecurityError')); };
++  Object.defineProperty(Navigator.prototype, 'requestMIDIAccess', { configurable: true, value: weiger });
++  const Echt = window.WebSocket;
++  window.WebSocket = class extends Echt { constructor(url, p) { super(url, p); window.__ws.push(String(url)); } };
++};
++
++const server = spawn(process.execPath, [join(WORTEL, 'server/index.js')], {
++  env: { ...process.env, PORT: String(POORT), VARVE_DB: join(tmp, 'lib.db'), VARVE_MEDIA: join(tmp, 'media'),
++    VARVE_OPNAMES: join(tmp, 'opnames'), VARVE_HERANALYSE: 'uit' },
++  stdio: 'ignore',
++});
++const browser = await chromium.launch({ executablePath: CHROME, args: ['--autoplay-policy=no-user-gesture-required'] });
++const context = await browser.newContext();
++await context.addInitScript(SPIONNEN);
++const BASIS = `http://localhost:${POORT}/`;
++
++async function open(url) {
++  const page = await context.newPage();
++  const verzoeken = [];
++  page.on('request', (r) => verzoeken.push(r.url()));
++  page.on('pageerror', (e) => console.log(`    [pagina] ${e.message}`));
++  await page.goto(url);
++  await page.waitForFunction(() => window.midi && window.feedback, null, { timeout: 20000 });
++  return { page, verzoeken };
++}
++
++try {
++  for (let i = 0; i < 100; i++) { try { if ((await fetch(BASIS)).ok) break; } catch (_) {} await wacht(100); }
++
++  console.log('zonder ?hub=: alles zoals altijd');
++  const gewoon = await open(BASIS);
++  await gewoon.page.waitForFunction(() => window.tabblad?.beslist && window.__midi > 0, null, { timeout: 10000 }).catch(() => {});
++  const g = await gewoon.page.evaluate(() => ({ midi: window.__midi, ws: window.__ws, klasse: window.midi.constructor.name, eerste: window.tabblad.eerste }));
++  ok('Web MIDI wordt gevraagd zoals altijd (eerste tabblad, met de lock)', g.midi > 0 && g.eerste, `${g.midi}×`);
++  ok('de gewone MidiHub', g.klasse === 'MidiHub');
++  ok('geen WebSocket', g.ws.length === 0, g.ws.join(', '));
++  ok('hub.js niet geladen', !gewoon.verzoeken.some((u) => u.includes('/control/hub.js')));
++
++  console.log('\nmet ?hub=: de conformiteitstoets van de hub (dit tabblad is het tweede)');
++  let hub = null;
++  const r = await toetsApp({
++    poort: 0,
++    start: async (url) => {
++      hub = await open(`${BASIS}?hub=${encodeURIComponent(url)}`);
++      await hub.page.waitForFunction(() => window.midi.output(), null, { timeout: 10000 }).catch(() => {});
++      hub.poort = await hub.page.evaluate(() => window.midi.output()?.name);
++    },
++  });
++  for (const u of r.uitslagen) ok(`toetsApp: ${u.naam}`, u.ok, u.detail);
++  ok(`toetsApp: ${r.app} conform PROTOCOL.md`, r.ok);
++  const h = await hub.page.evaluate(() => ({ midi: window.__midi, klasse: window.midi.constructor.name, eerste: window.tabblad.eerste,
++    tx: window.midi.tx, ingeslikt: window.midi.status().hub.ingeslikt}));
++  ok('requestMIDIAccess NOOIT aangeroepen', h.midi === 0, `${h.midi}×`);
++  ok('HubMidi met de poort van de hub', h.klasse === 'HubMidi' && /APC40/.test(hub.poort || ''), hub.poort);
++  ok('tweede tabblad (geen lock) en toch LED\'s naar de hub: de lock beslist niets over MIDI', !h.eerste && h.tx > 0, `${h.tx} LED-berichten`);
++  ok('init-SysEx ingeslikt, niet verstuurd', h.ingeslikt >= 1);
++  ok('hub.js geladen', hub.verzoeken.some((u) => u.includes('/control/hub.js')));
++
++  console.log('\nde echte hub (startHub) met een nep-APC en een nep-LPD8');
++  const { startHub } = await import(join(HUB, 'src/hub.js'));
++  const { NepSysteem } = await import(join(HUB, 'src/ports/nep.js'));
++  const { laadConfig } = await import(join(HUB, 'src/config.js'));
++  const systeem = new NepSysteem();
++  const apc = systeem.voegToe('APC40 mkII');
++  const lpd8 = systeem.voegToe('LPD8 mk2');
++  lpd8.antwoord = (b) => { if (b[1] === 0x7e) setTimeout(() => lpd8.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7]), 1); };
++  const echt = await startHub({ config: { ...laadConfig(), hotplug_ms: 20 }, systeem, poort: 0, drivers: false });
++  try {
++    const tot = async (fn, ms = 10000) => { const eind = Date.now() + ms; while (Date.now() < eind) { const x = await fn(); if (x) return x; await wacht(50); } return fn(); };
++    const { page } = await open(`${BASIS}?hub=${encodeURIComponent(echt.adres.replace('http', 'ws') + '/app')}`);
++    ok('varve-dj aangemeld en heeft de focus', await tot(() => echt.kern.beeld().focus === 'varve-dj' && echt.apparaten.apc.verbonden));
++    const leds = await tot(() => apc.verstuurd.filter((b) => b[0] >= 0x80 && b[0] < 0xc0).length > 100);
++    ok('LED\'s van VARVE staan op de APC', leds, `${apc.verstuurd.length} berichten naar de APC`);
++    const master = () => page.evaluate(() => window.engine.masterLevel);
++    // Masterfader van de APC: omhoog door 0,8 (soft-takeover van VARVE pakt hem), dan naar 64.
++    for (const r of [0, 32, 64, 96, 110, 127, 100, 80, 64]) { apc.injecteer([0xb0, 14, r]); await wacht(30); }
++    ok('APC-masterfader -> mapping (soft-takeover) -> mixer.master', await tot(async () => Math.abs((await master()) - 64 / 127) < 0.01), (await master()).toFixed(3));
++    await tot(() => echt.apparaten.lpd8.model === 'mk2');
++    for (let r = 20; r <= 110; r += 5) { lpd8.injecteer([0xb0, 70, r]); await wacht(20); }   // K1 = macro.intensiteit, kruist 0,5
++    ok('LPD8 K1 (macro.intensiteit) -> master, met pickup en slew', await tot(async () => Math.abs((await master()) - 110 / 127) < 0.02), (await master()).toFixed(3));
++    const nu = await page.evaluate(() => ({ midi: window.__midi, hub: window.midi.status().hub }));
++    ok('ook hier geen requestMIDIAccess', nu.midi === 0);
++  } finally { await echt.stop(); }
++} finally {
++  await browser.close().catch(() => {});
++  server.kill();
++  rmSync(tmp, { recursive: true, force: true });
++}
++console.log(fails.length ? `\n${fails.length} FOUT(EN): ${fails.join(', ')}` : '\nAlle checks groen: varve-dj conform PROTOCOL.md.');
++process.exit(fails.length ? 1 : 0);
+-- 
+2.43.0
+
