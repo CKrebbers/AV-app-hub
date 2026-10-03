@@ -1,0 +1,64 @@
+From d2881fb0f737ea9c6ef8dc6d4560b98ce7c3d79f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 3 Oct 2026 15:38:05 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?APC40:=20=E2=97=84/=E2=96=BA=20volgens=20pr?=
+ =?UTF-8?q?otocol=20v1.2=20(right=20=3D=2096,=20left=20=3D=2097)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+In apc40.ts stonden de pijlen omgedraaid: left = note 96 en right = note 97.
+Volgens het Akai APC40 mkII Communications Protocol v1.2 is ► (right)
+0x60 = 96 en ◄ (left) 0x61 = 97; Varve DJ en de AV-app-hub lezen het ook
+zo. Nog niet op de echte APC nagemeten (de hub-proef F0 doet dat: één
+knop tegelijk indrukken).
+
+apc40.ts valt niet onder regel 1 (alleen midi.ts en bus.ts zijn bevroren).
+Nieuwe test in kern.test.ts faalt zonder deze wijziging. Gevolg in de
+Ademmachine: ◄ = ai-rej en ► = ai-acc zitten nu op de goede fysieke knop
+(nu nog stubs, dus er verandert niets hoorbaars; een oude actielog speelt
+identiek terug).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/kern/apc40.ts | 5 +++--
+ test/kern.test.ts | 7 +++++++
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/kern/apc40.ts b/src/kern/apc40.ts
+index b753dcb..e5581ba 100644
+--- a/src/kern/apc40.ts
++++ b/src/kern/apc40.ts
+@@ -38,8 +38,9 @@ export function apc40(): { controls: Control[]; labels: [string, number, number]
+   ([['devL', '◄ device', 58], ['devR', 'device ►', 59], ['bankL', '◄ bank', 60], ['bankR', 'bank ►', 61]] as const).forEach(([id, l, n], i) => K(id, 'btn', l, { t: 'note', n, ch: 0 }, X + i * 1.1, 4.35, 1, 0.38));
+   ([['devOn', 'dev on/off', 62], ['lock', 'dev lock', 63], ['clipdev', 'clip/dev', 64], ['detail', 'detail', 65]] as const).forEach(([id, l, n], i) => K(id, 'btn', l, { t: 'note', n, ch: 0 }, X + i * 1.1, 4.8, 1, 0.38));
+   K('up', 'btn', '▲', { t: 'note', n: 94, ch: 0 }, X + 0.55, 5.4, 0.5, 0.35);
+-  K('left', 'btn', '◄', { t: 'note', n: 96, ch: 0 }, X, 5.8, 0.5, 0.35);
+-  K('right', 'btn', '►', { t: 'note', n: 97, ch: 0 }, X + 1.1, 5.8, 0.5, 0.35);
++  // Protocol v1.2: ► (right) = 0x60 = 96, ◄ (left) = 0x61 = 97. Niet andersom (stond tot okt 2026 omgedraaid).
++  K('left', 'btn', '◄', { t: 'note', n: 97, ch: 0 }, X, 5.8, 0.5, 0.35);
++  K('right', 'btn', '►', { t: 'note', n: 96, ch: 0 }, X + 1.1, 5.8, 0.5, 0.35);
+   K('down', 'btn', '▼', { t: 'note', n: 95, ch: 0 }, X + 0.55, 6.2, 0.5, 0.35);
+   K('shift', 'btn', 'shift', { t: 'note', n: 98, ch: 0 }, X + 2.2, 5.6, 1, 0.4);
+   K('bank', 'btn', 'bank', { t: 'note', n: 103, ch: 0 }, X + 3.3, 5.6, 1, 0.4);
+diff --git a/test/kern.test.ts b/test/kern.test.ts
+index 4262eb5..264573f 100644
+--- a/test/kern.test.ts
++++ b/test/kern.test.ts
+@@ -35,6 +35,13 @@ describe('APC40 mkII-kaart', () => {
+     expect(count('knob')).toBe(18);
+     expect(APC.controls.filter((c) => c.id.startsWith('scene')).length).toBe(5);
+   });
++  it('◄/► volgens protocol v1.2: right = note 96 (0x60), left = note 97 (0x61)', () => {
++    expect(findNote(0x60, 0)?.id).toBe('right');
++    expect(findNote(0x61, 0)?.id).toBe('left');
++    // up/down (94/95) stonden al goed
++    expect(findNote(94, 0)?.id).toBe('up');
++    expect(findNote(95, 0)?.id).toBe('down');
++  });
+   it('geen dubbele MIDI-adressen', () => {
+     const keys = APC.controls.map((c) => `${c.midi.t}:${c.midi.n}:${c.midi.ch}`);
+     expect(new Set(keys).size).toBe(keys.length);
+-- 
+2.43.0
+
