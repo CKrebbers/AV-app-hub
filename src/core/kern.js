@@ -8,6 +8,9 @@
 //   2. hubtoets ingedrukt → hublaag (focus, hub-snapshots); niets gaat naar een app
 //   3. anders → app met focus: lease (ruwe bytes) of manifest-indeling
 // Een 'los' gaat altijd naar waar de bijbehorende 'druk' heen ging (geen hangende triggers).
+//
+// Geheugen: `exporteer()`/`importeer(data)` (puur) geven en nemen de snapshots en de waarden van apps met
+// truth:"hub"; het event 'geheugen' meldt dat daar iets aan veranderde (src/opslag.js schrijft het weg).
 import * as APC from '../devices/apc40mk2.js';
 import { klem01 } from '../protocol/berichten.js';
 import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN } from '../protocol/manifest.js';
@@ -156,8 +159,10 @@ export class Kern extends Zender {
     this.routes = new Map();
     /** @type {Map<string, Pickup>} */
     this.lpdPickups = new Map();
-    /** @type {Map<string, { app: string, id: string, slew: Slew }>} */
+    /** @type {Map<string, { app: string, id: string, slew: Slew, bron: string }>} */
     this.slews = new Map();
+    /** Bewaarde waarden (van schijf) van truth:"hub"-apps die zich deze sessie nog niet aanmeldden. @type {Map<string, Record<string, number>>} */
+    this.bewaard = new Map();
     /** @type {Map<number, Record<string, Record<string, number>>>} */
     this.snapshots = new Map();
     /** @type {Map<string, LedStaat>} wat er nu op het oppervlak staat (volgens de kern) */
@@ -275,7 +280,13 @@ export class Kern extends Zender {
     if (a.manifest?.truth === 'hub') {
       for (const p of a.manifest.params) {
         if (p.soort === 'trigger' || !(p.id in a.waarden)) continue;
-        this.#naar(a, { t: 'zet', id: p.id, v: a.waarden[p.id], bron: 'replay' });
+        // Na een herstart staat de app weer op zijn standaardwaarde: van daaruit verlopen (slew_s).
+        // Bij een netwerkhapering (zelfde inst) heeft hij de waarde nog: gewoon opnieuw sturen.
+        if (herstart && this.#slewt(p)) {
+          const doel = this.#doel(a, p.id);
+          a.waarden[p.id] = kwantiseer(p, p.standaard ?? 0);
+          this.#zetZacht(a, p.id, doel, 'replay');
+        } else this.#naar(a, { t: 'zet', id: p.id, v: a.waarden[p.id], bron: 'replay' });
       }
       a.replay = true;
     }
@@ -288,7 +299,7 @@ export class Kern extends Zender {
 
   /** @param {string} app @returns {AppStaat} */
   #nieuweApp(app) {
-    const cfg = this.config.apps?.[app] ?? {};
+    const cfg = this.#appCfg(app);
     /** @type {AppStaat} */
     const a = {
       app, slot: null, naam: cfg.naam ?? app, kleurHex: '#ffffff', kleur: 3, dim: 1,
@@ -317,6 +328,21 @@ export class Kern extends Zender {
     a.slot = i + 1;
   }
 
+  /**
+   * Instellingen van een app uit config.apps. Een app die zich per monitor aanmeldt (`flux-dp-1`) valt terug
+   * op de basis-app met `per_monitor: true` (`flux`): zijn kleur, en als naam "Flux (dp-1)".
+   * @param {string} app @returns {Record<string, any>}
+   */
+  #appCfg(app) {
+    const apps = this.config.apps ?? {};
+    if (apps[app]) return apps[app];
+    for (const [basis, cfg] of Object.entries(apps)) {
+      if (!cfg?.per_monitor || !app.startsWith(`${basis}-`) || app.length <= basis.length + 1) continue;
+      return { ...cfg, naam: `${cfg.naam ?? basis} (${app.slice(basis.length + 1)})` };
+    }
+    return {};
+  }
+
   /** @param {AppStaat} a @param {string|undefined} hex */
   #zetKleur(a, hex) {
     a.kleurHex = typeof hex === 'string' && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex.toLowerCase() : '#ffffff';
@@ -330,18 +356,27 @@ export class Kern extends Zender {
     if (!r.ok) { this.#naar(a, { t: 'fout', reden: `ongeldig manifest: ${r.fouten.join('; ')}` }); return; }
     if (r.manifest.app !== a.app) { this.#naar(a, { t: 'fout', reden: `manifest.app (${r.manifest.app}) ≠ hallo.app (${a.app})` }); return; }
     const man = r.manifest;
-    const cfg = this.config.apps?.[a.app] ?? {};
+    const cfg = this.#appCfg(a.app);
     // rings valt terug op config.apps.<app>.rings, zoals kleur (de validator vult anders 'host' in).
     if (man.lease && /** @type {any} */ (m).rings === undefined && (cfg.rings === 'auto' || cfg.rings === 'host')) man.rings = cfg.rings;
     a.manifest = man;
     a.naam = man.naam;
     this.#zetKleur(a, man.kleur ?? cfg.kleur);
     for (const p of man.params) if (p.soort !== 'trigger' && !(p.id in a.waarden)) a.waarden[p.id] = p.standaard ?? 0;
+    // Waarden van schijf (vorige hub-sessie) voor een truth:"hub"-app: nu pas weten we dat hij ze wil.
+    const bewaard = man.truth === 'hub' ? this.bewaard.get(a.app) : undefined;
+    if (man.truth === 'hub') this.bewaard.delete(a.app);
     a.indeling = man.lease ? null : maakIndeling(man, this.config.kaarten?.[a.app] ?? null);
     a.pagina = Math.min(a.pagina, (a.indeling?.paginas.length ?? 1) - 1);
     a.pickups = new Map();
     if (a.status === 'nieuw') a.status = 'actief';
     this.#hartslag(a); // opnieuw, nu met de hb_s van het manifest
+    if (bewaard) {
+      // Opnieuw afspelen zoals bij een herstart (§10): van de standaardwaarde die de app net aankondigde, met slew_s.
+      for (const p of man.params) if (p.soort !== 'trigger' && typeof bewaard[p.id] === 'number') this.#zetZacht(a, p.id, bewaard[p.id], 'replay');
+      a.replay = true;
+    }
+    if (man.truth === 'hub') this.meld('geheugen');
     // `getekend` blijft staan: was het oppervlak door een lease getekend, dan neemt #tekenManifest het vergeet-pad.
     if (this.focusApp === a.app) this.#teken();
     else if (this.hubIn) this.#teken();
@@ -410,7 +445,28 @@ export class Kern extends Zender {
     const k = p?.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(p.rol) : -1;
     const lpk = k >= 0 && bron !== 'lpd8' ? this.lpdPickups.get(`k${k + 1}`) : undefined;
     if (lpk && p?.rol && this.#rolParam(p.rol)?.a === a) this.lpdPickups.set(`k${k + 1}`, zetDoel(lpk, w));
+    if (a.manifest?.truth === 'hub') this.meld('geheugen');
     this.#beeldGewijzigd();
+  }
+
+  /** Verloopt een zet op deze parameter over slew_s? Alleen voor `waarde` (een keuze of schakelaar springt). @param {Param|undefined} p */
+  #slewt(p) { return !!p && p.soort === 'waarde' && typeof p.slew_s === 'number' && p.slew_s > 0; }
+
+  /** Waar een parameter heen gaat: het doel van een lopende slew, anders de huidige waarde. @param {AppStaat} a @param {string} id */
+  #doel(a, id) {
+    const s = this.slews.get(`${a.app}\u0000${id}`);
+    return s ? s.slew.naar : a.waarden[id];
+  }
+
+  /**
+   * Een zet van de hub zelf (LPD8-macro, cockpit, snapshot, replay): met slew_s verloopt hij (§4), anders meteen.
+   * Directe APC-bewegingen gaan hier niet langs: die zijn al continu en moeten direct voelen.
+   * @param {AppStaat} a @param {string} id @param {number} v @param {string} bron
+   */
+  #zetZacht(a, id, v, bron) {
+    const p = this.#param(a, id);
+    if (p && this.#slewt(p) && kwantiseer(p, v) !== a.waarden[id]) this.#startSlew(a, id, kwantiseer(p, v), /** @type {number} */ (p.slew_s), bron);
+    else this.#zetWaarde(a, id, v, { naarApp: true, bron });
   }
 
   // ── focus ──────────────────────────────────────────────────────────────────
@@ -646,8 +702,7 @@ export class Kern extends Zender {
     for (const a of this.apps.values()) {
       for (const p of a.manifest?.params ?? []) {
         if (p.rol !== rol || p.soort === 'trigger') continue;
-        if (p.slew_s && p.slew_s > 0) this.#startSlew(a, p.id, v, p.slew_s);
-        else this.#zetWaarde(a, p.id, v, { naarApp: true, bron: 'lpd8' });
+        this.#zetZacht(a, p.id, v, 'lpd8');
       }
     }
     this.#globaal({ [rol]: v });
@@ -703,9 +758,9 @@ export class Kern extends Zender {
 
   // ── slew ───────────────────────────────────────────────────────────────────
 
-  /** @param {AppStaat} a @param {string} id @param {number} naar @param {number} s */
-  #startSlew(a, id, naar, s) {
-    this.slews.set(`${a.app}\u0000${id}`, { app: a.app, id, slew: maakSlew(a.waarden[id] ?? 0, naar, this.klok.nu(), s) });
+  /** @param {AppStaat} a @param {string} id @param {number} naar @param {number} s @param {string} bron */
+  #startSlew(a, id, naar, s, bron) {
+    this.slews.set(`${a.app}\u0000${id}`, { app: a.app, id, bron, slew: maakSlew(a.waarden[id] ?? 0, naar, this.klok.nu(), s) });
     if (this.slewTimer === null) this.slewTimer = this.klok.zet(() => this.#slewTik(), SLEW_TIK_MS);
   }
   #slewTik() {
@@ -716,23 +771,26 @@ export class Kern extends Zender {
       if (!a) { this.slews.delete(k); continue; }
       const klaar = slewKlaar(x.slew, nu);
       if (klaar) this.slews.delete(k);
-      this.#zetWaarde(a, x.id, slewWaarde(x.slew, nu), { naarApp: true, bron: 'lpd8', slew: true });
+      // Klaar = precies het doel (niet van + (naar - van) · 1, dat er een afrondingsfout naast kan zitten).
+      this.#zetWaarde(a, x.id, klaar ? x.slew.naar : slewWaarde(x.slew, nu), { naarApp: true, bron: x.bron, slew: true });
     }
     if (this.slews.size) this.slewTimer = this.klok.zet(() => this.#slewTik(), SLEW_TIK_MS);
   }
 
   // ── snapshots ──────────────────────────────────────────────────────────────
 
-  /** Hub-snapshot: waarden van alle manifest-apps. @param {number} nr */
+  /** Hub-snapshot: waarden van alle manifest-apps (van een lopende slew het doel). @param {number} nr */
   bewaar(nr) {
     /** @type {Record<string, Record<string, number>>} */
     const s = {};
     for (const a of this.apps.values()) {
       if (!a.manifest || a.manifest.lease) continue;
-      s[a.app] = Object.fromEntries(a.manifest.params.filter((p) => p.soort !== 'trigger' && p.id in a.waarden).map((p) => [p.id, a.waarden[p.id]]));
+      // Een lopende slew telt met zijn doel: dat is wat er gezet werd.
+      s[a.app] = Object.fromEntries(a.manifest.params.filter((p) => p.soort !== 'trigger' && p.id in a.waarden).map((p) => [p.id, this.#doel(a, p.id)]));
     }
     this.snapshots.set(nr, s);
     if (this.hubIn) this.#teken();
+    this.meld('geheugen');
     this.#beeldGewijzigd();
   }
 
@@ -743,9 +801,90 @@ export class Kern extends Zender {
     for (const [app, w] of Object.entries(s)) {
       const a = this.apps.get(app);
       if (!a) continue;
-      for (const [id, v] of Object.entries(w)) if (a.waarden[id] !== v) this.#zetWaarde(a, id, v, { naarApp: true, bron: 'snapshot' });
+      for (const [id, v] of Object.entries(w)) if (this.#doel(a, id) !== v) this.#zetZacht(a, id, v, 'snapshot');
     }
     return true;
+  }
+
+  // ── geheugen (over herstarts van de hub) ───────────────────────────────────
+
+  /**
+   * Wat de hub over een herstart heen onthoudt: de snapshots en de waarden van apps met truth:"hub"
+   * (een lopende slew telt met zijn doel). Puur; src/opslag.js schrijft het weg.
+   * @returns {{ v: 1, snapshots: Record<string, Record<string, Record<string, number>>>, waarden: Record<string, Record<string, number>> }}
+   */
+  exporteer() {
+    /** @type {Record<string, Record<string, number>>} */
+    const waarden = {};
+    for (const [app, w] of this.bewaard) waarden[app] = { ...w };
+    for (const a of this.apps.values()) {
+      if (a.manifest?.truth !== 'hub') continue;
+      waarden[a.app] = Object.fromEntries(a.manifest.params
+        .filter((p) => p.soort !== 'trigger' && typeof a.waarden[p.id] === 'number')
+        .map((p) => [p.id, this.#doel(a, p.id)]));
+    }
+    /** @type {Record<string, Record<string, Record<string, number>>>} */
+    const snapshots = {};
+    for (const nr of [...this.snapshots.keys()].sort((x, y) => x - y)) {
+      const s = /** @type {Record<string, Record<string, number>>} */ (this.snapshots.get(nr));
+      snapshots[nr] = Object.fromEntries(Object.entries(s).map(([app, w]) => [app, { ...w }]));
+    }
+    return { v: 1, snapshots, waarden };
+  }
+
+  /**
+   * Neem bewaarde snapshots en truth:"hub"-waarden over (bij de start, vóór de apps zich aanmelden).
+   * Een truth:"hub"-app krijgt zijn waarden zodra zijn manifest binnenkomt (`bron:"replay"`, met slew_s).
+   * Ongeldige stukken vallen weg (geteld in `overgeslagen`); is het geheel onbruikbaar, dan verandert er niets.
+   * @param {unknown} data @returns {{ ok: boolean, reden?: string, overgeslagen: number }}
+   */
+  importeer(data) {
+    const d = /** @type {any} */ (data);
+    const isObj = (/** @type {unknown} */ x) => !!x && typeof x === 'object' && !Array.isArray(x);
+    if (!isObj(d)) return { ok: false, reden: 'geen object', overgeslagen: 0 };
+    if (d.v !== 1) return { ok: false, reden: `onbekende versie ${JSON.stringify(d.v)}`, overgeslagen: 0 };
+    let overgeslagen = 0;
+    /** Alleen geldige parameter-ids met een eindig getal; waarden geklemd op 0..1. @param {unknown} x */
+    const waardenVan = (x) => {
+      /** @type {Record<string, number>} */
+      const uit = {};
+      if (!isObj(x)) { overgeslagen++; return uit; }
+      for (const [id, v] of Object.entries(/** @type {Record<string, unknown>} */ (x))) {
+        if (/^[a-z0-9_.-]{1,48}$/.test(id) && typeof v === 'number' && Number.isFinite(v)) uit[id] = klem01(v);
+        else overgeslagen++;
+      }
+      return uit;
+    };
+    /** @param {unknown} x */
+    const perApp = (x) => {
+      /** @type {Record<string, Record<string, number>>} */
+      const uit = {};
+      if (!isObj(x)) { if (x !== undefined) overgeslagen++; return uit; }
+      for (const [app, w] of Object.entries(/** @type {Record<string, unknown>} */ (x))) {
+        if (/^[a-z0-9-]{1,32}$/.test(app) && isObj(w)) uit[app] = waardenVan(w);
+        else overgeslagen++;
+      }
+      return uit;
+    };
+    this.snapshots.clear();
+    if (isObj(d.snapshots)) {
+      for (const [k, s] of Object.entries(d.snapshots)) {
+        const nr = Number(k);
+        if (Number.isInteger(nr) && nr >= 1 && nr <= 99 && isObj(s)) this.snapshots.set(nr, perApp(s));
+        else overgeslagen++;
+      }
+    } else if (d.snapshots !== undefined) overgeslagen++;
+    this.bewaard.clear();
+    for (const [app, w] of Object.entries(perApp(d.waarden))) {
+      const a = this.apps.get(app);
+      if (!a?.manifest) this.bewaard.set(app, w);
+      else if (a.manifest.truth === 'hub') { // al aangemeld: alleen onthouden, niets sturen
+        for (const p of a.manifest.params) if (p.soort !== 'trigger' && p.id in w) a.waarden[p.id] = kwantiseer(p, w[p.id]);
+      }
+    }
+    if (this.hubIn) this.#teken();
+    this.#beeldGewijzigd();
+    return { ok: true, overgeslagen };
   }
 
   // ── cockpit ────────────────────────────────────────────────────────────────
@@ -759,7 +898,7 @@ export class Kern extends Zender {
       if (!a || typeof b.id !== 'string' || typeof b.v !== 'number') return;
       const p = this.#param(a, b.id);
       if (p?.soort === 'trigger') this.#naar(a, { t: 'trig', id: b.id, aan: b.v > 0 });
-      else this.#zetWaarde(a, b.id, b.v, { naarApp: true, bron: 'cockpit' });
+      else this.#zetZacht(a, b.id, b.v, 'cockpit');
       return;
     }
     if (b.t === 'snapshot' && Number.isInteger(b.nr)) {

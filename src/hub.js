@@ -8,6 +8,7 @@ import { echteKlok } from './core/klok.js';
 import { maakApparaten } from './apparaten.js';
 import { startServer } from './transports/server.js';
 import { startDrivers } from './drivers/index.js';
+import { koppelGeheugen, SCHRIJF_MS } from './opslag.js';
 import { HUB_MAP, laadKaarten } from './config.js';
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
@@ -17,9 +18,10 @@ import * as LPD8 from './devices/lpd8.js';
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
  *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
- * }} o
+ *   geheugen?: string|null,
+ * }} o  geheugen: pad van het geheugenbestand (snapshots, truth:"hub"-waarden; zie src/opslag.js), null = niet bewaren
  */
-export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {} }) {
+export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, geheugen = null }) {
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
   const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
   // De kern tekent via een poortwachter: zodra stop() begint, komt er van de kern niets meer op de APC.
@@ -34,6 +36,8 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
     /** @param {string} naam @param {Function} fn */ bij(naam, fn) { return apc.bij(naam, /** @type {any} */ (fn)); },
   };
   const kern = new Kern({ klok, config: cfg, oppervlak });
+  // Vóór de drivers en de server: wie zich aanmeldt, vindt zijn bewaarde waarden al klaar.
+  const opslag = geheugen ? koppelGeheugen({ kern, pad: geheugen, klok, log, schrijfMs: Math.max(SCHRIJF_MS, cfg.geheugen?.schrijf_ms ?? 0) }) : null;
 
   // Echte controllers → kern; hun stand → cockpit.
   apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => kern.invoer(g, b));
@@ -62,7 +66,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
   apparaten.start();
 
   return {
-    kern, apparaten, server, opVirtueel,
+    kern, apparaten, server, opVirtueel, opslag,
     adres: server.adres,
     async stop() {
       if (stoppend) return;
@@ -70,6 +74,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
       actieveDrivers?.stop();
       await server.stop();               // geen app- of cockpitberichten meer
       kern.stop();
+      opslag?.stop();                    // wat nog wacht meteen naar schijf
       await apparaten.stop();            // LEDs uit, poorten dicht
     },
   };

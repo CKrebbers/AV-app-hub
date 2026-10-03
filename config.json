@@ -43,7 +43,7 @@
   "apps": {
     "varve-dj": {
       "naam": "Varve DJ",
-      "kleur": "#ff7a1a",
+      "kleur": "#4ad9c4",
       "koppeling": "lease",
       "poort": 8777,
       "repo": "youtube-mixer"
@@ -65,14 +65,14 @@
     },
     "waterschaal": {
       "naam": "Waterschaal",
-      "kleur": "#19d3e6",
+      "kleur": "#c99a57",
       "koppeling": "ws",
       "poort": 8080,
       "repo": "waterschaal"
     },
     "medisynth": {
       "naam": "MediSynth",
-      "kleur": "#8b5cff",
+      "kleur": "#5a6fa8",
       "koppeling": "ws",
       "poort": 5175,
       "repo": "medisynth"
@@ -107,7 +107,9 @@
     "flux": {
       "naam": "Flux",
       "kleur": "#9b1b30",
-      "koppeling": "osc",
+      "koppeling": "ws",
+      "per_monitor": true,
+      "_doc": "elke monitor meldt zich apart aan als flux-<monitor> (bv. flux-dp-1); de hub geeft die deze kleur en de naam 'Flux (<monitor>)'",
       "repo": "flux-screensaver"
     }
   },
@@ -122,5 +124,10 @@
   "ringen_nemen_waarde_over": true,
   "drivers": {
     "uitstel_ms": 3000
+  },
+  "geheugen": {
+    "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js); ~ = thuismap, $VARVE_HUB_STAAT gaat voor",
+    "pad": "~/.varve-hub/staat.json",
+    "schrijf_ms": 1000
   }
 }
