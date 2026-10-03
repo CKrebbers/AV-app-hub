@@ -1,0 +1,95 @@
+{
+  "_bron": "formula-lab · claude/varve-hub-koppeling @ 3f1f68b — vastgelegd door tools/repetitie.mjs op 2026-10-03T16:05:44.828Z",
+  "manifest": {
+    "v": 1,
+    "app": "formula-lab",
+    "naam": "Formula Lab",
+    "kleur": "#3fbf5f",
+    "truth": "app",
+    "hb_s": 1,
+    "params": [
+      {
+        "id": "a",
+        "naam": "a",
+        "soort": "waarde",
+        "hint": "fader",
+        "groep": "formula"
+      },
+      {
+        "id": "b",
+        "naam": "b",
+        "soort": "waarde",
+        "hint": "fader",
+        "groep": "formula"
+      },
+      {
+        "id": "take",
+        "naam": "Take",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "play"
+      },
+      {
+        "id": "dice",
+        "naam": "Dice",
+        "soort": "trigger",
+        "hint": "pad",
+        "groep": "play"
+      },
+      {
+        "id": "palette",
+        "naam": "Palette",
+        "soort": "keuze",
+        "keuzes": [
+          "hollow",
+          "gameboy",
+          "cga",
+          "amber",
+          "fire"
+        ],
+        "hint": "kolom",
+        "groep": "look",
+        "rol": "macro.kleur"
+      },
+      {
+        "id": "coords",
+        "naam": "Coords",
+        "soort": "keuze",
+        "keuzes": [
+          "cartesian",
+          "polar",
+          "toroidal"
+        ],
+        "hint": "kolom",
+        "groep": "look"
+      },
+      {
+        "id": "smooth",
+        "naam": "Smooth",
+        "soort": "schakelaar",
+        "hint": "pad",
+        "groep": "look"
+      },
+      {
+        "id": "tone",
+        "naam": "Tone",
+        "soort": "keuze",
+        "keuzes": [
+          "clamp",
+          "wrap",
+          "fold"
+        ],
+        "hint": "kolom",
+        "groep": "look"
+      }
+    ]
+  },
+  "staat": {
+    "a": 0.5,
+    "b": 0.5,
+    "palette": 0,
+    "coords": 0,
+    "smooth": 0,
+    "tone": 0
+  }
+}

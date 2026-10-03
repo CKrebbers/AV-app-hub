@@ -18,7 +18,8 @@
     "testpatroon": "node src/cli.js testpatroon",
     "opname": "node src/cli.js opname",
     "herhaal": "node src/cli.js herhaal",
-    "start": "node src/cli.js start"
+    "start": "node src/cli.js start",
+    "repetitie": "node tools/repetitie.mjs"
   },
   "optionalDependencies": {
     "@julusian/midi": "^3.8.1"
