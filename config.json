@@ -1,0 +1,20 @@
+{
+  "_doc": "Eén bron van waarheid voor de hub: poorten, apparaten, hubtoets. Nooit waarden hardcoden; lees via src/config.js.",
+  "poorten": { "http": 7700, "osc": 7701 },
+  "apparaten": {
+    "apc40": { "naam": "apc40", "modus": 66 },
+    "lpd8": { "naam": "lpd8" }
+  },
+  "hubtoets": "bank",
+  "hotplug_ms": 2000,
+  "led": { "per_burst": 16, "burst_ms": 4 },
+  "proefmap": "proef",
+  "bekende_apps": {
+    "uurwerk": { "tcp": 8766 },
+    "varve-dj": { "tcp": 8777 },
+    "waterschaal-td": { "tcp": 9980 },
+    "td-lab": { "tcp": 9981 },
+    "av-scene-kit-td": { "udp": 9000 },
+    "av-scene-kit-blender": { "udp": 9001 }
+  }
+}

@@ -275,7 +275,7 @@ Elke fase is klein genoeg voor een paar avonden en eindigt met iets speelbaars.
 
 **F6 — Op gebruik:** medisynth, sediment-CC-tabel, anbernic over USB-netwerk, Open Stage Control als extra UI.
 
-**Waar de code komt:** deze map is het startpunt. De hub verdient een eigen repo (`varve-hub`); de naam `3dbuildgame` past er niet bij. De app-adapters landen elk in hun eigen repo, achter een vlag (`?hub=`), zodat niets kapotgaat zonder hub.
+**Waar de code komt:** in een eigen repo, `CKrebbers/AV-app-hub` (eerst opgezet in `3dbuildgame/varve-hub`). De app-adapters landen elk in hun eigen repo, achter een vlag (`?hub=`), zodat niets kapotgaat zonder hub.
 
 ---
 
