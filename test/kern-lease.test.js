@@ -1,27 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import * as APC from '../src/devices/apc40mk2.js';
-import { opzet, meldAan, stuurApp, druk, los, tik, draai, van, leeg, FL, DJ, AVK } from './kern-hulp.js';
+import { opzet, meldAan, stuurApp, druk, los, tik, draai, van, leeg, hardware, FL, DJ, AVK } from './kern-hulp.js';
 
 const MODUS = APC.intro(0x41);
-
-/** Speel verstuurde bytes af op een "hardware-model": laatste bericht per LED-adres (rgb: basis + animatie). */
-function hardware(bytes) {
-  const h = new Map();
-  for (const m of bytes) {
-    const st = m[0] & 0xf0, ch = m[0] & 0x0f;
-    if (st === 0xb0) { h.set(`cc:${ch}:${m[1]}`, m[2]); continue; }
-    if (st !== 0x90 && st !== 0x80) continue;
-    const c = APC.vindNoot(m[1], ch);
-    const v = st === 0x80 ? 0 : m[2];
-    if (c?.led === 'rgb') {
-      const k = `rgb:${m[1]}`;
-      if (!v) h.set(k, 'uit');
-      else if (ch === 0) h.set(k, `${v}`);
-      else h.set(k, `${String(h.get(k) ?? 'uit').split('/')[0]}/${ch}:${v}`);
-    } else h.set(`n:${ch}:${m[1]}`, v);
-  }
-  return h;
-}
 
 describe('kern: lease-apps', () => {
   it('routeert alle APC-invoer als midi, behalve de hubtoets en alles terwijl die is ingedrukt', () => {
@@ -59,9 +40,9 @@ describe('kern: lease-apps', () => {
 
     kern.focus('varve-dj');
     const n = APC.MET_LED.length;
-    // eerst alles uit, dan ringtypes, dan de kaart
-    expect(opp.gestuurd.slice(0, n)).toEqual(APC.MET_LED.flatMap((c) => APC.ledBerichten(c, c.led === 'ring' ? { waarde: 0 } : {})));
-    expect(opp.gestuurd.slice(n + 16)).toEqual([[0x90, 0, 5], [0x97, 0, 9], [0x90, 51, 127], [0x90, 82, 21], [0xb0, 16, 64], [0x92, 52, 2]]);
+    // eerst alles uit (ringen op hun laatste stand: dk1 = de ring-LED van de app), dan ringtypes, dan de kaart
+    expect(opp.gestuurd.slice(0, n)).toEqual(APC.MET_LED.flatMap((c) => APC.ledBerichten(c, c.led === 'ring' ? { waarde: c.id === 'dk1' ? 64 / 127 : 0 } : {})));
+    expect(opp.gestuurd.slice(n + 16)).toEqual([[0x90, 0, 5], [0x97, 0, 9], [0x90, 51, 127], [0x90, 82, 21], [0x92, 52, 2]]);
     const beeldNa = hardware(opp.gestuurd);
     expect(beeldNa.get('rgb:0')).toBe('5/7:9');
     expect(beeldNa.get('n:2:52')).toBe(2);

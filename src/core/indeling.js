@@ -3,7 +3,7 @@
 //   Faders 1–8      hint "fader", daarna overige waarden (behalve hint "knop") in manifestvolgorde
 //   Device-knoppen  hint "knop"; meer dan 8 → pagina's per groep (Device ◄/► bladert)
 //   Track-knoppen   de volgende 8 waarden die nog geen plek hebben
-//   Grid            keuze → één kolom per keuze (optie 0 bovenaan); trigger/schakelaar → kolommen per groep
+//   Grid            keuze → één kolom per keuze (optie 0 bovenaan; >5 opties: één stap-pad); trigger/schakelaar → kolommen per groep
 //   Scene 1–5       manifest.scenes · Stop All: trigger "paniek"
 // Overschrijven per app met een kaart { <control-id>: { id, takeover? } } (maps/<app>.json).
 import { OP_ID, padId } from '../devices/apc40mk2.js';
@@ -66,7 +66,9 @@ export function maakIndeling(manifest, kaart = null) {
   for (const p of params.filter((x) => x.soort === 'keuze')) {
     if (kolom > KOLOMMEN) break;
     const n = p.keuzes?.length ?? 2;
-    for (let i = 0; i < Math.min(n, RIJEN); i++) plaats(padId(RIJEN - i, kolom), { id: p.id, rol: 'keuze', takeover: 'direct', optie: i, n });
+    // Meer opties dan rijen: één pad bovenaan die doorstapt (anders zijn opties 6–8 onbereikbaar).
+    if (n > RIJEN) plaats(padId(RIJEN, kolom), { id: p.id, rol: 'stap', takeover: 'direct', n });
+    else for (let i = 0; i < n; i++) plaats(padId(RIJEN - i, kolom), { id: p.id, rol: 'keuze', takeover: 'direct', optie: i, n });
     kolom++;
   }
   /** @type {Map<string, Param[]>} */

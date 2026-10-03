@@ -8,7 +8,9 @@ describe('kern: LPD8 (globale laag)', () => {
     const ms = meldAan(kern, MS);
     const dj = meldAan(kern, DJ);
     leeg(fl, ms, dj);
-    lpdKnop(kern, 3, 0.8);
+    lpdKnop(kern, 3, 0.3); // pickup: doel = ruimte van formula-lab (0.4), nog niet gekruist
+    expect(van(ms, 'zet').length + van(fl, 'zet').length + van(fl, 'globaal').length).toBe(0);
+    lpdKnop(kern, 3, 0.8); // kruist 0.4: overgenomen
     const v = 102 / 127;
     // zonder slew: meteen
     expect(van(ms, 'zet')).toEqual([{ t: 'zet', id: 'galm', v, bron: 'lpd8' }]);
@@ -28,6 +30,39 @@ describe('kern: LPD8 (globale laag)', () => {
     klok.loop(1000);
     expect(van(fl, 'zet')).toHaveLength(n);
     expect(kern.beeld().globaal['macro.ruimte']).toBe(v);
+  });
+
+  it('pickup per LPD8-knop ook bij de eerste aanraking: K3 ver van galm geeft geen zet en geen sprong', () => {
+    const { kern } = opzet();
+    const ms = meldAan(kern, { ...MS, params: MS.params.map((p) => (p.id === 'galm' ? { ...p, standaard: 0.2 } : p)) });
+    leeg(ms);
+    lpdKnop(kern, 3, 0.9);
+    lpdKnop(kern, 3, 0.85);
+    expect(van(ms, 'zet')).toEqual([]);
+    expect(van(ms, 'globaal').filter((b) => 'macro.ruimte' in b.waarden)).toEqual([]);
+    lpdKnop(kern, 3, 0.21); // binnen 0.02 van 0.2: gevangen
+    expect(van(ms, 'zet')).toEqual([{ t: 'zet', id: 'galm', v: 27 / 127, bron: 'lpd8' }]);
+    // zonder app met die rol: doel 0.5
+    lpdKnop(kern, 1, 0.1);
+    expect(van(ms, 'globaal').filter((b) => 'macro.intensiteit' in b.waarden)).toEqual([]);
+    lpdKnop(kern, 1, 0.6);
+    expect(van(ms, 'globaal').filter((b) => 'macro.intensiteit' in b.waarden)).toHaveLength(1);
+  });
+
+  it('LPD8 valt weg terwijl P1 is ingedrukt: geen paniek; een lopende paniek eindigt', () => {
+    const { kern, klok } = opzet();
+    const ms = meldAan(kern, MS);
+    leeg(ms);
+    lpdDruk(kern, 1);
+    kern.apparaatWeg('lpd8');
+    klok.loop(1500);
+    expect(van(ms, 'trig')).toEqual([]);
+    lpdDruk(kern, 1);
+    klok.loop(1100);
+    expect(van(ms, 'trig')).toEqual([{ t: 'trig', id: 'paniek', aan: true }]);
+    kern.apparaatWeg('lpd8');
+    expect(van(ms, 'trig').at(-1)).toEqual({ t: 'trig', id: 'paniek', aan: false });
+    expect(kern.beeld().globaal.paniek).toBe(0);
   });
 
   it('pickup per LPD8-knop: K7 (adem-periode, start 0.5) springt niet', () => {

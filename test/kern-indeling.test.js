@@ -108,3 +108,14 @@ describe('slew', () => {
     expect(slewWaarde(maakSlew(0.2, 0.7, 0, 0), 0)).toBe(0.7);
   });
 });
+
+describe('indeling: keuze met meer opties dan rijen', () => {
+  it('6–8 opties: één stap-pad bovenaan in plaats van een kolom met onbereikbare opties', () => {
+    const k = (n) => ({ id: `k${n}`, naam: 'K', soort: 'keuze', keuzes: Array.from({ length: n }, (_, i) => `o${i}`) });
+    const ind = maakIndeling(man({ v: 1, app: 'x', naam: 'X', params: [k(8), k(5)] }));
+    expect(ind.vast['pad5-1']).toMatchObject({ id: 'k8', rol: 'stap', n: 8 });
+    expect(ind.vast['pad4-1']).toBeUndefined();
+    expect(ind.vast['pad1-2']).toMatchObject({ id: 'k5', rol: 'keuze', optie: 4, n: 5 });
+    expect(ind.niet).toEqual([]);
+  });
+});

@@ -106,3 +106,45 @@ export const lpdLos = (kern, p) => lpd(kern, [0x80, 35 + p, 0]);
 export const van = (v, t) => v.ontvangen.filter((b) => b.t === t);
 /** Wis wat een verbinding tot nu toe ontving. */
 export const leeg = (...vs) => { for (const v of vs) v.ontvangen.length = 0; };
+
+/** Speel verstuurde bytes af op een "hardware-model": laatste bericht per LED-adres (rgb: basis + animatie). */
+export function hardware(bytes) {
+  const h = new Map();
+  for (const m of bytes) {
+    const st = m[0] & 0xf0, ch = m[0] & 0x0f;
+    if (st === 0xb0) { h.set(`cc:${ch}:${m[1]}`, m[2]); continue; }
+    if (st !== 0x90 && st !== 0x80) continue;
+    const c = APC.vindNoot(m[1], ch);
+    const v = st === 0x80 ? 0 : m[2];
+    if (c?.led === 'rgb') {
+      const k = `rgb:${m[1]}`;
+      if (!v) h.set(k, 'uit');
+      else if (ch === 0) h.set(k, `${v}`);
+      else h.set(k, `${String(h.get(k) ?? 'uit').split('/')[0]}/${ch}:${v}`);
+    } else h.set(`n:${ch}:${m[1]}`, v);
+  }
+  return h;
+}
+
+/**
+ * Kern met een echte ApcSessie als oppervlak, plus een model van de knoppen zoals de APC in modus 0x42
+ * ze heeft: de interne waarde van een ringknop is het laatste van (eigen draai, ring-CC op de draad).
+ */
+export async function opzetApc(config = CONFIG) {
+  const { ApcSessie } = await import('../src/apparaten.js');
+  const klok = new NepKlok();
+  const s = new ApcSessie({ dev: 'apc40', patroon: /apc/i, systeem: /** @type {any} */ ({}), klok });
+  const draad = [];
+  s.rij.stuur = (b) => draad.push(b);
+  const kern = new Kern({ klok, config, oppervlak: s });
+  const knop = new Map();
+  let gelezen = 0;
+  const isRing = (m) => m[0] === 0xb0 && ((m[1] >= 16 && m[1] <= 23) || (m[1] >= 48 && m[1] <= 55));
+  /** Laat de wachtrij leeglopen en werk de knoppen bij met wat er op de draad ging. */
+  const sync = () => { klok.loop(100); for (; gelezen < draad.length; gelezen++) if (isRing(draad[gelezen])) knop.set(draad[gelezen][1], draad[gelezen][2]); };
+  /** Draai een ringknop naar een ruwe waarde (0..127). */
+  const draaiKnop = (id, raw) => { sync(); const c = ctrl(id); knop.set(c.n, raw); apc(kern, [0xb0, c.n, raw]); sync(); };
+  /** Eén tik omhoog vanaf de interne waarde van de knop. */
+  const tikOp = (id) => { sync(); const c = ctrl(id); draaiKnop(id, Math.min(127, (knop.get(c.n) ?? 0) + 1)); };
+  return { klok, s, draad, kern, knop, sync, draaiKnop, tikOp };
+}

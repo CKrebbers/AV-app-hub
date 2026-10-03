@@ -30,7 +30,7 @@ import { maakSlew, slewWaarde, slewKlaar, SLEW_TIK_MS } from './slew.js';
  *    manifest: Manifest|null, indeling: Indeling|null, pagina: number, waarden: Record<string, number>,
  *    status: AppStatus, v: Verbinding|null, inst: string|null, replay: boolean,
  *    timers: { stil: any, weg: any }, kaart: Map<string, number[][]>, pickups: Map<string, Pickup>,
- *    vast: Set<string>, scene: number|null,
+ *    vast: Set<string>, scene: number|null, knoppen: Map<string, number>,
  *  }} AppStaat */
 
 export const BEELD_MS = 100;
@@ -46,12 +46,26 @@ const OVERLAY = Object.freeze([
   ...Array.from({ length: 5 }, (_, i) => `scene${i + 1}`),
 ]);
 const RINGKNOP = /^(dk|tk)[1-8]$/;
+const RINGEN = Object.freeze(APC.MET_LED.filter((c) => c.led === 'ring'));
+/** Ringwaarde zoals hij over de draad gaat (7 bit). @param {number} v */
+const r7 = (v) => Math.round(klem01(v) * 127);
 
 /** LED uit, zoals LedBeeld.zwart() het noteert. @param {Control} c @returns {LedStaat} */
 const uit = (c) => (c.led === 'ring' ? { waarde: 0 } : {});
 const gelijk = (/** @type {unknown} */ a, /** @type {unknown} */ b) => JSON.stringify(a) === JSON.stringify(b);
 /** Gedimde variant van een hexkleur (≈ een derde helderheid, zoals de donkere tinten in het palet). @param {string} hex */
 const gedimd = (hex) => '#' + APC.rgb(hex).map((x) => Math.round(x * 0.35).toString(16).padStart(2, '0')).join('');
+
+/**
+ * Waarde zoals de parameter hem kan aannemen (keuze → optie, schakelaar → 0/1).
+ * @param {Param|undefined} p @param {number} v
+ */
+function kwantiseer(p, v) {
+  const w = klem01(v);
+  if (p?.soort === 'keuze') { const n = p.keuzes?.length ?? 2; return keuzeNaarWaarde(waardeNaarKeuze(w, n), n); }
+  if (p?.soort === 'schakelaar') return w >= 0.5 ? 1 : 0;
+  return w;
+}
 
 /** Sleutel van een LED-adres in de LED-kaart van een lease-app. @param {number[]} m */
 export function ledSleutel(m) {
@@ -150,6 +164,15 @@ export class Kern extends Zender {
     /** @type {any} */ this.ademTimer = null;
     /** @type {any} */ this.slewTimer = null;
     /** @type {any} */ this.p1Timer = null;
+    /** De volgende tekening is een volledige repaint (na opnieuw aansluiten of een nieuw manifest). */
+    this.alles = false;
+    // Een ApcSessie meldt zelf wanneer hij (opnieuw) is aangesloten of wegvalt.
+    /** @type {(() => void)[]} */
+    this.afmelden = [];
+    const o = /** @type {any} */ (oppervlak);
+    if (typeof o?.bij === 'function') {
+      this.afmelden.push(o.bij('verbonden', () => this.herteken()), o.bij('weg', () => this.apparaatWeg('apc40')));
+    }
   }
 
   // ── verbindingen en berichten van apps ─────────────────────────────────────
@@ -185,17 +208,25 @@ export class Kern extends Zender {
     a.v = null;
     this.#wisHartslag(a);
     a.status = 'weg';
-    this.#statusGewijzigd();
+    this.#statusGewijzigd(a);
   }
 
   /** @param {Verbinding} v @param {{ app: string, inst: string }} b */
   #hallo(v, b) {
+    if (!this.verbindingen.has(v)) return; // al verbroken of vervangen
     if (v.app && v.app !== b.app) { this.#naarV(v, { t: 'fout', reden: `deze verbinding is al ${v.app}` }); return; }
     v.app = b.app;
     let a = this.apps.get(b.app);
     if (!a) {
       a = this.#nieuweApp(b.app);
       this.apps.set(b.app, a);
+    }
+    if (a.v && a.v !== v) {
+      // Een nieuwere verbinding van dezelfde app neemt het over; de oude hoort dat en gaat dicht.
+      const oud = a.v;
+      this.verbindingen.delete(oud);
+      this.#naarV(oud, { t: 'fout', reden: 'vervangen door een nieuwere verbinding van deze app' });
+      try { oud.sluit?.(); } catch (e) { console.error('[kern] sluiten van vervangen verbinding mislukt:', e); }
     }
     const herstart = a.inst !== null && a.inst !== b.inst;
     a.v = v;
@@ -227,7 +258,7 @@ export class Kern extends Zender {
     const a = {
       app, slot, naam: cfg.naam ?? app, kleurHex: '#ffffff', kleur: 3, dim: 1,
       manifest: null, indeling: null, pagina: 0, waarden: {}, status: 'nieuw', v: null, inst: null, replay: false,
-      timers: { stil: null, weg: null }, kaart: new Map(), pickups: new Map(), vast: new Set(), scene: null,
+      timers: { stil: null, weg: null }, kaart: new Map(), pickups: new Map(), vast: new Set(), scene: null, knoppen: new Map(),
     };
     this.#zetKleur(a, cfg.kleur);
     return a;
@@ -247,6 +278,8 @@ export class Kern extends Zender {
     if (r.manifest.app !== a.app) { this.#naar(a, { t: 'fout', reden: `manifest.app (${r.manifest.app}) ≠ hallo.app (${a.app})` }); return; }
     const man = r.manifest;
     const cfg = this.config.apps?.[a.app] ?? {};
+    // rings valt terug op config.apps.<app>.rings, zoals kleur (de validator vult anders 'host' in).
+    if (man.lease && /** @type {any} */ (m).rings === undefined && (cfg.rings === 'auto' || cfg.rings === 'host')) man.rings = cfg.rings;
     a.manifest = man;
     a.naam = man.naam;
     this.#zetKleur(a, man.kleur ?? cfg.kleur);
@@ -255,7 +288,9 @@ export class Kern extends Zender {
     a.pagina = Math.min(a.pagina, (a.indeling?.paginas.length ?? 1) - 1);
     a.pickups = new Map();
     if (a.status === 'nieuw') a.status = 'actief';
-    if (this.focusApp === a.app) { this.getekend = null; this.#teken(); }
+    this.#hartslag(a); // opnieuw, nu met de hb_s van het manifest
+    // `getekend` blijft staan: was het oppervlak door een lease getekend, dan neemt #tekenManifest het vergeet-pad.
+    if (this.focusApp === a.app) this.#teken();
     else if (this.hubIn) this.#teken();
     this.#beeldGewijzigd();
   }
@@ -263,7 +298,8 @@ export class Kern extends Zender {
   /** @param {AppStaat} a @param {Record<string, number>} waarden */
   #staat(a, waarden) {
     // truth "hub": de hub heeft net zijn waarden opnieuw afgespeeld; de (standaard)staat van de app wint niet.
-    if (a.manifest?.truth === 'hub' && a.replay) return;
+    // Alleen de eerste staat na de replay; latere (ook gedeeltelijke) staat telt gewoon.
+    if (a.manifest?.truth === 'hub' && a.replay) { a.replay = false; return; }
     for (const [id, v] of Object.entries(waarden)) if (typeof v === 'number') this.#zetWaarde(a, id, v, { naarApp: false });
   }
 
@@ -272,9 +308,11 @@ export class Kern extends Zender {
   /** Elk bericht telt als hartslag. @param {AppStaat} a */
   #hartslag(a) {
     this.#wisHartslag(a);
-    if (a.status === 'stil' || a.status === 'weg') { a.status = a.manifest ? 'actief' : 'nieuw'; this.#statusGewijzigd(); }
-    a.timers.stil = this.klok.zet(() => { a.timers.stil = null; if (a.status !== 'weg') { a.status = 'stil'; this.#statusGewijzigd(); } }, this.stilMs);
-    a.timers.weg = this.klok.zet(() => { a.timers.weg = null; a.status = 'weg'; this.#statusGewijzigd(); }, this.wegMs);
+    if (a.status === 'stil' || a.status === 'weg') { a.status = a.manifest ? 'actief' : 'nieuw'; this.#statusGewijzigd(a); }
+    // Een app met een trage hartslag (manifest.hb_s) krijgt evenredig meer tijd: 3 en 10 gemiste slagen.
+    const hb = (a.manifest?.hb_s ?? 1) * 1000;
+    a.timers.stil = this.klok.zet(() => { a.timers.stil = null; if (a.status !== 'weg') { a.status = 'stil'; this.#statusGewijzigd(a); } }, Math.max(this.stilMs, 3 * hb));
+    a.timers.weg = this.klok.zet(() => { a.timers.weg = null; a.status = 'weg'; this.#statusGewijzigd(a); }, Math.max(this.wegMs, 10 * hb));
   }
   /** @param {AppStaat} a */
   #wisHartslag(a) {
@@ -282,8 +320,10 @@ export class Kern extends Zender {
     if (a.timers.weg !== null) this.klok.wis(a.timers.weg);
     a.timers.stil = a.timers.weg = null;
   }
-  #statusGewijzigd() {
-    if (this.hubIn) this.#teken();
+  /** @param {AppStaat} [a] */
+  #statusGewijzigd(a) {
+    // Een lease-app met focus die wegvalt: oppervlak uit (geen bevroren beeld); terug = zijn kaart terug.
+    if (this.hubIn || (a && a.app === this.focusApp && a.manifest?.lease)) this.#teken();
     this.#beeldGewijzigd();
   }
 
@@ -295,19 +335,18 @@ export class Kern extends Zender {
   /**
    * De enige plek waar een waarde verandert: bijwerken, eventueel naar de app, LEDs en pickup mee.
    * @param {AppStaat} a @param {string} id @param {number} v
-   * @param {{ naarApp: boolean, bron?: string, slew?: boolean }} o
+   * @param {{ naarApp: boolean, bron?: string, slew?: boolean, ctrl?: string }} o  ctrl: de control die de waarde zelf zette
    */
-  #zetWaarde(a, id, v, { naarApp, bron, slew = false }) {
+  #zetWaarde(a, id, v, { naarApp, bron, slew = false, ctrl: van = undefined }) {
     const p = this.#param(a, id);
     if (a.manifest && (!p || p.soort === 'trigger')) return;
-    let w = klem01(v);
-    if (p?.soort === 'keuze') { const n = p.keuzes?.length ?? 2; w = keuzeNaarWaarde(waardeNaarKeuze(w, n), n); }
-    if (p?.soort === 'schakelaar') w = w >= 0.5 ? 1 : 0;
+    const w = kwantiseer(p, v);
     if (!slew) this.slews.delete(`${a.app}\u0000${id}`);
     a.waarden[id] = w;
     if (naarApp) this.#naar(a, { t: 'zet', id, v: w, ...(bron ? { bron } : {}) });
     if (this.focusApp === a.app && a.indeling) {
       for (const ctrl of controlsVoor(a.indeling, a.pagina, id)) {
+        if (ctrl === van) continue; // de bewegende control houdt zijn eigen (ongekwantiseerde) stand
         const pk = a.pickups.get(ctrl);
         if (pk) a.pickups.set(ctrl, zetDoel(pk, w));
       }
@@ -373,7 +412,14 @@ export class Kern extends Zender {
       if (g.kind === 'druk') { this.routes.set(el, 'hub'); this.#hubInvoer(el); }
       else if (g.kind === 'waarde' && typeof g.v === 'number') {
         const a = this.#focusAppStaat(), pk = a?.pickups.get(el);
-        if (a && pk) { a.pickups.set(el, volg(pk, g.v)); this.#teken(); }
+        if (a && pk) a.pickups.set(el, volg(pk, g.v));
+        // Een ringknop: zijn interne waarde terug naar wat de app kent (anders springt hij na loslaten).
+        const c = APC.OP_ID.get(el);
+        if (a?.manifest?.lease && a.status !== 'weg' && c?.led === 'ring') {
+          const w = a.knoppen.get(el) ?? 0;
+          for (const b of APC.ledBerichten(c, { waarde: w })) this.opp.stuur(b);
+          this.fysiek.set(el, r7(w) / 127);
+        } else if ((a && pk) || c?.led === 'ring') this.#teken();
       }
       return;
     }
@@ -401,6 +447,7 @@ export class Kern extends Zender {
   /** @param {AppStaat} a @param {Gebeurtenis} g @param {number[]|undefined} bytes */
   #leaseInvoer(a, g, bytes) {
     if (!bytes || bytes[0] === 0xf0) return;
+    if (g.kind === 'waarde' && typeof g.v === 'number' && g.el && RINGKNOP.test(g.el)) a.knoppen.set(g.el, g.v);
     this.#naar(a, { t: 'midi', dev: 'apc40', bytes: [...bytes] });
     // rings:"auto" — emulatie van APC-modus 0x41: de knop-CC terug naar zijn ring.
     if (a.manifest?.rings === 'auto' && g.kind === 'waarde' && g.el && RINGKNOP.test(g.el)) this.#leaseLed(a, [[0xb0 | (bytes[0] & 0x0f), bytes[1], bytes[2]]]);
@@ -421,7 +468,7 @@ export class Kern extends Zender {
           const pk = a.pickups.get(el) ?? nieuwePickup(huidig, vorig ?? null, modus);
           const r = beweeg(pk, g.v);
           a.pickups.set(el, r.p);
-          if (r.uit !== null) this.#zetWaarde(a, t.id, r.uit, { naarApp: true, bron: 'apc40' });
+          if (r.uit !== null) this.#zetWaarde(a, t.id, r.uit, { naarApp: true, bron: 'apc40', ctrl: el });
           else { this.#teken(); if (r.p.gevangen !== pk.gevangen) this.#beeldGewijzigd(); }
           return;
         }
@@ -474,8 +521,7 @@ export class Kern extends Zender {
       const sleutel = `lpd8:${el}`;
       const vorig = this.fysiek.get(sleutel);
       this.fysiek.set(sleutel, g.v);
-      const doel = this.globaal[rol];
-      const pk = this.lpdPickups.get(el) ?? (typeof doel === 'number' ? nieuwePickup(doel, vorig ?? null) : nieuwePickup(g.v, g.v));
+      const pk = this.lpdPickups.get(el) ?? nieuwePickup(this.#macroDoel(rol), vorig ?? null);
       const r = beweeg(pk, g.v);
       this.lpdPickups.set(el, r.p);
       if (r.uit !== null) this.#macro(rol, r.uit);
@@ -502,6 +548,21 @@ export class Kern extends Zender {
         if (nu - start > LANG_MS) this.bewaar(nr - 4); else this.laad(nr - 4);
       }
     }
+  }
+
+  /**
+   * Doel voor de pickup van een LPD8-knop: de globale waarde als die er is, anders de huidige waarde
+   * van de eerste app met een parameter met die rol, anders 0.5. Zo springt er ook bij de eerste aanraking niets.
+   * @param {string} rol
+   */
+  #macroDoel(rol) {
+    const g = this.globaal[rol];
+    if (typeof g === 'number') return g;
+    for (const a of this.apps.values()) {
+      const p = a.manifest?.params.find((x) => x.rol === rol && x.soort !== 'trigger');
+      if (p) return a.waarden[p.id] ?? p.standaard ?? 0;
+    }
+    return 0.5;
   }
 
   /** Globale macro: elke app met die rol krijgt een zet (met slew), iedereen krijgt globaal. @param {string} rol @param {number} v */
@@ -635,13 +696,50 @@ export class Kern extends Zender {
 
   #focusAppStaat() { return this.focusApp ? this.apps.get(this.focusApp) : undefined; }
 
-  /** Teken het hele oppervlak opnieuw (bv. na opnieuw aansluiten van de APC). */
-  herteken() { this.getekend = null; this.#teken(); }
+  /**
+   * Teken het hele oppervlak opnieuw. Na opnieuw aansluiten van de APC (ApcSessie 'verbonden'; de kern
+   * luistert daar zelf naar als het oppervlak `bij` heeft): de knoppen staan dan op wat het LED-model stuurde.
+   */
+  herteken() {
+    for (const c of RINGEN) this.fysiek.delete(c.id);
+    this.alles = true;
+    this.#teken();
+  }
+
+  /**
+   * Een controller viel weg ('apc40' | 'lpd8'): niets mag blijven hangen. Ingedrukte toetsen krijgen hun 'los',
+   * de hubtoets is los, een lopende paniek eindigt. De ApcSessie meldt zijn eigen 'weg'; voor de LPD8 roept de server dit aan.
+   * @param {string} dev
+   */
+  apparaatWeg(dev) {
+    if (dev === 'apc40') {
+      const routes = [...this.routes];
+      this.routes.clear();
+      this.hubIn = false;
+      this.shiftIn = false;
+      for (const [el, r] of routes) {
+        const a = r !== 'hub' ? this.apps.get(r) : undefined;
+        const c = APC.OP_ID.get(el);
+        if (!a || !c) continue;
+        const bytes = [(c.t === 'cc' ? 0xb0 : 0x80) | c.ch, c.n, 0];
+        this.#naarAppInvoer(a, { dev: 'apc40', el, kind: 'los' }, bytes, undefined);
+      }
+      for (const c of RINGEN) this.fysiek.delete(c.id);
+      this.#teken(); // het model klopt weer zodra hij terugkomt (ApcSessie.init tekent het)
+    } else if (dev === 'lpd8') {
+      if (this.p1Timer !== null) { this.klok.wis(this.p1Timer); this.p1Timer = null; }
+      if (this.paniekActief) this.#paniek(false);
+      this.padDruk.clear();
+      this.lpdPickups.clear();
+      for (const k of [...this.fysiek.keys()]) if (k.startsWith('lpd8:')) this.fysiek.delete(k);
+    }
+  }
 
   #teken() {
     const a = this.#focusAppStaat();
-    if (a?.manifest?.lease) this.#tekenLease(a);
+    if (a?.manifest?.lease && a.status !== 'weg') this.#tekenLease(a);
     else this.#tekenManifest(a);
+    this.alles = false;
   }
 
   /** Hublaag-overlay: slots, focus, snapshots. @returns {Map<string, LedStaat>} */
@@ -680,10 +778,7 @@ export class Kern extends Zender {
       if (t.rol === 'fader' || t.rol === 'ring') {
         const modus = t.rol === 'ring' && this.overname ? 'direct' : t.takeover;
         if (!a.pickups.has(ctrl)) a.pickups.set(ctrl, nieuwePickup(v, this.fysiek.get(ctrl) ?? null, modus));
-        if (t.rol === 'ring' && c.led === 'ring') {
-          if (this.overname) { m.set(ctrl, { waarde: v }); this.fysiek.set(ctrl, v); }
-          else m.set(ctrl, { waarde: this.fysiek.get(ctrl) ?? 0 });
-        }
+        if (t.rol === 'ring' && c.led === 'ring') m.set(ctrl, { waarde: this.overname ? v : this.fysiek.get(ctrl) ?? 0 });
         const strip = /^fader([1-8])$/.exec(ctrl);
         if (strip && !a.pickups.get(ctrl)?.gevangen) m.set(`stop${strip[1]}`, { knipper: true });
       } else if (t.rol === 'keuze') {
@@ -707,8 +802,9 @@ export class Kern extends Zender {
 
   /** Manifest-app (of geen focus): alles via het LED-model van het oppervlak, alleen verschillen gaan de draad op. @param {AppStaat|undefined} a */
   #tekenManifest(a) {
-    if (this.getekend?.soort === 'lease') {
-      // De lease-app tekende buiten het LED-model om: alles opnieuw, ringtypes terug.
+    const volledig = this.alles || this.getekend?.soort === 'lease';
+    if (volledig) {
+      // De lease-app tekende buiten het LED-model om (of alles moet opnieuw): alles opnieuw, ringtypes terug.
       this.opp.vergeet();
       for (const b of APC.ringTypeBerichten(APC.RING.single)) this.opp.stuur(b);
     }
@@ -717,19 +813,58 @@ export class Kern extends Zender {
     const oud = new Map(this.getoond);
     for (const [id, s] of m) { this.opp.zet(id, s); this.getoond.set(id, s); }
     this.opp.teken();
+    // In modus 0x42 zet een ring-CC ook de interne waarde van de knop. Het LED-model stuurt alleen verschillen,
+    // dus een knop die zonder echo is gedraaid (hubtoets, ongebonden, andere app) krijgt zijn ring geforceerd.
+    for (const c of RINGEN) {
+      const s = /** @type {{ waarde?: number }} */ (m.get(c.id) ?? {}).waarde ?? 0;
+      const f = this.fysiek.get(c.id);
+      const was = /** @type {{ waarde?: number }} */ (oud.get(c.id) ?? {}).waarde ?? 0;
+      // Het LED-model stuurt hem zelf (alles opnieuw, of de ring veranderde); of de knop is nooit gedraaid.
+      if (volledig || f === undefined || r7(was) !== r7(s)) { this.fysiek.set(c.id, r7(s) / 127); continue; }
+      if (this.#ringKlopt(a, c.id, f, s)) continue;
+      for (const b of APC.ledBerichten(c, { waarde: s })) this.opp.stuur(b);
+      this.fysiek.set(c.id, r7(s) / 127);
+    }
     this.getekend = { soort: 'manifest', app: a?.app ?? null };
     this.#meldLeds(oud);
+  }
+
+  /**
+   * Klopt de interne knopwaarde `f` met de getoonde ring `s`? Voor een keuze/schakelaar op een ring telt
+   * de gekwantiseerde stand (anders zou de knop bij elke tik terugspringen).
+   * @param {AppStaat|undefined} a @param {string} id @param {number} f @param {number} s
+   */
+  #ringKlopt(a, id, f, s) {
+    if (r7(f) === r7(s)) return true;
+    const t = a?.indeling ? toewijzingen(a.indeling, a.pagina)[id] : undefined;
+    const p = t && a ? this.#param(a, t.id) : undefined;
+    return !!p && p.soort !== 'waarde' && this.overname && kwantiseer(p, f) === s;
   }
 
   /** Lease-app: bij wisselen alles uit + de hele LED-kaart; daarna alleen de hub-overlay erbij of eraf. @param {AppStaat} a */
   #tekenLease(a) {
     const oud = new Map(this.getoond);
-    const volledig = this.getekend?.soort !== 'lease' || this.getekend.app !== a.app;
+    const volledig = this.alles || this.getekend?.soort !== 'lease' || this.getekend.app !== a.app;
     if (volledig) {
-      for (const c of APC.MET_LED) { for (const b of APC.ledBerichten(c, uit(c))) this.opp.stuur(b); this.getoond.set(c.id, uit(c)); }
+      // Het LED-model van het oppervlak klopt hierna niet meer met de draad: leeg + vergeten, zodat een
+      // latere teken() of zwart() (afsluiten, opnieuw aansluiten) alles opnieuw stuurt.
+      for (const c of APC.MET_LED) this.opp.zet(c.id, uit(c));
+      this.opp.vergeet();
+      // Ringen niet op 0: in 0x42 zet de ring-CC ook de knopwaarde. Elke ring krijgt de laatste stand
+      // die deze app kende (zijn eigen ring-LED of de knop zelf), anders 0.
+      for (const c of APC.MET_LED) {
+        const s = c.led === 'ring' ? { waarde: a.knoppen.get(c.id) ?? 0 } : uit(c);
+        for (const b of APC.ledBerichten(c, s)) this.opp.stuur(b);
+        this.getoond.set(c.id, s);
+        if (c.led === 'ring') { a.knoppen.set(c.id, s.waarde); this.fysiek.set(c.id, r7(s.waarde) / 127); }
+      }
       for (const b of APC.ringTypeBerichten(APC.RING.single)) this.opp.stuur(b);
-      for (const regel of a.kaart.values()) for (const b of regel) this.opp.stuur(b);
-      for (const [k, regel] of a.kaart) { const c = controlVan(regel[regel.length - 1]); if (c && sleutelVan(c) === k) this.getoond.set(c.id, decodeer(c, regel)); }
+      for (const [k, regel] of a.kaart) {
+        const c = controlVan(regel[regel.length - 1]);
+        if (c?.led === 'ring') continue; // al getekend met de laatste stand
+        for (const b of regel) this.opp.stuur(b);
+        if (c && sleutelVan(c) === k) this.getoond.set(c.id, decodeer(c, regel));
+      }
       this.getekend = { soort: 'lease', app: a.app };
     }
     const ov = this.hubIn ? this.#overlay() : null;
@@ -755,8 +890,11 @@ export class Kern extends Zender {
       if (!Array.isArray(m) || !m.length || isModeSysex(m)) continue;
       const k = ledSleutel(m);
       if (k) this.#bewaarLed(a, k, m);
-      if (!zichtbaar) continue;
       const c = controlVan(m);
+      const ring = c?.led === 'ring' && k === sleutelVan(c) ? c.id : null;
+      if (ring) a.knoppen.set(ring, m[2] / 127); // de nieuwste wens voor ring én knop
+      if (!zichtbaar) continue;
+      if (ring) this.fysiek.set(ring, m[2] / 127);
       if (this.hubIn && c && OVERLAY.includes(c.id)) continue; // de hublaag ligt erover; komt terug bij loslaten
       this.opp.stuur(m);
       if (c && k && sleutelVan(c) === k) this.getoond.set(c.id, decodeer(c, a.kaart.get(k)));
@@ -835,5 +973,7 @@ export class Kern extends Zender {
     }
     for (const a of this.apps.values()) this.#wisHartslag(a);
     this.slews.clear();
+    for (const f of this.afmelden) f();
+    this.afmelden = [];
   }
 }
