@@ -1,0 +1,10 @@
+{
+  "_doc": "Kopieer naar sets/paden.json (staat niet in git) en zet er de mappen van jouw repo's in. Sleutel = repo-naam uit config.json → apps.<id>.repo. ~ = je thuismap.",
+  "youtube-mixer": "~/Desktop/youtube-mixer",
+  "formula-lab": "~/Projects/formula-lab",
+  "medisynth": "~/Projects/medisynth",
+  "waterschaal": "~/Projects/waterschaal",
+  "uurwerk": "~/Projects/uurwerk",
+  "av-kern": "~/src/av-kern",
+  "av-scene-kit": "~/Projects/av-scene-kit"
+}

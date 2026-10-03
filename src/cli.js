@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
-//   start [--poort N] [--host H] [--zonder-midi] [--geen-drivers]
-//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers
+//   start [set] [--poort N] [--host H] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer]
+//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers;
+//                            met een set (sets/<set>.json) ook alle apps van die avond (docs/SETS.md)
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
@@ -21,6 +22,7 @@ import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
 import { NepSysteem } from './ports/nep.js';
+import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen } from './sets/index.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -67,8 +69,39 @@ function zonderMidi() {
 /** @param {string} naam */
 const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
 
+/**
+ * Start de apps van een set naast een hub (in dit proces of een die al draaide). Ctrl-C ruimt op wat de
+ * starter zelf startte, daarna `naStop` (de hub stoppen, of de cockpitverbinding sluiten).
+ * @param {import('./sets/set.js').SetDef} set @param {import('./sets/toegang.js').KernToegang} hub
+ * @param {number} hubPoort @param {() => Promise<void>|void} naStop
+ */
+function draaiSet(set, hub, hubPoort, naStop) {
+  const log = (/** @type {string} */ r) => console.log(r);
+  const openUrl = args.includes('--zonder-chrome') ? null : openInChrome();
+  let paden = {};
+  try { paden = laadPaden(); } catch (e) { console.error(/** @type {Error} */ (e).message); }
+  const s = startSet({ set, config, paden, hub, hubPoort, klok: echteKlok, startProces, openUrl, poortOpen, log, toonUitvoer: args.includes('--uitvoer') });
+  bijStoppen(async () => { console.log('\nStoppen…'); await s.stop(); await naStop(); });
+  s.klaar.then((u) => { if (u.some((x) => !x.klaar)) console.log('De hub blijft draaien; start wat mist met de hand of los het op en draai de set opnieuw. Ctrl-C stopt alles wat de set startte.'); });
+}
+
+/** De setnaam: het eerste argument dat geen optie (of de waarde van een optie) is. */
+function setNaam() {
+  const metWaarde = new Set(['--poort', '--host']);
+  for (let i = 0; i < args.length; i++) {
+    if (metWaarde.has(args[i])) { i++; continue; }
+    if (!args[i].startsWith('--')) return args[i];
+  }
+  return undefined;
+}
+
 const opdrachten = {
   async start() {
+    const naam = setNaam();
+    let set = null;
+    if (naam) {
+      try { set = laadSet(naam, { config }); } catch (e) { console.error(/** @type {Error} */ (e).message); process.exit(1); }
+    }
     let systeem;
     if (args.includes('--zonder-midi')) systeem = zonderMidi();
     else {
@@ -87,6 +120,17 @@ const opdrachten = {
     } catch (e) {
       const code = /** @type {any} */ (e)?.code;
       if (code !== 'EADDRINUSE' && code !== 'EACCES') throw e;
+      if (set && code === 'EADDRINUSE') {
+        // Er draait al een hub: niet opnieuw starten, alleen verbinden (als cockpit) en de set erbij zetten.
+        try {
+          const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`);
+          console.log(`Er draait al een hub op poort ${poort} — de set "${set.naam}" verbindt daarmee.`);
+          draaiSet(set, toegang, poort, () => toegang.sluit());
+          return;
+        } catch (f) {
+          console.error(`poort ${poort} is bezet, maar daar antwoordt geen hub (${/** @type {Error} */ (f).message}).`);
+        }
+      }
       console.error(code === 'EADDRINUSE'
         ? `poort ${poort} is bezet — draait de hub al (in een ander venster)? Stop die, of start met --poort N (apps dan met ?hub=ws://localhost:N, nep-apps met --url).`
         : `poort ${poort} mag niet gebruikt worden (${code}) — kies een andere met --poort N.`);
@@ -98,7 +142,8 @@ const opdrachten = {
     }
     hub.kern.bij('naarApp', () => {});
     console.log(`varve-hub draait. Cockpit: ${hub.adres}   Apps: ${hub.adres.replace('http', 'ws')}/app   Ctrl-C stopt.`);
-    bijStoppen(() => hub.stop());
+    if (set) { const h = hub; draaiSet(set, kernToegang(h.kern), Number(new URL(h.adres).port), () => h.stop()); }
+    else bijStoppen(() => hub.stop());
   },
 
   async doctor() {
@@ -172,7 +217,8 @@ const opdrachten = {
 
   help() {
     console.log(`varve-hub — opdrachten:
-  start             de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers)
+  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers);
+                    met een set ook de apps van die avond (${lijstSets().join(', ') || 'geen sets'}; --zonder-chrome, --uitvoer)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt

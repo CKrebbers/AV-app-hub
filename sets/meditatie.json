@@ -1,0 +1,35 @@
+{
+  "_doc": "Meditatie-avond: MediSynth (klank), Waterschaal (wrijven en adem), Uurwerk (tijd) en av-kern (beeld). Uitleg: docs/SETS.md. Paden: sets/paden.json. Poorten: config.json.",
+  "naam": "Meditatie",
+  "beschrijving": "Trage klank en water; de LPD8 draait de macro's, de APC bespeelt Waterschaal.",
+  "time_out_s": 60,
+  "apps": {
+    "medisynth": {
+      "start": { "commando": "npm run dev -- --port {poort} --strictPort" },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van medisynth"
+    },
+    "waterschaal": {
+      "start": { "commando": "python3 -m http.server {poort} --bind 127.0.0.1" },
+      "url": "http://localhost:{poort}/td/waterschaal-lokaal.html?hub={hub}",
+      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van waterschaal"
+    },
+    "uurwerk": {
+      "start": { "commando": "./start.sh" },
+      "url": null,
+      "opmerking": "start.sh zet webserver (8765) en brug ({poort}) op de achtergrond en opent zelf de browser; de hub praat via de HTTP-driver met de brug"
+    },
+    "av-kern": {
+      "start": { "commando": "npm run dev -- --port {poort} --strictPort", "omgeving": { "BROWSER": "none" } },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "wacht": "poort",
+      "opmerking": "de hub-koppeling van av-kern komt pas na 25 okt: nu start hij alleen en gaat hij open in Chrome (de starter wacht op de poort, niet op de hub). Klik niet op 'Verbind APC40' zolang de hub de APC heeft (huisregel 1). Na 25 okt: wacht → \"kern\" en een snapshot erbij."
+    }
+  },
+  "snapshot": {
+    "medisynth": { "ruimte": 0.6, "helderheid": 0.4, "dichtheid": 0.5, "niveau": 0.8 },
+    "waterschaal": { "volume": 0.6 },
+    "uurwerk": { "onrust": 0, "licht": 0.4, "dicht": 0.4 }
+  },
+  "focus": "waterschaal"
+}
