@@ -1,6 +1,8 @@
 // @ts-check
 // De bytes die een echte controller zou sturen, gemaakt uit een Control van src/devices/apc40mk2.js.
-// Puur en zonder imports, zodat het in Node te toetsen is.
+// Puur, zodat het in Node te toetsen is. Enige import: het LPD8-standaardprofiel (zelf zonder imports).
+
+import { standaardProfiel } from '../src/devices/lpd8.js';
 
 /** @typedef {{ id: string, soort: string, t: 'note'|'cc', n: number, ch: number }} ControlLike */
 
@@ -35,15 +37,23 @@ export function relBytes(c, delta) {
 /** Waarde 0..1 uit een CC-byte. @param {number} raw */
 export const vanCC = (raw) => byte7(raw) / 127;
 
-// LPD8 (mk2-fabrieksstand): pads note 36-43, knoppen CC 70-77, kanaal 10 (0x_9).
-export const LPD8 = Object.freeze({ kanaal: 9, padNoot: 36, knopCC: 70 });
+// LPD8 (mk2-fabrieksstand, ONDERZOEK.md §6): pads note 36-43 op kanaal 10 (0x_9), knoppen CC 70-77 op kanaal 1 (0x_0).
+// Noten en CC's komen uit standaardProfiel('mk2') van de hub; een kanaal uit het profiel gaat voor.
+const MK2 = standaardProfiel('mk2');
+export const LPD8 = Object.freeze({
+  padKanaal: 9, knopKanaal: 0,
+  pads: Object.freeze(MK2.pads.map((p) => p.n)),
+  knoppen: Object.freeze(MK2.knoppen.map((k) => k.n)),
+  padCh: Object.freeze(MK2.pads.map((p) => p.ch ?? 9)),
+  knopCh: Object.freeze(MK2.knoppen.map((k) => k.ch ?? 0)),
+});
 
 /** @param {number} i 0..7 @param {number} [velocity] */
-export const lpdDruk = (i, velocity = 127) => [0x90 | LPD8.kanaal, LPD8.padNoot + i, byte7(Math.max(1, velocity))];
+export const lpdDruk = (i, velocity = 127) => [0x90 | LPD8.padCh[i], LPD8.pads[i], byte7(Math.max(1, velocity))];
 /** @param {number} i 0..7 */
-export const lpdLos = (i) => [0x80 | LPD8.kanaal, LPD8.padNoot + i, 0];
+export const lpdLos = (i) => [0x80 | LPD8.padCh[i], LPD8.pads[i], 0];
 /** @param {number} i 0..7 @param {number} v 0..1 */
-export const lpdKnop = (i, v) => [0xb0 | LPD8.kanaal, LPD8.knopCC + i, byte7(v * 127)];
+export const lpdKnop = (i, v) => [0xb0 | LPD8.knopCh[i], LPD8.knoppen[i], byte7(v * 127)];
 
 /**
  * Pulsduur in seconden voor een APC-animatiesnelheid (0..4 = 1/24, 1/16, 1/8, 1/4, 1/2 noot).

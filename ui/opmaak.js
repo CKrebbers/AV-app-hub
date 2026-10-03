@@ -43,7 +43,7 @@ export function invoerTekst(g) {
 export function focusVan(beeld) {
   if (!beeld) return null;
   if (typeof beeld.focus === 'string') return beeld.focus;
-  const a = (beeld.apps ?? []).find((/** @type {any} */ x) => x && x.focus);
+  const a = Array.isArray(beeld.apps) ? beeld.apps.find((/** @type {any} */ x) => x && x.focus) : null;
   return a ? a.app : null;
 }
 
@@ -75,4 +75,6 @@ export function appKleur(a) {
 }
 
 /** Handtekening van een parameterlijst: verandert alleen als het manifest verandert. @param {string|null} app @param {any[]|undefined} params */
-export const paramSleutel = (app, params) => `${app}|${(params ?? []).map((p) => `${p.id}:${p.soort}:${(p.keuzes ?? []).length}`).join(',')}`;
+export const paramSleutel = (app, params) => `${app}|${(Array.isArray(params) ? params : [])
+  .filter((p) => p && typeof p === 'object')
+  .map((p) => `${p.id}:${p.soort}:${Array.isArray(p.keuzes) ? p.keuzes.length : 0}`).join(',')}`;

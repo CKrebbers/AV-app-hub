@@ -1,9 +1,9 @@
 // @ts-check
-// Virtuele LPD8 (mk2-fabrieksstand): 8 pads (note 36-43) en 8 knoppen (CC 70-77), kanaal 10.
+// Virtuele LPD8 (mk2-fabrieksstand): 8 pads (note 36-43, kanaal 10) en 8 knoppen (CC 70-77, kanaal 1).
 // Opschriften volgen PROTOCOL.md §6; de knoppen tonen de globale macro's uit `beeld`.
 
 import { ROLLEN } from '../src/protocol/manifest.js';
-import { lpdDruk, lpdLos, lpdKnop } from './midi.js';
+import { lpdDruk, lpdLos, lpdKnop, LPD8 } from './midi.js';
 
 /** Korte namen voor K1..K8 (zelfde volgorde als ROLLEN) en P1..P8. */
 export const KNOP_NAMEN = ['intensiteit', 'helderheid', 'ruimte', 'beweging', 'kleur', 'dichtheid', 'adem', 'balans'];
@@ -28,6 +28,8 @@ export function maakLpd8(root, { stuur }) {
   const stand = new Map();
   /** @type {Set<string>} */
   const bezig = new Set();
+  /** Ingedrukte (of vastgehouden) pads → loslaten. @type {Map<string, () => void>} */
+  const ingedrukt = new Map();
 
   // Zoals op het apparaat: bovenste rij 1-4, onderste rij 5-8 voor knoppen; pads 5-8 boven, 1-4 onder.
   for (const i of [0, 1, 2, 3, 4, 5, 6, 7]) {
@@ -35,7 +37,7 @@ export function maakLpd8(root, { stuur }) {
     const d = document.createElement('div');
     d.className = 'lpd-knop'; d.dataset.id = id; d.tabIndex = 0;
     d.setAttribute('role', 'slider'); d.setAttribute('aria-label', `LPD8 knop ${i + 1}: ${KNOP_NAMEN[i]}`);
-    d.title = `K${i + 1} · ${ROLLEN[i]} · CC ${70 + i} kanaal 10`;
+    d.title = `K${i + 1} · ${ROLLEN[i]} · CC ${LPD8.knoppen[i]} kanaal ${LPD8.knopCh[i] + 1}`;
     d.innerHTML = `<i class="ring"></i><i class="dop"><b></b></i><span class="kort">K${i + 1}</span><span class="naam">${KNOP_NAMEN[i]}</span>`;
     knoppen.appendChild(d); el.set(id, d);
     zetStand(id, 0);
@@ -67,10 +69,10 @@ export function maakLpd8(root, { stuur }) {
     const d = document.createElement('div');
     d.className = 'lpd-pad'; d.dataset.id = id; d.tabIndex = 0;
     d.setAttribute('role', 'button'); d.setAttribute('aria-label', `LPD8 pad ${i + 1}: ${PAD_NAMEN[i]}`);
-    d.title = `P${i + 1} · ${PAD_NAMEN[i]} · note ${36 + i} kanaal 10${i >= 4 ? ' · lang drukken = bewaren' : i === 0 ? ' · 1 s vasthouden' : ''}`;
+    d.title = `P${i + 1} · ${PAD_NAMEN[i]} · note ${LPD8.pads[i]} kanaal ${LPD8.padCh[i] + 1}${i >= 4 ? ' · lang drukken = bewaren' : i === 0 ? ' · 1 s vasthouden' : ''}`;
     d.innerHTML = `<span class="kort">P${i + 1}</span><span class="naam">${PAD_NAMEN[i]}</span>`;
     pads.appendChild(d); el.set(id, d);
-    let in_ = false, vast = false;
+    let in_ = false, vast = false, viaToets = false;
     /** Velocity uit waar je de pad raakt: bovenkant hard, onderkant zacht. @param {PointerEvent|null} e */
     const velocity = (e) => {
       if (!e) return 127;
@@ -79,8 +81,8 @@ export function maakLpd8(root, { stuur }) {
       return Math.round(40 + Math.max(0, Math.min(1, t * 1.25)) * 87);
     };
     /** @param {PointerEvent|null} e */
-    const druk = (e) => { if (in_) return; in_ = true; bezig.add(id); d.classList.add('in'); stuur(lpdDruk(i, velocity(e))); };
-    const los = () => { if (!in_) return; in_ = false; vast = false; bezig.delete(id); d.classList.remove('in', 'vast'); stuur(lpdLos(i)); };
+    const druk = (e) => { if (in_) return; in_ = true; bezig.add(id); ingedrukt.set(id, los); d.classList.add('in'); stuur(lpdDruk(i, velocity(e))); };
+    function los() { if (!in_) return; in_ = false; vast = false; viaToets = false; bezig.delete(id); ingedrukt.delete(id); d.classList.remove('in', 'vast'); stuur(lpdLos(i)); }
     d.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       if (vast) { los(); return; }
@@ -91,8 +93,9 @@ export function maakLpd8(root, { stuur }) {
     const op = () => { if (!vast) los(); };
     d.addEventListener('pointerup', op);
     d.addEventListener('pointercancel', op);
-    d.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); druk(null); } });
+    d.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) { e.preventDefault(); druk(null); viaToets = true; } });
     d.addEventListener('keyup', (e) => { if (e.key === 'Enter' || e.key === ' ') op(); });
+    d.addEventListener('blur', () => { if (viaToets && !vast) los(); });
   }
 
   /** @param {string} id @param {number} v */
@@ -105,6 +108,10 @@ export function maakLpd8(root, { stuur }) {
 
   return {
     el,
+    /** Welke pads zijn nu ingedrukt of vastgehouden (ids). */
+    get ingedrukt() { return [...ingedrukt.keys()]; },
+    /** Laat alle pads los (stuurt de note-offs). */
+    losAlles() { for (const los of [...ingedrukt.values()]) los(); },
     /** Globale macro's uit `beeld` op de knoppen zetten (alleen als je er niet net aan draait). @param {Record<string, unknown>} globaal */
     zetGlobaal(globaal) {
       ROLLEN.forEach((rol, i) => {

@@ -42,7 +42,7 @@ export function weergave(c, s, palet, bpm = 120) {
         const heeft2 = s.anim.kleur2 !== undefined;
         w.kleur = heeft2 ? kleurVan(s.kleur) : null; // achtergrond
         w.kleur2 = heeft2 ? kleurVan(s.anim.kleur2) : kleurVan(s.kleur); // wat animeert
-        w.anim = s.anim.soort;
+        w.anim = s.anim.soort === 'puls' || s.anim.soort === 'knipper' || s.anim.soort === 'oneshot' ? s.anim.soort : 'puls';
         w.duur = animDuur(s.anim.snelheid, bpm);
         w.aan = !!(w.kleur || w.kleur2);
       } else {
@@ -63,13 +63,13 @@ export function weergave(c, s, palet, bpm = 120) {
       return w;
     }
     case 'ab': {
-      w.stand = s.stand ?? 0;
+      w.stand = typeof s.stand === 'number' && Number.isFinite(s.stand) ? s.stand : 0;
       w.aan = w.stand > 0;
       w.kleur = w.stand === 1 ? LED_KLEUR.ab1 : w.stand >= 2 ? LED_KLEUR.ab2 : null;
       return w;
     }
     case 'ring': {
-      w.ring = Math.max(0, Math.min(1, s.waarde ?? 0));
+      w.ring = typeof s.waarde === 'number' && Number.isFinite(s.waarde) ? Math.max(0, Math.min(1, s.waarde)) : 0;
       w.aan = true;
       return w;
     }

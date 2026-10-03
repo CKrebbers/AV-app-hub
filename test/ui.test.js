@@ -8,7 +8,7 @@ import { INDELING, BREEDTE, HOOGTE } from '../ui/indeling.js';
 import { drukBytes, losBytes, ccBytes, relBytes, lpdDruk, lpdLos, lpdKnop, animDuur } from '../ui/midi.js';
 import { weergave, LED_KLEUR } from '../ui/led.js';
 import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel } from '../ui/opmaak.js';
-import { Verbinding, WACHTTIJDEN, cockpitUrl } from '../ui/verbinding.js';
+import { Verbinding, WACHTTIJDEN, VERBIND_TIJD, cockpitUrl } from '../ui/verbinding.js';
 import { startNepServer, bestandVoor } from './ui-nepserver.js';
 
 const C = (/** @type {string} */ id) => /** @type {any} */ (OP_ID.get(id));
@@ -74,11 +74,12 @@ describe('bytes zoals de echte controller', () => {
       if (c.t === 'note') expect(ontleed(losBytes(c))).toMatchObject({ el: c.id, kind: 'los' });
     }
   });
-  it('LPD8 (mk2-fabrieksstand) op kanaal 10, gelezen door het standaardprofiel', () => {
+  it('LPD8 (mk2-fabrieksstand): pads op kanaal 10, knoppen op kanaal 1 (ONDERZOEK §6), gelezen door het standaardprofiel', () => {
     const lees = maakOntleder(standaardProfiel('mk2'));
     expect(lpdDruk(0)).toEqual([0x99, 36, 127]);
     expect(lpdLos(7)).toEqual([0x89, 43, 0]);
-    expect(lpdKnop(0, 1)).toEqual([0xb9, 70, 127]);
+    expect(lpdKnop(0, 1)).toEqual([0xb0, 70, 127]);
+    expect(lpdKnop(7, 0)).toEqual([0xb0, 77, 0]);
     expect(lpdDruk(2, 0)[2]).toBe(1); // velocity 0 zou note-off zijn
     expect(lees(lpdDruk(4, 90))).toMatchObject({ el: 'p5', kind: 'druk' });
     expect(lees(lpdLos(4))).toMatchObject({ el: 'p5', kind: 'los' });
@@ -110,6 +111,11 @@ describe('LedStaat → weergave', () => {
     expect(weergave(C('ab1'), { stand: 2 }, PALET)).toMatchObject({ aan: true, kleur: LED_KLEUR.ab2, stand: 2 });
     expect(weergave(C('dk1'), { waarde: 1.4 }, PALET).ring).toBe(1);
   });
+  it('rare LedStaat geeft geen NaN of onbekende animatie', () => {
+    expect(weergave(C('dk1'), /** @type {any} */ ({ waarde: 'x' }), PALET).ring).toBe(0);
+    expect(weergave(C('ab1'), /** @type {any} */ ({ stand: 'x' }), PALET)).toMatchObject({ aan: false, stand: 0 });
+    expect(weergave(C('pad1-1'), /** @type {any} */ ({ kleur: 3, anim: { soort: 'draai' } }), PALET).anim).toBe('puls');
+  });
 });
 
 describe('opmaak', () => {
@@ -140,6 +146,12 @@ describe('opmaak', () => {
     expect(appKleur({ app: 'x' })).toMatch(/^hsl/);
     expect(paramSleutel('a', [{ id: 'x', soort: 'waarde' }])).not.toBe(paramSleutel('a', [{ id: 'x', soort: 'keuze', keuzes: ['p', 'q'] }]));
   });
+  it('valt niet om over slechte invoer', () => {
+    expect(focusVan({ apps: { a: { app: 'a', focus: true } } })).toBe(null);
+    expect(focusVan({ apps: 'x' })).toBe(null);
+    expect(paramSleutel('a', /** @type {any} */ ([null, { id: 'x', soort: 'waarde' }, 3]))).toBe('a|x:waarde:0');
+    expect(paramSleutel('a', /** @type {any} */ ('x'))).toBe('a|');
+  });
 });
 
 describe('verbinding met de hub', () => {
@@ -156,7 +168,7 @@ describe('verbinding met de hub', () => {
     /** @type {{ fn: () => void, ms: number }[]} */
     const timers = [];
     const statussen = [];
-    const v = new Verbinding({ url: 'ws://x/cockpit', WS: NepWS, wacht: (fn, ms) => timers.push({ fn, ms }), bijStatus: (s) => statussen.push(s.status) }).start();
+    const v = new Verbinding({ url: 'ws://x/cockpit', WS: NepWS, verbindTijd: 0, wacht: (fn, ms) => timers.push({ fn, ms }), bijStatus: (s) => statussen.push(s.status) }).start();
     for (let i = 0; i < 5; i++) { NepWS.alle.at(-1).close(); timers.at(-1).fn(); }
     expect(timers.map((t) => t.ms)).toEqual([...WACHTTIJDEN, 5000]);
     NepWS.alle.at(-1).open();
@@ -170,7 +182,7 @@ describe('verbinding met de hub', () => {
   it('stuurt alleen als hij open is en negeert onleesbare berichten', () => {
     NepWS.alle = [];
     const binnen = [];
-    const v = new Verbinding({ url: 'ws://x', WS: NepWS, wacht: () => 0, bijBericht: (b) => binnen.push(b) }).start();
+    const v = new Verbinding({ url: 'ws://x', WS: NepWS, verbindTijd: 0, wacht: () => 0, bijBericht: (b) => binnen.push(b) }).start();
     expect(v.stuur({ t: 'focus', app: 'a' })).toBe(false);
     NepWS.alle[0].open();
     expect(v.stuur({ t: 'focus', app: 'a' })).toBe(true);
@@ -179,6 +191,26 @@ describe('verbinding met de hub', () => {
     NepWS.alle[0].ontvang('[1,2]');
     NepWS.alle[0].ontvang({ t: 'beeld', apps: [] });
     expect(binnen).toEqual([{ t: 'beeld', apps: [] }]);
+    v.stop();
+  });
+  it('geeft het op na 4 s in CONNECTING en probeert opnieuw', () => {
+    NepWS.alle = [];
+    /** @type {{ fn: () => void, ms: number }[]} */
+    const timers = [];
+    const statussen = [];
+    const v = new Verbinding({ url: 'ws://x', WS: NepWS, wacht: (fn, ms) => timers.push({ fn, ms }), bijStatus: (s) => statussen.push(s.status) }).start();
+    expect(timers.map((t) => t.ms)).toEqual([VERBIND_TIJD]);
+    timers[0].fn(); // blijft hangen in CONNECTING
+    expect(NepWS.alle[0].readyState).toBe(3);
+    expect(statussen.at(-1)).toBe('weg');
+    expect(timers.at(-1).ms).toBe(WACHTTIJDEN[0]);
+    timers.at(-1).fn();
+    expect(NepWS.alle).toHaveLength(2);
+    NepWS.alle[1].open();
+    expect(v.open).toBe(true);
+    // de time-out van een socket die wél opende doet niets
+    timers.find((t) => t.ms === VERBIND_TIJD && t !== timers[0])?.fn();
+    expect(v.open).toBe(true);
     v.stop();
   });
   it('adres: zelfde host, /cockpit; ?hub= overschrijft', () => {
@@ -240,6 +272,7 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
   const virtueel = () => server.ontvangen.filter((b) => b.t === 'virtueel');
   /** @param {string} sel */
   const midden = async (sel) => {
+    await page.locator(sel).scrollIntoViewIfNeeded();
     const r = await page.locator(sel).boundingBox();
     if (!r) throw new Error(`niet zichtbaar: ${sel}`);
     return { x: r.x + r.width / 2, y: r.y + r.height / 2, r };
@@ -324,7 +357,7 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(b.some((m) => m[2] >= 64)).toBe(true);
   });
 
-  it('virtuele LPD8: pad op kanaal 10 en knop als CC 70+', async () => {
+  it('virtuele LPD8: pad op kanaal 10 en knop als CC 70+ op kanaal 1', async () => {
     const p = await midden('#lpd8 [data-id="p1"]');
     await page.mouse.click(p.x, p.y);
     const k = await midden('#lpd8 [data-id="k3"]');
@@ -337,7 +370,7 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(v.every((b) => b.dev === 'lpd8')).toBe(true);
     expect(v[0].bytes.slice(0, 2)).toEqual([0x99, 36]);
     expect(v[1].bytes).toEqual([0x89, 36, 0]);
-    expect(v.slice(2).every((b) => b.bytes[0] === 0xb9 && b.bytes[1] === 72)).toBe(true);
+    expect(v.slice(2).every((b) => b.bytes[0] === 0xb0 && b.bytes[1] === 72)).toBe(true);
   });
 
   const tweeApps = {
@@ -382,6 +415,21 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(server.ontvangen.filter((b) => b.t === 'focus')).toEqual([{ t: 'focus', app: 'varve-dj' }]);
   });
 
+  it('klik op een app werkt ook als het beeld 20×/s binnenkomt (rijen blijven staan)', async () => {
+    server.stuur(tweeApps);
+    await page.waitForSelector('.app[data-app="varve-dj"]');
+    const knop = page.locator('.app[data-app="varve-dj"] button');
+    const tik = setInterval(() => server.stuur({ ...tweeApps, globaal: { ...tweeApps.globaal, adem: Math.random() } }), 50);
+    try {
+      for (let i = 0; i < 6; i++) await knop.click({ delay: 90 });
+      await knop.focus();
+      await page.waitForTimeout(200);
+      expect(await page.evaluate(() => document.activeElement?.closest('.app')?.getAttribute('data-app'))).toBe('varve-dj');
+    } finally { clearInterval(tik); }
+    await server.wachtOp(() => server.ontvangen.filter((b) => b.t === 'focus').length >= 6);
+    expect(server.ontvangen.filter((b) => b.t === 'focus')).toHaveLength(6);
+  });
+
   it('parameters van de focus-app zetten: schuifje en keuze', async () => {
     server.stuur(tweeApps);
     await page.waitForSelector('.param[data-id="in1"] input');
@@ -419,6 +467,161 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     await page.waitForTimeout(150);
     expect(await page.locator('[data-id="pad1-1"]').getAttribute('data-kleur')).toBe('127');
     expect(await page.locator('#apps-leeg').isVisible()).toBe(true);
+  });
+
+  // ── loslaten: geen hangende toetsen in de hub ──
+
+  it('Bank vast en de verbinding valt weg: na herverbinden krijgt de hub alsnog de note-off', async () => {
+    const { x, y } = await midden('[data-id="bank"]');
+    await page.keyboard.down('Shift');
+    await page.mouse.click(x, y);
+    await page.keyboard.up('Shift');
+    await server.wachtOp(() => virtueel().length >= 1);
+    server.verbreekAlle();
+    await page.waitForSelector('#verbinding[data-status="weg"]');
+    expect(await page.locator('[data-id="bank"]').evaluate((e) => e.classList.contains('vast'))).toBe(false);
+    await page.mouse.click(x, y); // tijdens de onderbreking: gaat verloren, maar laat niets hangen
+    await page.waitForSelector('#verbinding[data-status="verbonden"]', { timeout: 5000 });
+    await server.wachtOp(() => virtueel().some((b) => b.bytes[0] === 0x80 && b.bytes[1] === 103));
+    expect(virtueel().map((b) => b.bytes)).toEqual([[0x90, 103, 127], [0x80, 103, 127]]);
+  });
+
+  it('pagina sluiten of verbergen terwijl Bank en een LPD8-pad vastzitten: note-offs gaan eerst weg', async () => {
+    await page.keyboard.down('Shift');
+    let bank = await midden('[data-id="bank"]');
+    await page.mouse.click(bank.x, bank.y);
+    const pad = await midden('#lpd8 [data-id="p2"]');
+    await page.mouse.click(pad.x, pad.y);
+    await page.keyboard.up('Shift');
+    await server.wachtOp(() => virtueel().length >= 2);
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await server.wachtOp(() => virtueel().length >= 4);
+    expect(virtueel().slice(2).map((b) => b.bytes)).toEqual([[0x80, 103, 127], [0x89, 37, 0]]);
+    // en echt sluiten (pagehide) met Bank vast
+    await page.evaluate(() => Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }));
+    bank = await midden('[data-id="bank"]');
+    await page.keyboard.down('Shift');
+    await page.mouse.click(bank.x, bank.y);
+    await page.keyboard.up('Shift');
+    await server.wachtOp(() => virtueel().length >= 5);
+    await page.close({ runBeforeUnload: true });
+    await server.wachtOp(() => virtueel().length >= 6);
+    expect(virtueel().at(-1)?.bytes).toEqual([0x80, 103, 127]);
+    page = await browser.newPage(); // voor afterEach
+  });
+
+  it('Enter op een pad en dan focus weg (geen keyup): note-off', async () => {
+    await page.locator('[data-id="pad2-3"]').focus();
+    await page.keyboard.down('Enter');
+    await server.wachtOp(() => virtueel().length >= 1);
+    await page.locator('[data-id="pad2-4"]').focus();
+    await server.wachtOp(() => virtueel().length >= 2);
+    expect(virtueel().map((b) => b.bytes)).toEqual([[0x90, 10, 127], [0x80, 10, 127]]);
+    await page.keyboard.up('Enter');
+    await page.waitForTimeout(50);
+    expect(virtueel()).toHaveLength(2);
+  });
+
+  const metTrigger = {
+    t: 'beeld', focus: 'lab',
+    apps: [{ app: 'lab', naam: 'Lab', kleur: '#2e5bff', status: 'actief', focus: true, waarden: { niveau: 0.25 },
+      params: [{ id: 'take', naam: 'Take', soort: 'trigger' }, { id: 'niveau', naam: 'Niveau', soort: 'waarde', standaard: 0 }] }],
+    globaal: {},
+  };
+  const zetten = () => server.ontvangen.filter((b) => b.t === 'zet').map((b) => ({ id: b.id, v: b.v }));
+
+  it('trigger: indrukken en loslaten in hetzelfde frame sturen allebei, en Enter werkt', async () => {
+    server.stuur(metTrigger);
+    const knop = page.locator('.param[data-id="take"] button');
+    await knop.waitFor();
+    await knop.evaluate((b) => {
+      b.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true }));
+      b.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    });
+    await server.wachtOp(() => zetten().length >= 2);
+    expect(zetten()).toEqual([{ id: 'take', v: 1 }, { id: 'take', v: 0 }]);
+    await knop.focus();
+    await page.keyboard.down('Enter');
+    await server.wachtOp(() => zetten().length >= 3);
+    await page.keyboard.up('Enter');
+    await server.wachtOp(() => zetten().length >= 4);
+    await page.keyboard.press('Space');
+    await server.wachtOp(() => zetten().length >= 6);
+    await page.waitForTimeout(50);
+    expect(zetten().slice(2)).toEqual([{ id: 'take', v: 1 }, { id: 'take', v: 0 }, { id: 'take', v: 1 }, { id: 'take', v: 0 }]);
+  });
+
+  it('een schuifje springt niet terug op een beeld dat de nieuwe waarde nog niet kent', async () => {
+    server.stuur(metTrigger);
+    const s = page.locator('.param[data-id="niveau"] input');
+    await s.waitFor();
+    await s.fill('0.8');
+    server.stuur(metTrigger); // de hub heeft nog niet bevestigd: 0.25
+    await page.waitForTimeout(80);
+    expect(await s.inputValue()).toBe('0.8');
+    await page.waitForTimeout(450);
+    server.stuur(metTrigger); // daarna geldt weer wat de hub zegt
+    await expect.poll(() => s.inputValue()).toBe('0.25');
+  });
+
+  // ── LEDs ──
+
+  it('na herverbinden staat er geen oude LED-kaart', async () => {
+    server.stuur({ t: 'leds', dev: 'apc40', staat: { 'pad1-3': { kleur: 45 }, 'rec2': { aan: true } } });
+    const pad = page.locator('[data-id="pad1-3"]');
+    await expect.poll(() => pad.evaluate((e) => e.classList.contains('aan'))).toBe(true);
+    server.verbreekAlle();
+    await page.waitForSelector('#verbinding[data-status="weg"]');
+    await page.waitForSelector('#verbinding[data-status="verbonden"]', { timeout: 5000 });
+    expect(await pad.evaluate((e) => e.classList.contains('aan'))).toBe(false);
+    expect(await pad.getAttribute('data-kleur')).toBe(null);
+    expect(await page.locator('[data-id="rec2"]').evaluate((e) => e.classList.contains('aan'))).toBe(false);
+    await server.wachtOp(() => server.klanten.size >= 1);
+  });
+
+  it('knipper met kleur2, en een bpm-wissel start een afgelopen oneshot niet opnieuw', async () => {
+    server.stuur({ t: 'leds', dev: 'apc40', staat: {
+      'pad4-4': { kleur: 21, anim: { soort: 'knipper', snelheid: 2, kleur2: 5 } },
+      'stop2': { knipper: true },
+      'scene3': { kleur: 9, anim: { soort: 'oneshot', snelheid: 0 } },
+    } });
+    const pad = page.locator('[data-id="pad4-4"]');
+    await expect.poll(() => pad.evaluate((e) => getComputedStyle(e).animationName)).toBe('led-knipper');
+    expect(await pad.evaluate((e) => e.style.getPropertyValue('--led2'))).toBe(PALET[5]);
+    expect(await pad.evaluate((e) => e.style.getPropertyValue('--led'))).toBe(PALET[21]);
+    expect(await page.locator('[data-id="stop2"]').evaluate((e) => getComputedStyle(e).animationName)).toBe('led-knipper');
+    const scene = page.locator('[data-id="scene3"]');
+    await expect.poll(() => scene.evaluate((e) => e.getAnimations()[0]?.playState)).toBe('finished');
+    server.stuur({ t: 'beeld', apps: [], globaal: { bpm: 90 } });
+    await expect.poll(() => page.locator('#bpm').textContent()).toBe('90');
+    expect(await scene.evaluate((e) => e.getAnimations()[0]?.playState)).toBe('finished');
+    expect(await pad.evaluate((e) => e.style.getPropertyValue('--duur'))).toBe(`${(animDuur(2, 90)).toFixed(3)}s`);
+  });
+
+  it('slechte invoer: geen crash, de rest van het bericht komt aan', async () => {
+    server.stuur({ t: 'leds', dev: 'apc40', staat: { 'pad1-1': null, 'pad1-2': { kleur: 5 }, 'dk3': { waarde: 'x' }, 'pad1-4': { kleur: 'rood' } } });
+    await expect.poll(() => page.locator('[data-id="pad1-2"]').getAttribute('data-kleur')).toBe('5');
+    expect(await page.locator('[data-id="dk3"]').evaluate((e) => e.style.getPropertyValue('--v'))).toBe('0');
+    expect(await page.locator('[data-id="pad1-4"]').getAttribute('data-kleur')).toBe('0');
+    server.stuur({ t: 'beeld', apps: { a: 1 }, globaal: { bpm: 77 } });
+    await expect.poll(() => page.locator('#bpm').textContent()).toBe('77');
+    server.stuur({ t: 'beeld', apps: 'x', globaal: 'y', apparaten: 3 });
+    server.stuur({ t: 'beeld', focus: 'a', apps: [null, { app: 'a', params: [null, { id: 'p', soort: 'waarde' }], waarden: 'z' }], globaal: { bpm: 78 } });
+    await expect.poll(() => page.locator('#bpm').textContent()).toBe('78');
+    expect(await page.locator('.param[data-id="p"]').count()).toBe(1);
+  });
+
+  it('tempo snel ver slepen: elke stap komt aan, ook boven de 63', async () => {
+    const { x, y } = await midden('[data-id="tempo"]');
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y - 8 * 80, { steps: 1 });
+    await page.mouse.up();
+    await server.wachtOp(() => virtueel().length >= 2);
+    expect(virtueel().reduce((s, m) => s + ontleed(m.bytes).delta, 0)).toBe(80);
   });
 
   it('herverbindt vanzelf als de hub wegvalt', async () => {

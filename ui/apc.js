@@ -38,6 +38,8 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
   const leds = new Map();
   /** Controls die nu lokaal bediend worden: echo's van de hub negeren we dan. @type {Set<string>} */
   const bezig = new Set();
+  /** Ingedrukte (of vastgehouden) knoppen → hun loslaat-functie. Zo kan alles tegelijk los. @type {Map<string, () => void>} */
+  const ingedrukt = new Map();
 
   for (const c of CONTROLS) {
     const p = INDELING[c.id];
@@ -75,13 +77,13 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
 
   /** @param {Control} c @param {HTMLElement} d */
   function knopGedrag(c, d) {
-    let in_ = false, vast = false;
-    const druk = () => { if (in_) return; in_ = true; bezig.add(c.id); d.classList.add('in'); stuur(drukBytes(c)); };
-    const los = () => {
+    let in_ = false, vast = false, viaToets = false;
+    const druk = () => { if (in_) return; in_ = true; bezig.add(c.id); ingedrukt.set(c.id, los); d.classList.add('in'); stuur(drukBytes(c)); };
+    function los() {
       if (!in_) return;
-      in_ = false; vast = false; bezig.delete(c.id);
+      in_ = false; vast = false; viaToets = false; bezig.delete(c.id); ingedrukt.delete(c.id);
       d.classList.remove('in', 'vast'); stuur(losBytes(c));
-    };
+    }
     d.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       if (vast) { los(); return; } // tweede klik laat een vastgehouden knop los
@@ -96,11 +98,13 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
       if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) {
         e.preventDefault();
         if (vast) { los(); return; }
-        druk();
+        druk(); viaToets = true;
         if (e.shiftKey) { vast = true; d.classList.add('vast'); }
       }
     });
     d.addEventListener('keyup', (e) => { if (e.key === 'Enter' || e.key === ' ') op(); });
+    // Focus weg terwijl Enter/Spatie nog ingedrukt is: dan komt er nooit een keyup.
+    d.addEventListener('blur', () => { if (viaToets && !vast) los(); });
   }
 
   /** @param {Control} c @param {HTMLElement} d @param {boolean} horizontaal */
@@ -114,9 +118,14 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
     };
     /** @param {number} delta */
     const stuurRel = (delta) => {
-      if (!delta) return;
-      stuur(relBytes(c, delta));
-      zetStand(c.id, ((stand.get(c.id) ?? 0.5) + delta / 64 + 1) % 1);
+      // Een grote sprong in stukken van hoogstens 63 (−64), zodat er geen stappen verloren gaan.
+      let rest = Math.trunc(delta);
+      while (rest) {
+        const stap = Math.max(-64, Math.min(63, rest));
+        stuur(relBytes(c, stap));
+        rest -= stap;
+      }
+      zetStand(c.id, (((stand.get(c.id) ?? 0.5) + delta / 64) % 1 + 1) % 1);
     };
     /** Fader: de kap springt naar waar je drukt (prettig op een tablet). @param {PointerEvent} e */
     const faderWaarde = (e) => {
@@ -162,11 +171,12 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
     });
   }
 
-  /** @param {string} id @param {LedStaat} s */
-  function zetLed(id, s) {
+  /** @param {string} id @param {LedStaat} s @param {{ herstart?: boolean }} [o] */
+  function zetLed(id, s, { herstart = true } = {}) {
     const d = el.get(id);
     const c = OP_ID.get(id);
     if (!d || !c) return;
+    if (!s || typeof s !== 'object' || Array.isArray(s)) return; // onleesbaar: negeren (PROTOCOL.md §1.5)
     leds.set(id, s);
     const w = weergave(c, s, PALET, bpm());
     if (w.ring !== null) {
@@ -178,12 +188,15 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
     if (w.anim) {
       d.classList.add(w.anim);
       d.style.setProperty('--duur', `${Math.max(0.08, w.duur).toFixed(3)}s`);
-      // Herstart de animatie zodat een nieuwe oneshot opnieuw loopt.
-      d.style.animation = 'none'; void d.offsetWidth; d.style.animation = '';
+      // Herstart de animatie zodat een nieuwe oneshot opnieuw loopt (niet bij alleen een tempowissel).
+      if (herstart) { d.style.animation = 'none'; void d.offsetWidth; d.style.animation = ''; }
     }
     if (w.kleur) d.style.setProperty('--led', w.kleur); else d.style.removeProperty('--led');
     if (w.kleur2) d.style.setProperty('--led2', w.kleur2); else d.style.removeProperty('--led2');
-    if (c.led === 'rgb') d.dataset.kleur = String(Math.max(0, Math.min(127, Math.round((s.anim && s.anim.kleur2 !== undefined ? s.anim.kleur2 : s.kleur) ?? 0))));
+    if (c.led === 'rgb') {
+      const k = Math.round(Number((s.anim && s.anim.kleur2 !== undefined ? s.anim.kleur2 : s.kleur) ?? 0));
+      d.dataset.kleur = String(Number.isFinite(k) ? Math.max(0, Math.min(127, k)) : 0);
+    }
     if (c.led === 'ab') d.dataset.stand = String(w.stand);
   }
 
@@ -193,8 +206,33 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
     /** @param {Record<string, LedStaat>} staat */
     zetLeds(staat) { for (const [id, s] of Object.entries(staat)) zetLed(id, s); },
     zetLed,
-    /** Na een bpm-wissel: alle animaties op het nieuwe tempo. */
-    herteken() { for (const [id, s] of leds) zetLed(id, s); },
+    /** Na een bpm-wissel: alleen de duur van lopende animaties aanpassen; niets opnieuw starten. */
+    herteken() {
+      for (const [id, s] of leds) {
+        const d = el.get(id), c = OP_ID.get(id);
+        if (!d || !c) continue;
+        const w = weergave(c, s, PALET, bpm());
+        if (w.anim && w.anim !== 'oneshot') d.style.setProperty('--duur', `${Math.max(0.08, w.duur).toFixed(3)}s`);
+      }
+    },
+    /**
+     * Alle LEDs uit en vergeten (de ringknoppen houden hun stand). Na een onderbroken verbinding weten we
+     * niet meer wat de hub toont; liever donker dan een verouderde kaart.
+     */
+    wisLeds() {
+      for (const id of leds.keys()) {
+        const d = el.get(id), c = OP_ID.get(id);
+        if (!d || !c || c.led === 'ring') continue;
+        d.classList.remove('aan', 'puls', 'knipper', 'oneshot');
+        d.style.removeProperty('--led'); d.style.removeProperty('--led2'); d.style.removeProperty('--duur');
+        delete d.dataset.kleur; delete d.dataset.stand;
+      }
+      leds.clear();
+    },
+    /** Welke knoppen zijn nu ingedrukt of vastgehouden (ids). */
+    get ingedrukt() { return [...ingedrukt.keys()]; },
+    /** Laat alles los wat ingedrukt of vastgehouden is (stuurt de note-offs). */
+    losAlles() { for (const los of [...ingedrukt.values()]) los(); },
     /** Gebeurtenis van de echte (of virtuele) controller: laat zien wat er gebeurt. @param {any} g */
     invoer(g) {
       if (!g || g.dev !== 'apc40' || !g.el) return;

@@ -3,6 +3,8 @@
 // WebSocket en timers zijn injecteerbaar, zodat dit zonder browser te toetsen is.
 
 export const WACHTTIJDEN = Object.freeze([500, 1000, 2000, 5000]);
+/** Zo lang mag openen duren; daarna opnieuw (een weggevallen wifi blijft anders minutenlang 'verbinden'). */
+export const VERBIND_TIJD = 4000;
 
 /**
  * @typedef {'verbinden'|'verbonden'|'weg'} Status
@@ -12,7 +14,7 @@ export const WACHTTIJDEN = Object.freeze([500, 1000, 2000, 5000]);
 export class Verbinding {
   /**
    * @param {{ url: string, WS?: any, wacht?: (fn: () => void, ms: number) => any, stop?: (h: any) => void,
-   *           bijBericht?: (b: any) => void, bijStatus?: (s: StatusInfo) => void }} o
+   *           bijBericht?: (b: any) => void, bijStatus?: (s: StatusInfo) => void, verbindTijd?: number }} o
    */
   constructor(o) {
     this.url = o.url;
@@ -24,6 +26,8 @@ export class Verbinding {
     /** @type {any} */ this.ws = null;
     this.poging = 0;
     /** @type {any} */ this.timer = null;
+    /** @type {any} */ this.verbindTimer = null;
+    this.verbindTijd = o.verbindTijd ?? VERBIND_TIJD;
     this.gestopt = false;
     /** @type {Status} */ this.status = 'verbinden';
   }
@@ -34,6 +38,7 @@ export class Verbinding {
     this.gestopt = true;
     if (this.timer) this.stopTimer(this.timer);
     this.timer = null;
+    this.#stopVerbindTimer();
     try { this.ws?.close(); } catch { /* al dicht */ }
   }
 
@@ -52,14 +57,28 @@ export class Verbinding {
     let ws;
     try { ws = new this.WS(this.url); } catch { this.#later(); return; }
     this.ws = ws;
-    ws.onopen = () => { this.poging = 0; this.#meld('verbonden'); };
+    if (this.verbindTijd > 0) {
+      this.verbindTimer = this.wacht(() => {
+        this.verbindTimer = null;
+        if (this.ws !== ws || ws.readyState !== 0) return;
+        this.ws = null; // eerst loskoppelen: een late onclose van deze socket telt niet meer
+        try { ws.close(); } catch { /* al dicht */ }
+        this.#later();
+      }, this.verbindTijd);
+    }
+    ws.onopen = () => { this.#stopVerbindTimer(); if (this.ws !== ws) return; this.poging = 0; this.#meld('verbonden'); };
     ws.onmessage = (/** @type {{ data: unknown }} */ e) => {
       let b;
       try { b = JSON.parse(String(e.data)); } catch { return; } // onleesbaar: negeren
       if (b && typeof b === 'object' && !Array.isArray(b)) this.bijBericht(b);
     };
-    ws.onclose = () => { if (this.ws === ws) { this.ws = null; this.#later(); } };
+    ws.onclose = () => { if (this.ws === ws) { this.#stopVerbindTimer(); this.ws = null; this.#later(); } };
     ws.onerror = () => { /* onclose volgt */ };
+  }
+
+  #stopVerbindTimer() {
+    if (this.verbindTimer) this.stopTimer(this.verbindTimer);
+    this.verbindTimer = null;
   }
 
   #later() {
