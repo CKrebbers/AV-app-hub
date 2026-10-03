@@ -687,7 +687,7 @@ export class Kern extends Zender {
   #ademOpnieuw() {
     this.adem = { t: this.klok.nu(), fase: 0 };
     this.globaal.adem = 0;
-    for (const a of this.apps.values()) this.#naar(a, { t: 'globaal', waarden: { adem: 0, adem_fase: 0 } });
+    for (const a of this.apps.values()) this.#naar(a, { t: 'globaal', waarden: { adem: 0 } });
     this.#beeldGewijzigd(); // de cockpit rekent de adem door vanaf het laatste beeld
   }
   #startAdem() {

@@ -340,7 +340,7 @@ function tekenGlobaal(g) {
   }
   lpd.zetGlobaal(g);
   adem.periode = ademPeriode(g['klok.adem_periode']);
-  const fase = typeof g.adem === 'number' ? g.adem : typeof g.adem_fase === 'number' ? g.adem_fase : null;
+  const fase = typeof g.adem === 'number' ? g.adem : null;
   adem.bekend = fase !== null;
   if (fase !== null) { adem.fase = fase; adem.t = performance.now(); }
   const nieuweBpm = typeof g.bpm === 'number' && g.bpm > 0 ? g.bpm : 120;

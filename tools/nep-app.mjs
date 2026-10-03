@@ -66,11 +66,13 @@ export class NepApp extends Zender {
       if (b.t === 'zet') this.waarden[b.id] = b.v;
       this.meld('bericht', b);
     });
-    ws.on('close', () => {
+    ws.on('close', (code) => {
       if (this.hb) clearInterval(this.hb);
-      this.meld('dicht');
+      this.meld('dicht', code);
       if (this.gestopt || !this.herverbind) return;
-      setTimeout(() => this.#verbind(), this.wacht);
+      // 4001 = een andere instantie van deze app is al verbonden (PROTOCOL.md §10): rustig opnieuw proberen.
+      const wacht = code === 4001 ? 30000 : this.wacht;
+      setTimeout(() => this.#verbind(), wacht);
       this.wacht = Math.min(5000, this.wacht * 2);
     });
     ws.on('error', () => {});

@@ -90,7 +90,7 @@ describe('kern: LPD8 (globale laag)', () => {
     expect(van(fl, 'globaal').at(-1).waarden.adem).toBeCloseTo(0.5, 2);
     leeg(fl);
     lpdDruk(kern, 3); lpdLos(kern, 3);
-    expect(van(fl, 'globaal')).toEqual([{ t: 'globaal', waarden: { adem: 0, adem_fase: 0 } }]);
+    expect(van(fl, 'globaal')).toEqual([{ t: 'globaal', waarden: { adem: 0 } }]);
     klok.loop(100);
     expect(van(fl, 'globaal').at(-1).waarden.adem).toBeCloseTo(0.025, 3);
   });
