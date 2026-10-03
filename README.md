@@ -18,11 +18,13 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 
 | Opdracht | Wat |
 |---|---|
-| `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien |
+| `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien, `--zonder-geheugen` om niets te onthouden |
 | `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±30-40 min). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |
 | `node src/cli.js opname [naam]` | speelsessie opnemen in `proef/` |
+
+**Geheugen.** De hub onthoudt de snapshots en de waarden van TD, Sediment en andere `truth:"hub"`-apps over een herstart heen, in `~/.varve-hub/staat.json` (bij de start staat in de terminal waar). Leeg beginnen: gooi dat bestand weg terwijl de hub uit staat, of start met `--zonder-geheugen`. Een `staat.json.kapot` is een oud bestand dat de hub niet kon lezen; je kunt het weggooien. Een ander pad: `geheugen.pad` in `config.json`, of `VARVE_HUB_STAAT=/pad/naar/staat.json npm start`.
 
 Tijdens de proef: Enter = ja/door, `n` + notitie = klopt niet ("n pad 2-3 werd blauw"), `o` = stap overslaan.
 

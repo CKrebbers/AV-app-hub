@@ -5,7 +5,8 @@ import * as fs from 'node:fs';
 import { mkdtempSync, readFileSync, writeFileSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { geheugenPad, leesGeheugen, schrijfGeheugen, koppelGeheugen, SCHRIJF_MS } from '../src/opslag.js';
+import { geheugenPad, leesGeheugen, schrijfGeheugen, koppelGeheugen, schrijfMsUit, SCHRIJF_MS } from '../src/opslag.js';
+import { spawn } from 'node:child_process';
 import { opzet, meldAan, stuurApp, FL } from './kern-hulp.js';
 import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
@@ -35,9 +36,10 @@ function telFs() {
     log,
     fs: {
       ...fs,
-      writeFileSync: (p, d) => { log.push(['schrijf', p]); return fs.writeFileSync(p, d); },
+      openSync: (p, f) => { log.push(['open', p]); return fs.openSync(p, f); },
+      writeFileSync: (p, d) => { log.push(['schrijf']); return fs.writeFileSync(p, d); },
+      fsyncSync: (fd) => { log.push(['fsync']); return fs.fsyncSync(fd); },
       renameSync: (a, b) => { log.push(['rename', a, b]); return fs.renameSync(a, b); },
-      mkdirSync: fs.mkdirSync, readFileSync: fs.readFileSync, rmSync: fs.rmSync,
     },
   };
 }
@@ -66,14 +68,13 @@ describe('opslag: pad en lezen', () => {
     expect(readFileSync(`${pad}.kapot`, 'utf8')).toBe('{"v":1,"snapshots":{"1":');
   });
 
-  it('schrijven is atomisch: eerst een tijdelijk bestand, dan rename; de map wordt gemaakt', () => {
+  it('schrijven is atomisch: eerst een tijdelijk bestand, fsync, dan rename; de map wordt gemaakt', () => {
     const pad = join(nieuweMap(), 'diep', 'staat.json');
     const { fs: f, log } = telFs();
     schrijfGeheugen(pad, { v: 1, snapshots: {}, waarden: {} }, f);
-    expect(log).toHaveLength(2);
-    expect(log[0][0]).toBe('schrijf');
+    expect(log.map((x) => x[0])).toEqual(['open', 'schrijf', 'fsync', 'rename']);
     expect(log[0][1]).not.toBe(pad);
-    expect(log[1]).toEqual(['rename', log[0][1], pad]);
+    expect(log[3]).toEqual(['rename', log[0][1], pad]);
     expect(JSON.parse(readFileSync(pad, 'utf8'))).toEqual({ v: 1, snapshots: {}, waarden: {} });
     expect(readdirSync(join(pad, '..'))).toEqual(['staat.json']);
   });
@@ -202,13 +203,155 @@ describe('de hele hub over een herstart heen', () => {
     expect(twee.h.kern.beeld().apps[0].waarden).toMatchObject({ mix: 0.8, gloed: 0.6 }); // de staat met standaardwaarden won niet
   });
 
-  it('zonder geheugen-pad schrijft de hub niets', async () => {
+  it('zonder geheugen-pad schrijft de hub niets, ook niet als $VARVE_HUB_STAAT gezet is (dat pad kiest de cli)', async () => {
     const map = nieuweMap();
-    const h = await startHub({ config: laadConfig(), systeem: new NepSysteem(), poort: 0, drivers: false });
-    lopend.push(() => h.stop());
-    expect(h.opslag).toBeNull();
-    h.kern.bewaar(1);
-    await h.stop();
-    expect(readdirSync(map)).toEqual([]);
+    const oud = process.env.VARVE_HUB_STAAT;
+    process.env.VARVE_HUB_STAAT = join(map, 'staat.json');
+    try {
+      const h = await startHub({ config: laadConfig(), systeem: new NepSysteem(), poort: 0, drivers: false });
+      lopend.push(() => h.stop());
+      expect(h.opslag).toBeNull();
+      h.kern.bewaar(1);
+      await h.stop();
+      expect(readdirSync(map)).toEqual([]);
+    } finally {
+      if (oud === undefined) delete process.env.VARVE_HUB_STAAT; else process.env.VARVE_HUB_STAAT = oud;
+    }
   });
+
+  it('stoppen midden in een slew bewaart het doel, niet de tussenwaarde', async () => {
+    const pad = join(nieuweMap(), 'staat.json');
+    const TRAAG = { ...TH, params: [{ ...TH.params[1], slew_s: 4 }] };
+    const een = await hub(pad);
+    app(een.url, TRAAG);
+    await tot(() => een.h.kern.beeld().apps[0]?.status === 'actief');
+    een.h.kern.cockpit({ t: 'zet', app: 'td-test', id: 'gloed', v: 1 });
+    await wacht(300);
+    expect(een.h.kern.beeld().apps[0].waarden.gloed).toBeLessThan(0.5);
+    await een.stop();
+    expect(JSON.parse(readFileSync(pad, 'utf8')).waarden['td-test'].gloed).toBe(1);
+  });
+});
+
+describe('golf 4 review: opslag', () => {
+  it('schrijf_ms uit config: alleen een eindig getal telt, nooit vaker dan eens per seconde', () => {
+    expect(schrijfMsUit({})).toBe(SCHRIJF_MS);
+    expect(schrijfMsUit(laadConfig())).toBe(SCHRIJF_MS);
+    expect(schrijfMsUit({ geheugen: { schrijf_ms: '1s' } })).toBe(SCHRIJF_MS);
+    expect(schrijfMsUit({ geheugen: { schrijf_ms: Number.NaN } })).toBe(SCHRIJF_MS);
+    expect(schrijfMsUit({ geheugen: { schrijf_ms: 10 } })).toBe(SCHRIJF_MS);
+    expect(schrijfMsUit({ geheugen: { schrijf_ms: 2500 } })).toBe(2500);
+  });
+
+  it('niet te lezen (geen ENOENT) en niet veilig te stellen: deze sessie niets schrijven, het oude blijft', () => {
+    const pad = join(nieuweMap(), 'staat.json');
+    writeFileSync(pad, '{"v":1,"snapshots":{"1":{}},"waarden":{}}');
+    const { kern, klok } = opzet();
+    const f = {
+      ...fs,
+      readFileSync: () => { throw Object.assign(new Error('EIO: i/o error'), { code: 'EIO' }); },
+      renameSync: () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); },
+    };
+    const meldingen = [];
+    const g = koppelGeheugen({ kern, pad, klok, fs: f, log: (...m) => meldingen.push(m.join(' ')) });
+    expect(meldingen[0]).toMatch(/niet te lezen.*schrijft deze sessie niets/);
+    kern.bewaar(4); klok.loop(SCHRIJF_MS * 2);
+    g.stop();
+    expect(readFileSync(pad, 'utf8')).toBe('{"v":1,"snapshots":{"1":{}},"waarden":{}}');
+  });
+
+  it('niet te lezen maar wel veilig te stellen (een map op het pad): naar .kapot, daarna gewoon schrijven', () => {
+    const pad = join(nieuweMap(), 'staat.json');
+    fs.mkdirSync(pad);
+    const { kern, klok } = opzet();
+    const meldingen = [];
+    const g = koppelGeheugen({ kern, pad, klok, log: (...m) => meldingen.push(m.join(' ')) });
+    expect(meldingen[0]).toMatch(/niet te lezen.*\.kapot/);
+    expect(fs.statSync(`${pad}.kapot`).isDirectory()).toBe(true);
+    kern.bewaar(2);
+    g.stop();
+    expect(Object.keys(JSON.parse(readFileSync(pad, 'utf8')).snapshots)).toEqual(['2']);
+  });
+
+  it('overgeslagen onderdelen: eerst een kopie als .kapot, zodat de volgende keer schrijven ze niet stil wegveegt', () => {
+    const pad = join(nieuweMap(), 'staat.json');
+    const inhoud = JSON.stringify({ v: 1, snapshots: { 1: { 'TD LAB': { x: 1 } } }, waarden: {} });
+    writeFileSync(pad, inhoud);
+    const { kern, klok } = opzet();
+    const meldingen = [];
+    const g = koppelGeheugen({ kern, pad, klok, log: (...m) => meldingen.push(m.join(' ')) });
+    expect(meldingen[0]).toMatch(/1 ongeldige onderdelen overgeslagen.*\.kapot/);
+    expect(readFileSync(`${pad}.kapot`, 'utf8')).toBe(inhoud);
+    kern.bewaar(3);
+    g.stop();
+    expect(readFileSync(`${pad}.kapot`, 'utf8')).toBe(inhoud);
+  });
+
+  it('tijdelijke bestanden van een gecrasht proces worden bij de start opgeruimd (alleen die van dit pad)', () => {
+    const map = nieuweMap();
+    const pad = join(map, 'staat.json');
+    for (const f of ['staat.json.4242.tmp', 'staat.json.kapot', 'ander.json.4242.tmp', 'staat.json.x.tmp']) writeFileSync(join(map, f), 'x');
+    const { kern, klok } = opzet();
+    koppelGeheugen({ kern, pad, klok });
+    expect(readdirSync(map).sort()).toEqual(['ander.json.4242.tmp', 'staat.json.kapot', 'staat.json.x.tmp']);
+  });
+
+  it('een schrijffout zegt wat Clay kan doen', () => {
+    const pad = join(nieuweMap(), 'staat.json');
+    const { kern, klok } = opzet();
+    const f = { ...fs, openSync: () => { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } };
+    const meldingen = [];
+    koppelGeheugen({ kern, pad, klok, fs: f, log: (...m) => meldingen.push(m.join(' ')) });
+    kern.bewaar(1); klok.loop(SCHRIJF_MS);
+    expect(meldingen.at(-1)).toMatch(/schrijfbaar.*geheugen\.pad.*VARVE_HUB_STAAT.*onthoudt niets/);
+  });
+});
+
+describe('golf 4 review: varve-hub start zet het geheugen aan', () => {
+  /** Start de echte cli met het geheugen in een tijdelijke map (nooit de echte thuismap). */
+  function startCli(map, extra = []) {
+    const p = spawn(process.execPath, ['src/cli.js', 'start', '--zonder-midi', '--geen-drivers', '--poort', '0', ...extra], {
+      cwd: join(import.meta.dirname, '..'),
+      env: { ...process.env, HOME: map, VARVE_HUB_STAAT: join(map, 'staat.json') },
+    });
+    let uit = '';
+    p.stdout.on('data', (b) => { uit += b; });
+    p.stderr.on('data', (b) => { uit += b; });
+    const klaar = new Promise((goed, mis) => {
+      const t = setTimeout(() => mis(new Error('hub startte niet:\n' + uit)), 10000);
+      const kijk = () => { const m = uit.match(/Cockpit: (http:\/\/\S+)/); if (m) { clearTimeout(t); goed(m[1]); } };
+      p.stdout.on('data', kijk);
+    });
+    const weg = new Promise((r) => p.on('exit', r));
+    const stop = async () => { p.kill('SIGINT'); await Promise.race([weg, new Promise((r) => setTimeout(r, 3000))]); p.kill('SIGKILL'); };
+    lopend.push(stop);
+    return { klaar, uitvoer: () => uit, stop };
+  }
+  const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
+  const tot = async (fn, ms = 4000) => { const eind = Date.now() + ms; while (Date.now() < eind) { const x = fn(); if (x) return x; await wacht(20); } return fn(); };
+
+  it('leest het pad ($VARVE_HUB_STAAT), speelt bewaarde waarden af en schrijft wijzigingen weg', async () => {
+    const map = nieuweMap();
+    const pad = join(map, 'staat.json');
+    writeFileSync(pad, JSON.stringify({ v: 1, snapshots: { 2: {} }, waarden: { 'td-test': { mix: 0.7 } } }));
+    const cli = startCli(map);
+    const adres = await cli.klaar;
+    expect(cli.uitvoer()).toContain(`Geheugen: ${pad}`);
+    expect(cli.uitvoer()).toContain(`geladen uit ${pad}`);
+    const a = new NepApp({ url: adres.replace('http', 'ws') + '/app', manifest: TH, herverbind: false }).start();
+    lopend.push(() => a.stop());
+    expect(await tot(() => a.waarden.mix === 0.7)).toBe(true);
+    a.zelfZetten('mix', 0.3);
+    expect(await tot(() => JSON.parse(readFileSync(pad, 'utf8')).waarden['td-test']?.mix === 0.3)).toBe(true);
+    await cli.stop();
+  }, 20000);
+
+  it('--zonder-geheugen: niets gelezen of geschreven, en dat staat er', async () => {
+    const map = nieuweMap();
+    const cli = startCli(map, ['--zonder-geheugen']);
+    await cli.klaar;
+    expect(cli.uitvoer()).toMatch(/Geheugen uit/);
+    await cli.stop();
+    expect(readdirSync(map)).toEqual([]);
+  }, 20000);
 });

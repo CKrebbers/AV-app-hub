@@ -225,6 +225,7 @@ describe('kern: exporteer / importeer', () => {
       v: 1,
       snapshots: { 1: { 'formula-lab': { in1: 1 } }, 4: {} },
       waarden: { 'td-test': { mix: 0, gloed: 1 } },
+      inst: {},
     });
   });
 
@@ -298,5 +299,80 @@ describe('config.json: apps zoals de koppelingen zich aanmelden', () => {
     kern.verbind(v);
     stuurApp(kern, v, { t: 'hallo', app: 'flux-dp-1', inst: 'a', v: 1 });
     expect(kern.beeld().apps[0]).toMatchObject({ naam: 'flux-dp-1', kleur: '#ffffff' });
+  });
+});
+
+describe('golf 4 review: geheugen over een herstart', () => {
+  it('kern.stop() midden in een slew: exporteer geeft nog steeds het doel, niet de tussenwaarde', () => {
+    const { kern, klok } = opzet();
+    meldAan(kern, TH);
+    kern.cockpit({ t: 'zet', app: 'td-test', id: 'gloed', v: 1 });
+    klok.loop(400);
+    expect(kern.beeld().apps[0].waarden.gloed).toBeLessThan(0.5);
+    kern.stop();
+    expect(kern.exporteer().waarden['td-test'].gloed).toBe(1);
+  });
+
+  it('de inst gaat mee: dezelfde inst na een hub-herstart = direct afspelen (geen dip), een nieuwe = verlopen vanaf standaard', () => {
+    const een = opzet();
+    meldAan(een.kern, TH, { inst: 'tab-1' });
+    een.kern.cockpit({ t: 'zet', app: 'td-test', id: 'mix', v: 0.8 });
+    een.kern.cockpit({ t: 'zet', app: 'td-test', id: 'gloed', v: 0.9 });
+    een.klok.loop(2500);
+    const data = JSON.parse(JSON.stringify(een.kern.exporteer()));
+    expect(data.inst).toEqual({ 'td-test': 'tab-1' });
+
+    // De app draaide gewoon door en verbindt opnieuw met dezelfde inst: hij heeft 0.9 nog.
+    const zelfde = opzet();
+    zelfde.kern.importeer(data);
+    const z = meldAan(zelfde.kern, TH, { inst: 'tab-1', staat: { mix: 0.8, gloed: 0.9 } });
+    expect(zetten(z, 'gloed')).toEqual([{ t: 'zet', id: 'gloed', v: 0.9, bron: 'replay' }]);
+    zelfde.klok.loop(2500);
+    expect(zetten(z, 'gloed')).toHaveLength(1); // geen terugval naar de standaard en weer omhoog
+    expect(zelfde.kern.exporteer().inst).toEqual({ 'td-test': 'tab-1' });
+
+    // Een verse app (nieuwe inst) staat op zijn standaard: van daaruit verlopen.
+    const nieuw = opzet();
+    nieuw.kern.importeer(data);
+    const n = meldAan(nieuw.kern, TH, { inst: 'tab-2' });
+    expect(zetten(n, 'gloed')).toEqual([]);
+    nieuw.klok.loop(2500);
+    const g = zetten(n, 'gloed');
+    expect(verloopt(g)).toBe(true);
+    expect(g.at(-1).v).toBe(0.9);
+    expect(nieuw.kern.exporteer().inst).toEqual({ 'td-test': 'tab-2' });
+  });
+
+  it('een bewaarde app die terugkomt als truth:"app" verdwijnt uit het geheugen', () => {
+    const { kern } = opzet();
+    kern.importeer({ v: 1, snapshots: {}, waarden: { 'td-test': { mix: 0.3 } }, inst: { 'td-test': 'oud' } });
+    let n = 0;
+    kern.bij('geheugen', () => { n++; });
+    meldAan(kern, { ...TH, truth: 'app' });
+    expect(kern.exporteer().waarden).toEqual({});
+    expect(kern.exporteer().inst).toEqual({});
+    expect(n).toBeGreaterThan(0); // en dat gaat naar schijf
+  });
+
+  it('ongeldige inst wordt overgeslagen', () => {
+    const { kern } = opzet();
+    const r = kern.importeer({ v: 1, snapshots: {}, waarden: { 'td-test': { mix: 0.3 }, b: { x: 0.1 } }, inst: { 'td-test': 5, b: 'ok' } });
+    expect(r).toEqual({ ok: true, overgeslagen: 1 });
+    expect(kern.exporteer().inst).toEqual({ b: 'ok' });
+  });
+
+  it('flux per monitor: een manifest-naam zonder monitor krijgt hem erachter, zodat twee monitoren te onderscheiden zijn', () => {
+    const { kern } = opzet(laadConfig());
+    const man = (app) => ({ v: 1, app, naam: 'Flux', params: [{ id: 'tempo', naam: 'Tempo', soort: 'waarde' }] });
+    meldAan(kern, man('flux-dp-1'), { inst: 'a' });
+    meldAan(kern, man('flux-hdmi-1'), { inst: 'b' });
+    meldAan(kern, { ...man('flux-dp-2'), naam: 'Flux DP-2' }, { inst: 'c' });
+    meldAan(kern, { ...man('flux'), naam: 'Flux' }, { inst: 'd' });
+    expect(kern.beeld().apps.map((a) => [a.app, a.naam, a.kleur])).toEqual([
+      ['flux-dp-1', 'Flux (dp-1)', '#9b1b30'],
+      ['flux-hdmi-1', 'Flux (hdmi-1)', '#9b1b30'],
+      ['flux-dp-2', 'Flux DP-2', '#9b1b30'], // staat er al in: niet dubbel
+      ['flux', 'Flux', '#9b1b30'],
+    ]);
   });
 });

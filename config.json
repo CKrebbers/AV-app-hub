@@ -109,7 +109,7 @@
       "kleur": "#9b1b30",
       "koppeling": "ws",
       "per_monitor": true,
-      "_doc": "elke monitor meldt zich apart aan als flux-<monitor> (bv. flux-dp-1); de hub geeft die deze kleur en de naam 'Flux (<monitor>)'",
+      "_doc": "elke monitor meldt zich apart aan als flux-<monitor> (bv. flux-dp-1); de hub geeft die deze kleur en de naam 'Flux (<monitor>)' (staat de monitor niet in de naam uit het manifest, dan zet de hub hem erachter)",
       "repo": "flux-screensaver"
     }
   },
@@ -126,8 +126,7 @@
     "uitstel_ms": 3000
   },
   "geheugen": {
-    "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js); ~ = thuismap, $VARVE_HUB_STAAT gaat voor",
-    "pad": "~/.varve-hub/staat.json",
-    "schrijf_ms": 1000
+    "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js, PROTOCOL §12); ~ = thuismap, $VARVE_HUB_STAAT gaat voor; 'varve-hub start --zonder-geheugen' zet het uit. Optioneel schrijf_ms: hooguit eens per zoveel ms naar schijf (minimum en standaard 1000)",
+    "pad": "~/.varve-hub/staat.json"
   }
 }

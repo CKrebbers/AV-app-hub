@@ -13,7 +13,7 @@
 // truth:"hub"; het event 'geheugen' meldt dat daar iets aan veranderde (src/opslag.js schrijft het weg).
 import * as APC from '../devices/apc40mk2.js';
 import { klem01 } from '../protocol/berichten.js';
-import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN } from '../protocol/manifest.js';
+import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID } from '../protocol/manifest.js';
 import { Zender } from './zender.js';
 import { maakIndeling, toewijzingen, controlsVoor } from './indeling.js';
 import { nieuwePickup, beweeg, zetDoel, volg } from './pickup.js';
@@ -163,6 +163,8 @@ export class Kern extends Zender {
     this.slews = new Map();
     /** Bewaarde waarden (van schijf) van truth:"hub"-apps die zich deze sessie nog niet aanmeldden. @type {Map<string, Record<string, number>>} */
     this.bewaard = new Map();
+    /** De `inst` waarmee zo'n app zich de vorige hub-sessie het laatst aanmeldde (zie #manifest). @type {Map<string, string>} */
+    this.bewaardInst = new Map();
     /** @type {Map<number, Record<string, Record<string, number>>>} */
     this.snapshots = new Map();
     /** @type {Map<string, LedStaat>} wat er nu op het oppervlak staat (volgens de kern) */
@@ -330,7 +332,7 @@ export class Kern extends Zender {
 
   /**
    * Instellingen van een app uit config.apps. Een app die zich per monitor aanmeldt (`flux-dp-1`) valt terug
-   * op de basis-app met `per_monitor: true` (`flux`): zijn kleur, en als naam "Flux (dp-1)".
+   * op de basis-app met `per_monitor: true` (`flux`): zijn kleur, en als naam "Flux (dp-1)" (`monitor`: "dp-1").
    * @param {string} app @returns {Record<string, any>}
    */
   #appCfg(app) {
@@ -338,7 +340,8 @@ export class Kern extends Zender {
     if (apps[app]) return apps[app];
     for (const [basis, cfg] of Object.entries(apps)) {
       if (!cfg?.per_monitor || !app.startsWith(`${basis}-`) || app.length <= basis.length + 1) continue;
-      return { ...cfg, naam: `${cfg.naam ?? basis} (${app.slice(basis.length + 1)})` };
+      const monitor = app.slice(basis.length + 1);
+      return { ...cfg, naam: `${cfg.naam ?? basis} (${monitor})`, monitor };
     }
     return {};
   }
@@ -360,23 +363,35 @@ export class Kern extends Zender {
     // rings valt terug op config.apps.<app>.rings, zoals kleur (de validator vult anders 'host' in).
     if (man.lease && /** @type {any} */ (m).rings === undefined && (cfg.rings === 'auto' || cfg.rings === 'host')) man.rings = cfg.rings;
     a.manifest = man;
-    a.naam = man.naam;
+    // Per monitor (flux-dp-1, flux-hdmi-1): staat de monitor niet al in de manifest-naam, dan komt hij erachter,
+    // anders zijn twee monitoren in de cockpit niet uit elkaar te houden.
+    a.naam = cfg.monitor && !man.naam.toLowerCase().includes(String(cfg.monitor).toLowerCase()) ? `${man.naam} (${cfg.monitor})` : man.naam;
     this.#zetKleur(a, man.kleur ?? cfg.kleur);
     for (const p of man.params) if (p.soort !== 'trigger' && !(p.id in a.waarden)) a.waarden[p.id] = p.standaard ?? 0;
     // Waarden van schijf (vorige hub-sessie) voor een truth:"hub"-app: nu pas weten we dat hij ze wil.
+    // Komt hij nu als truth:"app", dan zijn ze niet meer nodig: niet eeuwig in het geheugen laten staan.
     const bewaard = man.truth === 'hub' ? this.bewaard.get(a.app) : undefined;
-    if (man.truth === 'hub') this.bewaard.delete(a.app);
+    const bewaardInst = this.bewaardInst.get(a.app);
+    const vergeten = this.bewaard.delete(a.app);
+    this.bewaardInst.delete(a.app);
     a.indeling = man.lease ? null : maakIndeling(man, this.config.kaarten?.[a.app] ?? null);
     a.pagina = Math.min(a.pagina, (a.indeling?.paginas.length ?? 1) - 1);
     a.pickups = new Map();
     if (a.status === 'nieuw') a.status = 'actief';
     this.#hartslag(a); // opnieuw, nu met de hb_s van het manifest
     if (bewaard) {
-      // Opnieuw afspelen zoals bij een herstart (§10): van de standaardwaarde die de app net aankondigde, met slew_s.
-      for (const p of man.params) if (p.soort !== 'trigger' && typeof bewaard[p.id] === 'number') this.#zetZacht(a, p.id, bewaard[p.id], 'replay');
+      // Opnieuw afspelen (§10, §12). Dezelfde inst als vorige hub-sessie: de app draaide gewoon door en heeft de
+      // waarden nog (zoals bij een netwerkhapering) → direct. Een nieuwe inst: de app staat op zijn standaardwaarde
+      // → van daaruit verlopen met slew_s.
+      const zelfde = bewaardInst !== undefined && bewaardInst === a.inst;
+      for (const p of man.params) {
+        if (p.soort === 'trigger' || typeof bewaard[p.id] !== 'number') continue;
+        if (zelfde) this.#zetWaarde(a, p.id, bewaard[p.id], { naarApp: true, bron: 'replay' });
+        else this.#zetZacht(a, p.id, bewaard[p.id], 'replay');
+      }
       a.replay = true;
     }
-    if (man.truth === 'hub') this.meld('geheugen');
+    if (man.truth === 'hub' || vergeten) this.meld('geheugen');
     // `getekend` blijft staan: was het oppervlak door een lease getekend, dan neemt #tekenManifest het vergeet-pad.
     if (this.focusApp === a.app) this.#teken();
     else if (this.hubIn) this.#teken();
@@ -810,18 +825,22 @@ export class Kern extends Zender {
 
   /**
    * Wat de hub over een herstart heen onthoudt: de snapshots en de waarden van apps met truth:"hub"
-   * (een lopende slew telt met zijn doel). Puur; src/opslag.js schrijft het weg.
-   * @returns {{ v: 1, snapshots: Record<string, Record<string, Record<string, number>>>, waarden: Record<string, Record<string, number>> }}
+   * (een lopende slew telt met zijn doel), plus per zo'n app zijn laatste `inst`. Puur; src/opslag.js schrijft het weg.
+   * @returns {{ v: 1, snapshots: Record<string, Record<string, Record<string, number>>>, waarden: Record<string, Record<string, number>>, inst: Record<string, string> }}
    */
   exporteer() {
     /** @type {Record<string, Record<string, number>>} */
     const waarden = {};
+    /** @type {Record<string, string>} */
+    const inst = {};
     for (const [app, w] of this.bewaard) waarden[app] = { ...w };
+    for (const [app, i] of this.bewaardInst) if (this.bewaard.has(app)) inst[app] = i;
     for (const a of this.apps.values()) {
       if (a.manifest?.truth !== 'hub') continue;
       waarden[a.app] = Object.fromEntries(a.manifest.params
         .filter((p) => p.soort !== 'trigger' && typeof a.waarden[p.id] === 'number')
         .map((p) => [p.id, this.#doel(a, p.id)]));
+      if (a.inst !== null) inst[a.app] = a.inst;
     }
     /** @type {Record<string, Record<string, Record<string, number>>>} */
     const snapshots = {};
@@ -829,12 +848,13 @@ export class Kern extends Zender {
       const s = /** @type {Record<string, Record<string, number>>} */ (this.snapshots.get(nr));
       snapshots[nr] = Object.fromEntries(Object.entries(s).map(([app, w]) => [app, { ...w }]));
     }
-    return { v: 1, snapshots, waarden };
+    return { v: 1, snapshots, waarden, inst };
   }
 
   /**
    * Neem bewaarde snapshots en truth:"hub"-waarden over (bij de start, vóór de apps zich aanmelden).
-   * Een truth:"hub"-app krijgt zijn waarden zodra zijn manifest binnenkomt (`bron:"replay"`, met slew_s).
+   * Een truth:"hub"-app krijgt zijn waarden zodra zijn manifest binnenkomt (`bron:"replay"`): met dezelfde `inst`
+   * als toen direct, met een nieuwe met slew_s (§12).
    * Ongeldige stukken vallen weg (geteld in `overgeslagen`); is het geheel onbruikbaar, dan verandert er niets.
    * @param {unknown} data @returns {{ ok: boolean, reden?: string, overgeslagen: number }}
    */
@@ -850,7 +870,7 @@ export class Kern extends Zender {
       const uit = {};
       if (!isObj(x)) { overgeslagen++; return uit; }
       for (const [id, v] of Object.entries(/** @type {Record<string, unknown>} */ (x))) {
-        if (/^[a-z0-9_.-]{1,48}$/.test(id) && typeof v === 'number' && Number.isFinite(v)) uit[id] = klem01(v);
+        if (PARAM_ID.test(id) && typeof v === 'number' && Number.isFinite(v)) uit[id] = klem01(v);
         else overgeslagen++;
       }
       return uit;
@@ -861,7 +881,7 @@ export class Kern extends Zender {
       const uit = {};
       if (!isObj(x)) { if (x !== undefined) overgeslagen++; return uit; }
       for (const [app, w] of Object.entries(/** @type {Record<string, unknown>} */ (x))) {
-        if (/^[a-z0-9-]{1,32}$/.test(app) && isObj(w)) uit[app] = waardenVan(w);
+        if (APP_ID.test(app) && isObj(w)) uit[app] = waardenVan(w);
         else overgeslagen++;
       }
       return uit;
@@ -875,9 +895,18 @@ export class Kern extends Zender {
       }
     } else if (d.snapshots !== undefined) overgeslagen++;
     this.bewaard.clear();
+    this.bewaardInst.clear();
+    /** @type {Record<string, unknown>} */
+    const insts = isObj(d.inst) ? d.inst : {};
+    if (d.inst !== undefined && !isObj(d.inst)) overgeslagen++;
     for (const [app, w] of Object.entries(perApp(d.waarden))) {
       const a = this.apps.get(app);
-      if (!a?.manifest) this.bewaard.set(app, w);
+      const i = insts[app];
+      if (!a?.manifest) {
+        this.bewaard.set(app, w);
+        if (typeof i === 'string' && i.length > 0 && i.length <= 128) this.bewaardInst.set(app, i);
+        else if (i !== undefined) overgeslagen++;
+      }
       else if (a.manifest.truth === 'hub') { // al aangemeld: alleen onthouden, niets sturen
         for (const p of a.manifest.params) if (p.soort !== 'trigger' && p.id in w) a.waarden[p.id] = kwantiseer(p, w[p.id]);
       }
@@ -1249,7 +1278,8 @@ export class Kern extends Zender {
       this[k] = null;
     }
     for (const a of this.apps.values()) this.#wisHartslag(a);
-    this.slews.clear();
+    // De slews blijven staan (hun timer is weg): exporteer() bewaart daarvan het doel, ook als het geheugen
+    // pas ná kern.stop() wegschrijft.
     this.leaseRij.clear();
     for (const f of this.afmelden) f();
     this.afmelden = [];

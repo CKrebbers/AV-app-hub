@@ -8,7 +8,7 @@ import { echteKlok } from './core/klok.js';
 import { maakApparaten } from './apparaten.js';
 import { startServer } from './transports/server.js';
 import { startDrivers } from './drivers/index.js';
-import { koppelGeheugen, SCHRIJF_MS } from './opslag.js';
+import { koppelGeheugen, schrijfMsUit } from './opslag.js';
 import { HUB_MAP, laadKaarten } from './config.js';
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
@@ -19,7 +19,8 @@ import * as LPD8 from './devices/lpd8.js';
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
  *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
  *   geheugen?: string|null,
- * }} o  geheugen: pad van het geheugenbestand (snapshots, truth:"hub"-waarden; zie src/opslag.js), null = niet bewaren
+ * }} o  geheugen: pad van het geheugenbestand (snapshots, truth:"hub"-waarden; zie src/opslag.js), null = niet bewaren.
+ *       `varve-hub start` geeft `geheugenPad(config)` mee; tests geven een eigen pad of niets.
  */
 export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, geheugen = null }) {
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
@@ -37,7 +38,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
   };
   const kern = new Kern({ klok, config: cfg, oppervlak });
   // Vóór de drivers en de server: wie zich aanmeldt, vindt zijn bewaarde waarden al klaar.
-  const opslag = geheugen ? koppelGeheugen({ kern, pad: geheugen, klok, log, schrijfMs: Math.max(SCHRIJF_MS, cfg.geheugen?.schrijf_ms ?? 0) }) : null;
+  const opslag = geheugen ? koppelGeheugen({ kern, pad: geheugen, klok, log, schrijfMs: schrijfMsUit(cfg) }) : null;
 
   // Echte controllers → kern; hun stand → cockpit.
   apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => kern.invoer(g, b));
@@ -73,8 +74,8 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
       stoppend = true;
       actieveDrivers?.stop();
       await server.stop();               // geen app- of cockpitberichten meer
+      opslag?.stop();                    // wat nog wacht meteen naar schijf (vóór kern.stop: van een lopende slew het doel)
       kern.stop();
-      opslag?.stop();                    // wat nog wacht meteen naar schijf
       await apparaten.stop();            // LEDs uit, poorten dicht
     },
   };
