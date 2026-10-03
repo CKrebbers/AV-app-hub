@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d12">
+  <title>varve-hub · oefenen</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23ff9f1c'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/ui/stijl.css">
+  <link rel="stylesheet" href="/ui/oefen.css">
+</head>
+<body class="los oefen">
+  <header class="kop">
+    <div class="merk"><span class="stip" aria-hidden="true"></span>varve-hub <small>oefenen</small></div>
+    <a class="naar-cockpit" href="/">cockpit</a>
+    <div class="apparaten" aria-label="controllers">
+      <span class="chip" id="dev-apc40">APC40</span>
+      <span class="chip" id="dev-lpd8">LPD8</span>
+    </div>
+    <div class="verbinding" id="verbinding" role="status" aria-live="polite" data-status="verbinden"><i aria-hidden="true"></i><span>verbinden…</span></div>
+  </header>
+
+  <main class="oefen-indeling">
+    <section class="paneel les" aria-labelledby="les-titel">
+      <ol id="voortgang" class="voortgang" aria-label="lessen"></ol>
+      <p class="les-nr" id="les-nr"></p>
+      <h1 id="les-titel"></h1>
+      <p class="intro" id="les-intro"></p>
+      <div id="opdracht-anker"><div class="opdracht" id="opdracht" aria-live="polite"></div></div>
+      <p class="les-hint" id="les-hint" hidden></p>
+      <div class="geleerd" id="geleerd" hidden></div>
+      <div class="les-knoppen">
+        <button type="button" id="knop-begrepen" hidden>Begrepen</button>
+        <button type="button" id="knop-volgende" class="hoofd" hidden>Volgende les →</button>
+        <button type="button" id="knop-opnieuw" class="zacht">Les opnieuw</button>
+      </div>
+      <p class="let-op" id="let-op" hidden></p>
+    </section>
+
+    <section class="paneel tafereel-paneel" aria-label="Zon en Zee">
+      <canvas id="tafereel" class="tafereel" aria-hidden="true"></canvas>
+      <div class="oefen-apps">
+        <div class="oefen-app" id="app-oefen-zon"></div>
+        <div class="oefen-app" id="app-oefen-zee"></div>
+      </div>
+      <h2>Wat de hub net stuurde</h2>
+      <ol id="stroom" class="stroom"></ol>
+    </section>
+
+    <details class="paneel virtueel" id="virtueel">
+      <summary>Virtuele controllers <span class="zacht" id="virtueel-uitleg">(gebruik deze als je APC40 of LPD8 niet is aangesloten)</span></summary>
+      <div class="virtueel-binnen">
+        <div class="apc-houder"><div id="apc" aria-label="virtuele APC40 mkII"></div></div>
+        <p class="hint">klik = indrukken · <kbd>shift</kbd>-klik = vasthouden (bv. Bank), nog eens = los · slepen/scrollen = draaien en schuiven</p>
+        <div class="lpd-houder"><div class="lpd-naam">LPD8</div><div id="lpd8" aria-label="virtuele LPD8"></div></div>
+      </div>
+    </details>
+
+    <details class="paneel spiek">
+      <summary>Spiekbrief</summary>
+      <dl id="spiekbrief" class="spiekbrief"></dl>
+    </details>
+  </main>
+
+  <div class="opdracht-balk" id="opdracht-balk" aria-hidden="true"></div>
+
+  <script type="module" src="/ui/oefen.js"></script>
+</body>
+</html>

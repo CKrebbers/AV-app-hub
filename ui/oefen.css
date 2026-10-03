@@ -1,0 +1,91 @@
+/* Oefenruimte: bovenop stijl.css. */
+.naar-cockpit { color: var(--zacht); text-decoration: none; font-size: 13px; border: 1px solid var(--rand); border-radius: 999px; padding: 2px 10px; }
+.naar-cockpit:hover { color: var(--tekst); }
+.oefen-indeling { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 16px; padding: 16px 20px 40px; max-width: 1500px; margin: 0 auto; align-items: start; }
+.oefen-indeling > .virtueel, .oefen-indeling > .spiek { grid-column: 1 / -1; }
+@media (max-width: 900px) { .oefen-indeling { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 32px; } }
+@media (max-width: 600px) { .kop { gap: 10px; padding: 10px 16px; } .verbinding { min-width: 0; } .verbinding span { display: none; } .apparaten { display: none; } }
+
+/* ── les ── */
+.les h1 { margin: 2px 0 8px; font-size: 22px; line-height: 1.25; }
+.les-nr { margin: 10px 0 0; font-size: 12px; color: var(--zacht); letter-spacing: .06em; }
+.intro { color: var(--zacht); font-size: 15px; line-height: 1.55; margin: 0 0 14px; }
+.intro b, .geleerd b { color: var(--tekst); }
+.opdracht { font-size: 18px; line-height: 1.5; padding: 14px 16px; border-radius: 10px; background: var(--vlak2); border: 1px solid var(--rand);
+  border-left: 4px solid var(--accent); }
+.opdracht:empty { display: none; }
+.opdracht b { color: #fff; }
+.opdracht .stappen { display: flex; gap: 6px; margin-bottom: 8px; }
+.opdracht .stappen i { width: 22px; height: 4px; border-radius: 2px; background: var(--rand); }
+.opdracht .stappen i.klaar { background: var(--goed); }
+.opdracht .stappen i.nu { background: var(--accent2); }
+.opdracht.gelukt { border-left-color: var(--goed); animation: gelukt .5s; }
+@keyframes gelukt { 30% { background: color-mix(in srgb, var(--goed) 18%, var(--vlak2)); } }
+.les-hint { margin: 10px 2px 0; color: var(--let); font-size: 14px; }
+.les-hint[hidden], .geleerd[hidden], .let-op[hidden] { display: none; }
+.geleerd { margin-top: 14px; padding: 12px 14px; border-radius: 10px; background: color-mix(in srgb, var(--goed) 10%, var(--vlak2)); border: 1px solid color-mix(in srgb, var(--goed) 35%, var(--rand)); font-size: 15px; line-height: 1.5; }
+.geleerd::before { content: '✓ Geleerd'; display: block; font-size: 11px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--goed); margin-bottom: 4px; }
+.les-knoppen { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+.les-knoppen button { padding: 9px 16px; border-radius: 8px; border: 1px solid var(--rand); background: var(--vlak2); cursor: pointer; }
+.les-knoppen button.hoofd, #knop-begrepen { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.les-knoppen button.zacht { color: var(--zacht); margin-left: auto; }
+.les-knoppen button[hidden] { display: none; }
+.let-op { margin: 14px 0 0; font-size: 13px; color: var(--let); }
+.voortgang { display: flex; flex-wrap: wrap; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.voortgang button { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--rand); background: var(--vlak2); color: var(--zacht); font: 600 12px var(--mono); cursor: pointer; }
+.voortgang button.gehaald { border-color: color-mix(in srgb, var(--goed) 60%, var(--rand)); color: var(--goed); }
+.voortgang button.nu { background: var(--accent); border-color: var(--accent); color: #fff; }
+code { font: 13px var(--mono); color: var(--tekst); }
+
+/* ── tafereel ── */
+.tafereel { display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: 8px; background: #05070b; }
+.oefen-apps { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 14px; }
+@media (max-width: 600px) { .oefen-apps { grid-template-columns: 1fr; } }
+.oefen-app { border: 1px solid var(--rand); border-radius: 8px; padding: 10px 12px; background: var(--vlak2); min-width: 0; }
+.oefen-app.focus { border-color: var(--app); box-shadow: 0 0 0 1px var(--app) inset; }
+.oefen-app .titel { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }
+.oefen-app .titel i { width: 10px; height: 10px; border-radius: 50%; background: var(--app); }
+.oefen-app .titel small { color: var(--zacht); font-weight: 400; margin-left: auto; font-size: 12px; }
+.oefen-app .titel .focus-label { display: none; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--app); color: #000; }
+.oefen-app.focus .titel .focus-label { display: inline; }
+.oefen-app .p { display: grid; grid-template-columns: 5.2em minmax(0, 1fr) 3.4em; gap: 8px; align-items: center; font-size: 12px; color: var(--zacht); margin: 3px 0; }
+.oefen-app .p .balk { position: relative; height: 8px; border-radius: 4px; background: #0d1016; overflow: visible; }
+.oefen-app .p .balk b { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--app); }
+.oefen-app .p .balk .fysiek { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; border-radius: 1px; opacity: .85; }
+.oefen-app .p .balk .fysiek[hidden] { display: none; }
+.oefen-app .p .w { font: 12px var(--mono); text-align: right; color: var(--tekst); }
+.oefen-app .p.knipper .w { color: var(--app); }
+.oefen-app .p .waar { display: block; font-size: 10px; color: var(--stil); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Vaste hoogtes: wat hier verschijnt mag de virtuele controllers eronder nooit laten verspringen (je sleept er net aan). */
+.oefen-app .pickup { font-size: 11px; line-height: 1.35; color: var(--let); height: 2.7em; overflow: hidden; margin-top: 4px; }
+.stroom { list-style: none; margin: 0; padding: 0; font: 12px/1.4 var(--mono); color: var(--zacht); height: calc(7 * (1.4em + 4px)); overflow: hidden; }
+.stroom li { padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stroom li b { color: var(--tekst); font-weight: 500; }
+.stroom li .bron { display: inline-block; min-width: 5.5em; color: var(--accent2); }
+.stroom li .bron.lpd8 { color: #c38bff; } .stroom li .bron.snapshot { color: var(--goed); } .stroom li .bron.zelf { color: var(--let); }
+
+/* ── virtueel en wijzen ── */
+.virtueel summary, .spiek summary { cursor: pointer; font-weight: 600; }
+.virtueel summary .zacht { color: var(--zacht); font-weight: 400; font-size: 13px; }
+.virtueel-binnen { margin-top: 12px; display: flex; flex-direction: column; gap: 12px; }
+.virtueel .lpd-houder { max-width: 720px; }
+.wijs { outline: 3px solid var(--let) !important; outline-offset: 2px; animation: wijs 1.2s ease-in-out infinite; z-index: 3; }
+@keyframes wijs { 50% { outline-color: color-mix(in srgb, var(--let) 30%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .wijs, .opdracht.gelukt { animation: none; } }
+.spiekbrief { display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; margin: 12px 0 0; font-size: 14px; }
+.spiekbrief dt { font-weight: 600; }
+.spiekbrief dd { margin: 0; color: var(--zacht); }
+@media (max-width: 600px) { .spiekbrief { grid-template-columns: 1fr; } .spiekbrief dd { margin-bottom: 6px; } }
+
+/* ── opdrachtbalk onderaan (als de opdracht zelf uit beeld is gescrold) ── */
+.opdracht-balk { position: fixed; left: 50%; bottom: 14px; transform: translate(-50%, 140%); width: min(720px, calc(100% - 32px)); z-index: 20;
+  padding: 12px 16px; border-radius: 10px; background: color-mix(in srgb, var(--vlak2) 94%, transparent); backdrop-filter: blur(8px);
+  border: 1px solid var(--rand); border-left: 4px solid var(--accent); font-size: 16px; line-height: 1.45; box-shadow: 0 8px 30px #0008;
+  transition: transform .25s ease; pointer-events: none; }
+.opdracht-balk b { color: #fff; }
+.opdracht-balk .stappen { display: none; }
+.opdracht-balk:empty { display: none; }
+body.opdracht-weg .opdracht-balk { transform: translate(-50%, 0); }
+/* Ruimte onderaan, zodat je de onderste pads altijd boven de balk kunt scrollen. */
+body.oefen { padding-bottom: 150px; }
+@media (prefers-reduced-motion: reduce) { .opdracht-balk { transition: none; } }
