@@ -1,0 +1,47 @@
+{
+  "v": 1,
+  "app": "uurwerk",
+  "naam": "Uurwerk",
+  "kleur": "#ffb000",
+  "truth": "hub",
+  "hb_s": 2,
+  "lease": false,
+  "scenes": [],
+  "params": [
+    {"id":"onrust","naam":"Onrust","soort":"waarde","standaard":0,"hint":"fader","groep":"macro","rol":"macro.beweging"},
+    {"id":"licht","naam":"Licht","soort":"waarde","standaard":0.5,"hint":"fader","groep":"macro","rol":"macro.helderheid","eenheid":"donker↔helder","min":-1,"max":1},
+    {"id":"dicht","naam":"Dicht","soort":"waarde","standaard":0.5,"hint":"fader","groep":"macro","rol":"macro.dichtheid"},
+    {"id":"samenhang","naam":"Samenhang","soort":"waarde","standaard":0,"hint":"fader","groep":"macro"},
+    {"id":"bevries","naam":"Bevries tuinman","soort":"schakelaar","standaard":0,"hint":"pad","groep":"tuinman"},
+    {"id":"bewaar","naam":"Dat! (bewaar moment)","soort":"trigger","hint":"pad","groep":"tuinman"},
+    {"id":"uur_diep_werk","naam":"Uur: Diep werk","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_lezen","naam":"Uur: Lezen","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_rust","naam":"Uur: Rust","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_beweging","naam":"Uur: Beweging","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_stop","naam":"Uur stoppen","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_meer","naam":"Meer aanwezig","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"uur_minder","naam":"Minder aanwezig","soort":"trigger","hint":"pad","groep":"uur"}
+  ],
+  "driver": {
+    "soort": "http",
+    "url": "http://127.0.0.1:8766",
+    "gezond_s": 2,
+    "max_hz": 10,
+    "verbs": {
+      "onrust": {"verb":"macro","args":{"naam":"onrust"},"waarde":"waarde"},
+      "licht": {"verb":"macro","args":{"naam":"licht"},"waarde":"waarde","bereik":[-1,1]},
+      "dicht": {"verb":"macro","args":{"naam":"dicht"},"waarde":"waarde"},
+      "samenhang": {"verb":"macro","args":{"naam":"samenhang"},"waarde":"waarde"},
+      "bevries": {"verb":"bevries","waarde":"aan"},
+      "bewaar": {"verb":"bewaar","args":{"bron":"varve-hub"}},
+      "uur_diep_werk": {"verb":"uur","args":{"actie":"start","naam":"Diep werk"}},
+      "uur_lezen": {"verb":"uur","args":{"actie":"start","naam":"Lezen"}},
+      "uur_rust": {"verb":"uur","args":{"actie":"start","naam":"Rust"}},
+      "uur_beweging": {"verb":"uur","args":{"actie":"start","naam":"Beweging"}},
+      "uur_stop": {"verb":"uur","args":{"actie":"stop"}},
+      "uur_meer": {"verb":"uur","args":{"actie":"meer"}},
+      "uur_minder": {"verb":"uur","args":{"actie":"minder"}}
+    },
+    "_bron": "handgeschreven ← uurwerk/bridge/server.js (TOOLS) + brug.js; licht loopt -1..1, de rest 0..1"
+  }
+}
