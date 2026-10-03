@@ -381,6 +381,56 @@ describe('server: /app', () => {
     await wachtOp(() => kern.van('verbreek').length);
   });
 
+  it('verdrongen instantie (andere inst) wordt geweigerd met close-code 4001 zolang de nieuwe er is; daarna mag ze terug', async () => {
+    const hallo = (inst) => ({ t: 'hallo', app: 'formula-lab', inst, v: 1 });
+    const t1 = await open(client('/app'));
+    stuur(t1, hallo('a'));
+    await wachtOp(() => kern.ontvangen('hallo').length === 1);
+    const t2 = await open(client('/app'));
+    stuur(t2, hallo('b'));                                   // nieuwste neemt het over
+    await wachtOp(() => kern.ontvangen('hallo').length === 2);
+    // De kern sluit de oude: dat moet een eigen close-code zijn, niet 1000.
+    kern.van('ontvang')[0].args[0].sluit();
+    await wachtOp(() => t1.code !== null);
+    expect(t1.code).toBe(4001);
+    // Tab 1 verbindt volgens §3 opnieuw met dezelfde inst: geweigerd, de kern merkt er niets van.
+    const t1b = await open(client('/app'));
+    stuur(t1b, hallo('a'));
+    await wachtOp(() => t1b.code !== null);
+    expect(t1b.code).toBe(4001);
+    expect(vind(t1b, 'fout')?.reden).toMatch(/vervangen/);
+    expect(kern.ontvangen('hallo').length).toBe(2);
+    // Een herladen tab (nieuwe inst) mag het wel overnemen.
+    const t3 = await open(client('/app'));
+    stuur(t3, hallo('c'));
+    await wachtOp(() => kern.ontvangen('hallo').length === 3);
+    expect(t3.code).toBe(null);
+    // Gaan de anderen weg, dan mag de eerst verdrongen instantie terug.
+    t2.ws.close(); t3.ws.close();
+    await wachtOp(() => t2.code !== null && t3.code !== null);
+    await new Promise((r) => setTimeout(r, 30));
+    const t1c = await open(client('/app'));
+    stuur(t1c, hallo('a'));
+    await wachtOp(() => kern.ontvangen('hallo').length === 4);
+    expect(t1c.code).toBe(null);
+  });
+
+  it('zelfde inst opnieuw (netwerkhapering, oude socket half-open) wordt niet geweigerd', async () => {
+    const hallo = { t: 'hallo', app: 'formula-lab', inst: 'a', v: 1 };
+    const oud = await open(client('/app'));
+    stuur(oud, hallo);
+    await wachtOp(() => kern.ontvangen('hallo').length === 1);
+    const nieuw = await open(client('/app'));
+    stuur(nieuw, hallo);
+    await wachtOp(() => kern.ontvangen('hallo').length === 2);
+    kern.van('ontvang')[0].args[0].sluit();
+    await wachtOp(() => oud.code !== null);
+    expect(oud.code).toBe(1000);
+    const weer = await open(client('/app'));
+    stuur(weer, hallo);
+    await wachtOp(() => kern.ontvangen('hallo').length === 3);
+  });
+
   it('twee nep-apps tegelijk krijgen elk hun eigen verbinding', async () => {
     const a = new NepApp({ url: wsUrl('/app'), manifest: voorbeeldManifest('app-a'), herverbind: false }).start();
     const b = new NepApp({ url: wsUrl('/app'), manifest: voorbeeldManifest('app-b'), herverbind: false }).start();
@@ -484,6 +534,33 @@ describe('server: /cockpit', () => {
     kern.meld('beeld');
     await wachtOp(() => alle(c2, 'beeld').length === 2);
     expect(kern.van('beeld').length - voor).toBe(1); // één keer berekend, alleen voor c2
+  });
+
+  it('cockpit die wegvalt laat ook de virtuele voetschakelaar los (CC64 0), maar faders en knoppen niet (§10)', async () => {
+    const c = await open(client('/cockpit'));
+    await wachtOp(() => vind(c, 'beeld'));
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0xb0, 64, 127] });   // voet in (ui/midi.js drukBytes)
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0x90, 0, 127] });    // pad in
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0xb0, 7, 100] });    // fader 1: geen toets
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0xb0, 16, 90] });    // device-knop 1: geen toets
+    stuur(c, { t: 'virtueel', dev: 'lpd8', bytes: [0xb0, 64, 127] });    // CC64 van de LPD8 is geen voet
+    await wachtOp(() => virtueel.length === 5);
+    c.ws.terminate();
+    await wachtOp(() => virtueel.length >= 7);
+    await new Promise((r) => setTimeout(r, 30));
+    expect(virtueel.slice(5)).toEqual(expect.arrayContaining([{ dev: 'apc40', bytes: [0xb0, 64, 0] }, { dev: 'apc40', bytes: [0x80, 0, 0] }]));
+    expect(virtueel.length).toBe(7);
+  });
+
+  it('een al losgelaten voetschakelaar wordt bij wegvallen niet nog eens losgelaten', async () => {
+    const c = await open(client('/cockpit'));
+    await wachtOp(() => vind(c, 'beeld'));
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0xb0, 64, 127] });
+    stuur(c, { t: 'virtueel', dev: 'apc40', bytes: [0xb0, 64, 0] });
+    await wachtOp(() => virtueel.length === 2);
+    c.ws.terminate();
+    await new Promise((r) => setTimeout(r, 80));
+    expect(virtueel.length).toBe(2);
   });
 
   it('zonder cockpits rekent de server geen beeld uit', () => {

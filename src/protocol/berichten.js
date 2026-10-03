@@ -15,6 +15,12 @@ const isBytes = (/** @type {unknown} */ b) => Array.isArray(b) && b.length > 0 &
 /** Mode-SysEx van de APC40 — apps mogen die nooit sturen. @param {number[]} b */
 export const isModeSysex = (b) => b[0] === 0xf0 && b[1] === 0x47 && b[3] === 0x29 && b[4] === 0x60;
 
+/** Een geldig LED-bericht van een lease-app: precies één note-off, note-on of CC van 3 bytes. Al het andere
+ *  (SysEx — ook mode-SysEx verstopt achter een ander bericht — realtime-bytes, losse statusbytes) valt weg.
+ *  @param {unknown} m */
+export const isLedBericht = (m) => Array.isArray(m) && m.length === 3 && m.every((x) => Number.isInteger(x) && x >= 0)
+  && [0x80, 0x90, 0xb0].includes(m[0] & 0xf0) && m[0] <= 0xff && m[1] <= 0x7f && m[2] <= 0x7f;
+
 /**
  * Een bericht van een app (tekst of object) → gecontroleerd bericht.
  * @param {unknown} ruw
@@ -47,7 +53,7 @@ export function leesVanApp(ruw) {
       return { ok: true, bericht: { t: 'hb' } };
     case 'led': {
       if (!Array.isArray(b.bytes) || !b.bytes.every(isBytes)) return { ok: false, fout: 'led: bytes moet een lijst MIDI-berichten zijn' };
-      return { ok: true, bericht: { t: 'led', bytes: b.bytes.filter((/** @type {number[]} */ m) => !isModeSysex(m)) } };
+      return { ok: true, bericht: { t: 'led', bytes: b.bytes.filter(isLedBericht) } };
     }
     default:
       return { ok: true, onbekend: true, t: b.t };

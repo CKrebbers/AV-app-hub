@@ -92,7 +92,7 @@ Parameter:
 | `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"` |
 | `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth) |
 | `takeover` | nee | `"pickup"` (standaard voor faders), `"direct"`, `"schaal"` |
-| `eenheid`, `min`, `max` | nee | alleen voor weergave in de cockpit |
+| `eenheid`, `min`, `max`, `centre` | nee | alleen voor weergave in de cockpit; `centre` = de waarde die op 0,5 ligt (log-schaal zoals JUCE `setSkewForCentre`), zonder `centre` lineair |
 
 ## 5. Lease-modus (Varve DJ, av-kern)
 
@@ -186,3 +186,14 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
 - Valt een cockpit weg terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los.
 - De virtuele LPD8 stuurt altijd de mk2-fabrieksstand (noot 36–43 kanaal 10, CC 70–77); de hub leest die los van het profiel van de echte LPD8.
+
+## 11. Beslissingen (golf 2 — uit het breken)
+
+- **Twee instanties van dezelfde app** (bv. twee tabs): de nieuwste wint. De oude krijgt `{t:"fout", reden:"vervangen: …"}` en close-code **4001**, en wordt geweigerd zolang de nieuwe verbonden is. Een app die 4001 krijgt, wacht 30 s voor hij opnieuw probeert (anders verdringen ze elkaar eindeloos).
+- **Driver en echte app met dezelfde id** (bv. uurwerk via HTTP én een uurwerk-tab met `?hub=`): de WebSocket-verbinding wint; valt die weg, dan neemt de driver het weer over (als herstart, met replay).
+- **Slots worden hergebruikt.** Een app die terugkomt krijgt zijn eigen slot. Zijn alle 8 bezet, dan krijgt een nieuwe app het slot van een weggevallen app (liefst niet die met focus).
+- **Lease-LEDs:** alleen geldige berichten (precies één note-on, note-off of CC van 3 bytes) gaan naar de APC — ook verstopte mode-SysEx valt weg, al bij de validatie (`isLedBericht`). Bij een stortvloed lopen lease-LEDs hooguit ±40 ms voor op de APC; de rest wordt per LED samengevoegd (nieuwste wint).
+- **LPD8-pickup volgt de buitenwereld:** verandert de waarde van een macro door een snapshot, de app of de cockpit, dan "wacht" de LPD8-knop weer tot hij die waarde kruist.
+- **Triggers blijven nooit hangen:** het loslaten gaat altijd naar de trigger waar het indrukken heen ging, ook na een nieuw manifest, een paginawissel of een focuswissel.
+- **Stoppen:** een gestopte kern negeert alles en start geen timers meer; `hub.stop()` sluit eerst de server en dan de apparaten.
+- **Zonder virtuele MIDI-poorten** (geen RtMidi) starten de MIDI-drivers niet en melden ze dat; TD en Sediment staan dan niet als "actief" in de cockpit.

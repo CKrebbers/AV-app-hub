@@ -7,7 +7,7 @@
 //
 // driver = { soort:"http", url:"http://127.0.0.1:8766", gezond_s?:2, max_hz?:10,
 //            verbs: { paramId: { verb, args?, waarde?: "argnaam", bereik?: [min, max] } } }
-import { DriverBasis, scheidStatisch } from './basis.js';
+import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
 import { klem01 } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
@@ -88,7 +88,7 @@ export class HttpDriver extends DriverBasis {
     if (this.gestopt) return;
     // Onbereikbaar: niet sturen (geen stapel open verzoeken); bij herstel speelt de kern alles opnieuw af.
     if (this.bereikbaar === false) { this.gemist = true; return; }
-    this.verstuurd.push(bericht);
+    bewaarBegrensd(this.verstuurd, bericht);
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
     let verlopen = false;
     const timer = this.klok.zet(() => { verlopen = true; this.posts.delete(timer); ac?.abort(); }, POST_TIMEOUT_MS);

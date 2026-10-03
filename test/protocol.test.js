@@ -59,7 +59,7 @@ describe('berichten', () => {
 describe('conformiteit: nep-app tegen nep-hub', () => {
   it('de nep-app is conform PROTOCOL.md', async () => {
     let app;
-    const r = await toetsApp({ poort: 7811, start: (url) => { app = new NepApp({ url }).start(); } });
+    const r = await toetsApp({ poort: 0, start: (url) => { app = new NepApp({ url }).start(); } });
     app.stop();
     expect(r.uitslagen.filter((u) => !u.ok)).toEqual([]);
     expect(r.app).toBe('nep-app');
@@ -67,7 +67,7 @@ describe('conformiteit: nep-app tegen nep-hub', () => {
   it('een app zonder hartslag en zonder herverbinden valt door de toets', async () => {
     let app;
     const m = { ...voorbeeldManifest('slordig'), hb_s: 0.5 };
-    const r = await toetsApp({ poort: 7812, herverbindMs: 1500, start: (url) => { app = new NepApp({ url, manifest: m, herverbind: false }); app.start(); app.bij('open', () => clearInterval(app.hb)); } });
+    const r = await toetsApp({ poort: 0, herverbindMs: 1500, start: (url) => { app = new NepApp({ url, manifest: m, herverbind: false }); app.start(); app.bij('open', () => clearInterval(app.hb)); } });
     app.stop();
     const fout = r.uitslagen.filter((u) => !u.ok).map((u) => u.naam);
     expect(fout).toContain('hartslag minstens elke 0.5 s');

@@ -18,12 +18,25 @@ export function toonWaarde(p, v) {
   if (p.soort === 'schakelaar') return v >= 0.5 ? 'aan' : 'uit';
   if (p.soort === 'trigger') return v >= 0.5 ? '●' : '○';
   if (typeof p.min === 'number' && typeof p.max === 'number') {
-    const x = p.min + v * (p.max - p.min);
+    const x = p.min + vanSkew(v, p.min, p.max, p.centre) * (p.max - p.min);
     const span = Math.abs(p.max - p.min);
     const dec = span >= 100 ? 0 : span >= 10 ? 1 : 2;
     return `${x.toFixed(dec)}${p.eenheid ? ` ${p.eenheid}` : ''}`;
   }
   return `${Math.round(v * 100)}%${p.eenheid ? ` ${p.eenheid}` : ''}`;
+}
+
+/**
+ * Draadwaarde → lineair aandeel van het bereik. Met `centre` (JUCE setSkewForCentre) ligt `centre` op 0,5,
+ * net als in de app; zonder (of met een centre buiten het bereik) blijft het lineair.
+ * @param {number} v @param {number} min @param {number} max @param {number|undefined} centre
+ */
+function vanSkew(v, min, max, centre) {
+  const v01 = Math.max(0, Math.min(1, v));
+  if (typeof centre !== 'number' || !Number.isFinite(centre) || max === min) return v01;
+  const c = (centre - min) / (max - min);
+  if (!(c > 0 && c < 1)) return v01;
+  return Math.pow(v01, Math.log(c) / Math.log(0.5)); // inverse van prop^skew, skew = ln 0,5 / ln c
 }
 
 /** Eén regel voor het invoerlog. @param {any} g */

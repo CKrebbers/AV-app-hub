@@ -11,7 +11,7 @@ Manifest en mapping: `apps/av-scene-kit.json` (gegenereerd uit `av-scene-kit/con
 
 ## Eenmalig instellen (±5 minuten)
 
-1. **Start eerst de hub** (`varve-hub`). De poort "VARVE-HUB TD" bestaat alleen zolang de hub draait.
+1. **Start eerst de hub** (`npm start` in de map van de hub, oftewel `node src/cli.js start`). De poort "VARVE-HUB TD" bestaat alleen zolang de hub draait.
    Controle op de Mac: *Audio MIDI-configuratie → MIDI-studio* toont een apparaat "VARVE-HUB TD".
 2. Open het TD-project met `/project1/hub`.
 3. *Dialogs → MIDI Device Mapper*.
@@ -64,7 +64,10 @@ alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt
   wacht net als TD tot de fader de presetwaarde kruist.
 - **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. Zolang de hub draait, speelt hij bij
   een nieuwe aanmelding van de driver de laatst bekende waarden opnieuw af. Die waarden staan alleen in het
-  geheugen: na een herstart van de hub zelf begint alles weer bij de standaardwaarden (= preset 1).
+  geheugen. Herstart de hub zelf terwijl TD blijft draaien, dan houdt TD zijn eigen stand (bijvoorbeeld preset 3);
+  de hub stuurt dan niets en gaat zelf uit van de standaardwaarden (= preset 1). Cockpit en ringen tonen die,
+  en de pickup grijpt pas als een fader de standaardwaarde kruist. Kies een preset of laad een snapshot: dan
+  staan TD en hub weer gelijk.
 - **Alleen TD herstart?** Dan staat TD weer op preset 1 en weet de hub dat niet. Kies een preset (pad of scène):
   TD en hub staan dan weer gelijk. Of beweeg de faders die je terug wilt. Een snapshot laden helpt alleen voor
   waarden die afwijken van de huidige hub-stand.

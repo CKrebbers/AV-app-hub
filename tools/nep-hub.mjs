@@ -12,12 +12,13 @@ import { valideerManifest } from '../src/protocol/manifest.js';
 /** @typedef {{ naam: string, ok: boolean, detail?: string }} Uitslag */
 
 /**
- * @param {{ poort: number, start?: (url: string) => Promise<unknown>|unknown, timeoutMs?: number, herverbindMs?: number }} o
+ * @param {{ poort: number (0 = vrije poort), start?: (url: string) => Promise<unknown>|unknown, timeoutMs?: number, herverbindMs?: number }} o
  * @returns {Promise<{ ok: boolean, uitslagen: Uitslag[], app: string|null }>}
  */
 export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 8000 }) {
   const wss = new WebSocketServer({ port: poort, path: '/app' });
   await new Promise((r) => wss.once('listening', r));
+  const echtePoort = /** @type {import('node:net').AddressInfo} */ (wss.address()).port; // poort 0 = vrije poort
   /** @type {Uitslag[]} */
   const uit = [];
   const noteer = (/** @type {string} */ naam, /** @type {boolean} */ ok, /** @type {string=} */ detail) => uit.push({ naam, ok, ...(detail ? { detail } : {}) });
@@ -40,7 +41,7 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
     while (Date.now() < eind) { const x = fn(); if (x) return x; await new Promise((r) => setTimeout(r, 25)); }
     return null;
   };
-  const url = `ws://localhost:${poort}/app`;
+  const url = `ws://localhost:${echtePoort}/app`;
   try {
     await start?.(url);
     const hallo = await wachtOp(() => log.find((x) => x.b.t === 'hallo'));

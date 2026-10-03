@@ -59,7 +59,7 @@ export function weergave(c, s, palet, bpm = 120) {
     case 'clipstop': {
       w.aan = !!(s.aan || s.knipper);
       w.kleur = w.aan ? LED_KLEUR.stop : null;
-      if (s.knipper) { w.anim = 'knipper'; w.kleur2 = LED_KLEUR.stop; w.kleur = null; w.duur = animDuur(3, bpm); }
+      if (s.knipper) { w.anim = 'knipper'; w.kleur2 = LED_KLEUR.stop; w.kleur = null; w.duur = animDuur(2, bpm); } // 0x34: knippert op 1/8 (protocol)
       return w;
     }
     case 'ab': {

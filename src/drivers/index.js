@@ -161,7 +161,11 @@ export function startDrivers({ kern, klok, systeem, fetch, config, map, uitstel_
   const drivers = [];
   for (const s of lijst) {
     if (config?.apps?.[s.app]?.autostart === false) { log('drivers', `${s.app}: autostart uit in config.json, overgeslagen`); continue; }
-    if (s.driver.soort === 'midi' && !systeem?.virtueel) { log('drivers', `${s.app}: geen MIDI-systeem met virtuele poorten, overgeslagen`); continue; }
+    if (s.driver.soort === 'midi' && !systeem?.virtueel) {
+      const poort = config?.apps?.[s.app]?.midipoort ?? s.driver.poort;
+      log('drivers', `${s.app}: geen MIDI-systeem met virtuele poorten — poort "${poort}" bestaat niet, driver overgeslagen`);
+      continue;
+    }
     drivers.push(maakDriver(s, { systeem, klok, fetch, config, log }));
   }
   let gestopt = false;

@@ -88,6 +88,69 @@ describe('de hele hub', () => {
     expect(a.ontvangen.filter((b) => b.t === 'trig').map((b) => b.aan)).toEqual([true, false]);
   });
 
+  it('cockpit valt weg met de virtuele voetschakelaar ingedrukt → lease-app krijgt CC64 0 en de route is weg (§10)', async () => {
+    const { hub } = await opzet();
+    const dj = { app: null, ontvangen: [], stuur(b) { dj.ontvangen.push(b); } };
+    hub.kern.verbind(dj);
+    hub.kern.ontvang(dj, { t: 'hallo', app: 'varve-dj', inst: 'a', v: 1 });
+    hub.kern.ontvang(dj, { t: 'manifest', manifest: { v: 1, app: 'varve-dj', naam: 'DJ', lease: true, params: [] } });
+    const ws = new WebSocket(hub.adres.replace('http', 'ws') + '/cockpit');
+    lopend.push(() => ws.terminate());
+    await new Promise((r) => ws.once('open', r));
+    ws.send(JSON.stringify({ t: 'virtueel', dev: 'apc40', bytes: [0xb0, 64, 127] }));
+    ws.send(JSON.stringify({ t: 'virtueel', dev: 'apc40', bytes: [0x90, 0, 127] }));
+    await tot(() => dj.ontvangen.filter((b) => b.t === 'midi').length === 2);
+    ws.terminate();
+    await tot(() => dj.ontvangen.filter((b) => b.t === 'midi').length >= 4);
+    const midi = dj.ontvangen.filter((b) => b.t === 'midi').map((b) => b.bytes);
+    expect(midi).toContainEqual([0xb0, 64, 0]);
+    expect(midi).toContainEqual([0x80, 0, 0]);
+    expect([...hub.kern.routes.keys()]).toEqual([]);
+  });
+
+  it('twee tabs van dezelfde app verdringen elkaar niet eindeloos: de nieuwste wint en blijft', async () => {
+    const { hub, app } = await opzet();
+    const t1 = app('formula-lab');
+    await tot(() => hub.kern.apps.get('formula-lab')?.inst === t1.inst);
+    const t2 = app('formula-lab');
+    let wissels = 0, vorige = t1.inst;
+    const iv = setInterval(() => { const i = hub.kern.apps.get('formula-lab')?.inst; if (i !== vorige) { wissels++; vorige = i; } }, 5);
+    await wacht(2500);
+    clearInterval(iv);
+    expect(wissels).toBe(1);
+    expect(hub.kern.apps.get('formula-lab').inst).toBe(t2.inst);
+    expect(t2.ontvangen.filter((b) => b.t === 'fout')).toEqual([]);
+  });
+
+  it('hub.stop(): een app die tijdens het afsluiten nog zet, zet geen LEDs meer aan na het zwart', async () => {
+    const { hub, apc } = await opzet();
+    const v = { app: null, ontvangen: [], stuur(b) { v.ontvangen.push(b); } };
+    hub.kern.verbind(v);
+    hub.kern.ontvang(v, { t: 'hallo', app: 'formula-lab', inst: 'x', v: 1 });
+    hub.kern.ontvang(v, { t: 'manifest', manifest: { v: 1, app: 'formula-lab', naam: 'FL', params: [
+      { id: 'a', naam: 'A', soort: 'waarde', hint: 'fader' }, { id: 's', naam: 'S', soort: 'schakelaar', hint: 'pad' },
+      { id: 'k', naam: 'K', soort: 'waarde', hint: 'knop' }] } });
+    await tot(() => hub.apparaten.apc.verbonden && hub.kern.beeld().focus === 'formula-lab');
+    await wacht(50);
+    let i = 0, klaar = false;
+    const zet = () => { i++; hub.kern.ontvang(v, { t: 'zet', id: 's', v: i % 2 }); hub.kern.ontvang(v, { t: 'zet', id: 'k', v: (i % 10) / 10 }); };
+    const automatie = () => { if (klaar) return; zet(); setImmediate(automatie); };
+    const gestopt = hub.stop();
+    automatie();
+    await gestopt;
+    klaar = true;
+    lopend.length = 0;                        // al gestopt
+    // Eindstand per LED-adres volgens wat er over de draad ging (ringtypes CC 24-31/56-63 tellen niet).
+    const stand = new Map();
+    for (const m of apc.verstuurd) {
+      const st = m[0] & 0xf0;
+      if (st === 0x90 || st === 0x80) stand.set(`n${m[0] & 15}:${m[1]}`, st === 0x80 ? 0 : m[2]);
+      else if (st === 0xb0 && !(m[1] >= 24 && m[1] <= 31) && !(m[1] >= 56 && m[1] <= 63)) stand.set(`cc${m[0] & 15}:${m[1]}`, m[2]);
+    }
+    expect(i).toBeGreaterThan(0);
+    expect([...stand].filter(([, w]) => w > 0)).toEqual([]);
+  });
+
   it('een website van buiten mag de hub niet bedienen', async () => {
     const { hub } = await opzet();
     const ws = new WebSocket(hub.adres.replace('http', 'ws') + '/cockpit', { headers: { Origin: 'https://kwaadaardig.example' } });
