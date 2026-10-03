@@ -2,7 +2,7 @@
 // Sets: de bestanden in sets/ en hoe ze gecontroleerd worden (docs/SETS.md).
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { laadConfig, HUB_MAP } from '../src/config.js';
@@ -69,6 +69,23 @@ describe('de sets in sets/', () => {
     expect(laadSet('meditatie', { config }).snapshot).not.toHaveProperty('av-kern');
   });
 
+  it('snapshot-ids van apps met een vast manifest (apps/<id>.json, de drivers) bestaan daar en zijn geen trigger', () => {
+    let getoetst = 0;
+    for (const n of SETS) {
+      for (const [id, waarden] of Object.entries(laadSet(n, { config }).snapshot ?? {})) {
+        const pad = join(HUB_MAP, 'apps', `${id}.json`);
+        if (!existsSync(pad)) continue;              // apps met een eigen manifest (WebSocket) sturen dat zelf
+        const params = new Map(JSON.parse(readFileSync(pad, 'utf8')).params.map((/** @type {any} */ p) => [p.id, p]));
+        for (const p of Object.keys(waarden)) {
+          expect(params.has(p), `${n}: snapshot.${id}.${p} staat niet in apps/${id}.json`).toBe(true);
+          expect(params.get(p).soort, `${n}: snapshot.${id}.${p} is een trigger`).not.toBe('trigger');
+          getoetst++;
+        }
+      }
+    }
+    expect(getoetst).toBeGreaterThanOrEqual(6);          // uurwerk (meditatie) en av-scene-kit (scene-kit)
+  });
+
   it('elke URL van een browser-app heeft ?hub=', () => {
     for (const n of SETS) for (const a of Object.values(laadSet(n, { config }).apps)) if (a.url) expect(a.url).toMatch(/[?&]hub=\{hub\}/);
   });
@@ -93,8 +110,14 @@ describe('valideerSet', () => {
     ['snapshot van een app buiten de set', basis({ snapshot: { medisynth: { niveau: 0.5 } } }), /snapshot\.medisynth: die app zit niet in deze set/],
     ['focus buiten de set', basis({ focus: 'medisynth' }), /focus: "medisynth" zit niet in deze set/],
     ['time-out geen getal', basis({ time_out_s: 'lang' }), /time_out_s/],
+    ['tikfout in een variabele', basis({ apps: { 'formula-lab': { url: 'http://localhost:{Poort}/' } } }), /onbekende variabele \{Poort\}/],
+    ['wacht "geen" met een URL achter een poort', basis({ apps: { 'formula-lab': { start: { commando: 'x' }, url: 'http://localhost:{poort}/', wacht: 'geen' } } }), /wacht is "geen", maar de URL wacht op poort 5174 — gebruik "poort"/],
   ])('%s → duidelijke fout', (_, set, fout) => {
     expect(fouten(set).join('\n')).toMatch(fout);
+  });
+
+  it('gewone shell in een commando (${VAR}, {a,b}) is geen variabele van de set', () => {
+    expect(fouten(basis({ apps: { 'formula-lab': { start: { commando: 'echo ${HOME} {a,b} && npm run dev -- --port {poort}' } } } }))).toEqual([]);
   });
 
   it('laadSet: een onbekende set noemt de sets die er wel zijn', () => {

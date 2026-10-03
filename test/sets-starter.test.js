@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { NepKlok } from '../src/core/klok.js';
 import { Kern } from '../src/core/kern.js';
-import { kernToegang, startSet, STOP_MS } from '../src/sets/index.js';
+import { kernToegang, startSet, STOP_MS, HERVERBIND_MS, shellQuote } from '../src/sets/index.js';
 import { CONFIG, NepApp, maakOppervlak, manifest, P } from './spec/hulp.js';
 
 const HUB_POORT = 7700;
@@ -44,7 +44,11 @@ class NepProces {
 
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r)); };
 
-/** @param {any} set @param {{ paden?: Record<string, string>, bestaat?: (p: string) => boolean, zonderChrome?: boolean }} [o] */
+/**
+ * @param {any} set
+ * @param {{ paden?: Record<string, string>, bestaat?: (p: string) => boolean, zonderChrome?: boolean, padenPad?: string,
+ *   openUrl?: (u: string) => Promise<void>|void, poortOpen?: (p: number) => Promise<boolean> }} [o]
+ */
 function wereld(set, o = {}) {
   const klok = new NepKlok();
   const kern = new Kern({ klok, config: CONFIG, oppervlak: maakOppervlak() });
@@ -62,10 +66,11 @@ function wereld(set, o = {}) {
   const s = startSet({
     set, config: CONFIG, paden: o.paden ?? PADEN, hub: kernToegang(kern), hubPoort: HUB_POORT, klok,
     startProces: (x) => { const p = new NepProces(x); processen.push(p); return p; },
-    openUrl: o.zonderChrome ? null : (u) => { geopend.push(u); },
+    openUrl: o.zonderChrome ? null : (u) => { geopend.push(u); return o.openUrl?.(u); },
     // Pas kijken na de synchrone opzet van de test (een echte poortcontrole duurt ook even).
-    poortOpen: async (p) => { await null; return poorten.has(p); },
+    poortOpen: o.poortOpen ?? (async (p) => { await null; return poorten.has(p); }),
     bestaat: o.bestaat ?? (() => true),
+    ...(o.padenPad ? { padenPad: o.padenPad } : {}),
     log: (r) => log.push(r),
   });
   /** Laat tijd verstrijken; levende nep-apps houden hun hartslag bij. @param {number} ms */
@@ -132,21 +137,36 @@ describe('starter: een set klaarzetten', () => {
     await w.s.stop();
   });
 
-  it('app die al draait wordt niet opnieuw gestart: poort bezet → alleen de URL; al verbonden → niets', async () => {
+  it('app die al draait wordt niet opnieuw gestart: poort bezet → na de herverbind-marge de URL; al verbonden → niets', async () => {
     // formula-lab: tab al open en verbonden; medisynth: alleen de dev-server draait (nog geen tab)
     const w = wereld(set);
     w.poorten.add(FL); w.poorten.add(MS);
     w.verbind(flManifest, { a: 0.5, smooth: 0 });
     await w.tijd(300);
     expect(w.processen).toEqual([]);
-    expect(w.geopend).toEqual([`http://localhost:${MS}/?hub=${HUB}`]);
+    expect(w.geopend).toEqual([]);                       // eerst kijken of een open tab vanzelf terugkomt
     expect(w.tekst()).toMatch(/formula-lab: draait al en is verbonden — niet opnieuw gestart/);
     expect(w.tekst()).toMatch(new RegExp(`medisynth: poort ${MS} is al bezet — draait al, niet opnieuw gestart`));
+    await w.tijd(HERVERBIND_MS);
+    expect(w.geopend).toEqual([`http://localhost:${MS}/?hub=${HUB}`]);
     w.verbind(msManifest, { ruimte: 0.5, niveau: 1 });
     await w.tijd(1000);
     expect((await w.s.klaar).map((x) => x.hoe)).toEqual(['al verbonden', 'draaide al']);
+    expect(w.geopend.length).toBe(1);
     await w.s.stop();
     expect(w.tekst()).not.toMatch(/Gestopt:/);           // niets van zichzelf om op te ruimen
+  });
+
+  it('na een hub-herstart: een tab die na 2 s vanzelf herverbindt, krijgt geen tweede tab ernaast', async () => {
+    const w = wereld({ naam: 'X', apps: { medisynth: { start: { commando: 'npm run dev' }, url: 'http://localhost:{poort}/?hub={hub}' } } });
+    w.poorten.add(MS);                                  // de dev-server draait nog; de tab zit in zijn backoff
+    await w.tijd(2000);
+    w.verbind(msManifest, { ruimte: 0.5, niveau: 1 });
+    await w.tijd(HERVERBIND_MS);
+    expect((await w.s.klaar)[0]).toMatchObject({ hoe: 'draaide al', klaar: true });
+    expect(w.geopend).toEqual([]);
+    expect(w.processen).toEqual([]);
+    await w.s.stop();
   });
 
   it('een driver-app die de hub al kent maar waarvan de poort dicht is, telt niet als "draait al"', async () => {
@@ -216,12 +236,12 @@ describe('starter: als het misgaat, per app een melding die zegt waar het hangt'
   it('een commando dat met een fout stopt: meteen gemeld met de laatste uitvoer, zonder op de time-out te wachten', async () => {
     const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'npm run dev' } } } });
     await w.tijd(0);
-    w.processen[0].zeg('Error: Port 5174 is already in use\n');
-    w.processen[0].eindig(1);
+    w.processen[0].zeg('sh: python3: command not found\n');
+    w.processen[0].eindig(127);
     await w.tijd(300);
     const u = await w.s.klaar;
     expect(w.klok.nu()).toBeLessThan(1000);
-    expect(u[0].melding).toMatch(/het startcommando stopte met code 1; laatste uitvoer:\n\s+Error: Port 5174 is already in use/);
+    expect(u[0].melding).toMatch(/het startcommando stopte met code 127; laatste uitvoer:\n\s+sh: python3: command not found/);
   });
 
   it('geen pad in sets/paden.json, of een map die niet bestaat → niet gestart, met verwijzing naar het voorbeeld', async () => {
@@ -230,7 +250,51 @@ describe('starter: als het misgaat, per app een melding die zegt waar het hangt'
     expect(w.processen).toEqual([]);
     expect((await w.s.klaar)[0]).toMatchObject({ hoe: 'niet gestart', klaar: false, melding: 'geen map voor repo "formula-lab" in sets/paden.json (voorbeeld: sets/paden.voorbeeld.json)' });
     const v = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' } } } }, { bestaat: () => false });
-    expect((await v.s.klaar)[0].melding).toMatch(/map \/repos\/formula-lab bestaat niet/);
+    expect((await v.s.klaar)[0].melding).toMatch(/map \/repos\/formula-lab bestaat niet \(sets\/paden\.json → "formula-lab"\)/);
+    // Wijst VARVE_HUB_PADEN naar een ander bestand, dan noemt de melding dát bestand.
+    const e = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' } } } }, { paden: {}, padenPad: '/elders/mijn-paden.json' });
+    expect((await e.s.klaar)[0].melding).toMatch(/in \/elders\/mijn-paden\.json/);
+  });
+
+  it('een MIDI-app (Scene Kit) die niet verschijnt: de melding noemt de virtuele MIDI-poort, niet "meldt zich niet"', async () => {
+    const w = wereld({ naam: 'X', time_out_s: 2, apps: { 'av-scene-kit': { start: null, handmatig: 'open TD' } } });
+    await w.tijd(2500);
+    const u = await w.s.klaar;
+    expect(u[0].melding).toMatch(/niet klaar binnen 2 s — de hub heeft geen virtuele MIDI-poort "VARVE-HUB TD" voor .* — draait de hub met echte MIDI \(zonder --zonder-midi/);
+  });
+
+  it('Chrome openen dat blijft hangen (xdg-open zonder Chrome) houdt de time-outs, snapshot en focus van de rest niet tegen', async () => {
+    const set = {
+      naam: 'X', time_out_s: 5,
+      apps: {
+        'formula-lab': { start: { commando: 'x' }, url: 'http://localhost:{poort}/?hub={hub}' },
+        medisynth: { start: { commando: 'y' }, url: 'http://localhost:{poort}/?hub={hub}' },
+      },
+      snapshot: { medisynth: { ruimte: 0.7 } },
+      focus: 'medisynth',
+    };
+    const w = wereld(set, { openUrl: () => new Promise(() => {}) });
+    await w.tijd(0);
+    w.poorten.add(FL); w.poorten.add(MS);               // de net gestarte servers luisteren
+    await w.tijd(300);
+    expect(w.geopend.length).toBe(2);
+    const ms = w.verbind(msManifest, { ruimte: 0.5, niveau: 1 });
+    await w.tijd(6000);
+    const u = await w.s.klaar;
+    expect(u.map((x) => [x.app, x.klaar])).toEqual([['formula-lab', false], ['medisynth', true]]);
+    expect(u[0].melding).toMatch(/niet klaar binnen 5 s/);
+    expect(ms.zetten().map((b) => [b.id, b.v])).toEqual([['ruimte', 0.7]]);
+    expect(w.kern.beeld().focus).toBe('medisynth');
+    await w.s.stop();
+  });
+
+  it('een fout uit Chrome openen wordt een melding met de URL', async () => {
+    const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' }, url: 'http://localhost:{poort}/?hub={hub}' } } }, { openUrl: async () => { throw new Error('xdg-open stopte met code 3'); } });
+    await w.tijd(0);
+    w.poorten.add(FL);
+    await w.tijd(300);
+    expect(w.tekst()).toMatch(new RegExp(`formula-lab: kon de URL niet openen \\(xdg-open stopte met code 3\\) — open hem zelf: http://localhost:${FL}/`));
+    await w.s.stop();
   });
 
   it('snapshot: een onbekende parameter of een trigger wordt gemeld en overgeslagen', async () => {
@@ -284,6 +348,32 @@ describe('starter: soorten apps', () => {
 });
 
 describe('starter: Ctrl-C ruimt op wat hij zelf startte', () => {
+  it('Ctrl-C terwijl de starter nog naar een poort kijkt: daarna start er niets meer (geen wees zonder eigenaar)', async () => {
+    /** @type {((ja: boolean) => void)[]} */
+    const wachtend = [];
+    const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' } }, medisynth: { start: { commando: 'y' } } } }, {
+      poortOpen: () => new Promise((goed) => { wachtend.push(goed); }),
+    });
+    await w.tijd(0);
+    expect(wachtend.length).toBe(1);                    // formula-lab: poortcontrole loopt nog
+    const stop = w.s.stop();
+    for (const goed of wachtend.splice(0)) goed(false);  // de poort blijkt vrij: zonder de controle zou hij nu starten
+    await w.tijd(STOP_MS);
+    await stop;
+    expect(w.processen).toEqual([]);
+    expect(w.s.eigen()).toEqual([]);
+    expect(wachtend).toEqual([]);                       // medisynth wordt niet eens meer bekeken
+    expect((await w.s.klaar).map((x) => x.melding)).toEqual(['gestopt', 'gestopt']);
+  });
+
+  it('stopNu (noodrem bij exit): synchroon SIGTERM naar elk eigen proces dat nog leeft, en daarna niets meer starten', async () => {
+    const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' } }, medisynth: { start: { commando: 'y' } } } });
+    await w.tijd(0);
+    w.processen[0].eindig(1);                           // al weg: geen sein
+    w.s.stopNu();
+    expect(w.processen.map((p) => p.seinen)).toEqual([[], ['SIGTERM']]);
+  });
+
   it('SIGTERM naar eigen processen; wie blijft hangen krijgt na STOP_MS SIGKILL; wat al draaide blijft', async () => {
     const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'x' } }, medisynth: { start: { commando: 'y' } }, uurwerk: { start: { commando: './start.sh' } } } });
     w.poorten.add(UW);                                  // uurwerk draaide al
@@ -302,5 +392,21 @@ describe('starter: Ctrl-C ruimt op wat hij zelf startte', () => {
     // Stoppen tijdens het wachten beëindigt ook de wachtlus.
     const u = await w.s.klaar;
     expect(u.map((x) => x.melding)).toEqual(['gestopt', 'gestopt', 'gestopt']);
+  });
+});
+
+describe('starter: variabelen in het startcommando', () => {
+  it('{repo} met een spatie, $ of ; blijft in het commando één shell-woord; omgeving en URL blijven ongequote', async () => {
+    const w = wereld({ naam: 'X', apps: { 'formula-lab': { start: { commando: 'ls {repo} && echo {poort}', omgeving: { R: '{repo}' } } } } }, { paden: { 'formula-lab': '/repos/Mijn Projecten/$x;fl' } });
+    await w.tijd(0);
+    expect(w.processen[0].o.commando).toBe(`ls '/repos/Mijn Projecten/$x;fl' && echo ${FL}`);
+    expect(w.processen[0].o.omgeving).toEqual({ R: '/repos/Mijn Projecten/$x;fl' });
+    expect(w.processen[0].o.cwd).toBe('/repos/Mijn Projecten/$x;fl');
+    await w.s.stop();
+  });
+
+  it("shellQuote: gewone woorden blijven, de rest tussen enkele quotes (ook een ' erin)", () => {
+    expect(shellQuote('ws://localhost:7700/app')).toBe('ws://localhost:7700/app');
+    expect(shellQuote("/a b/it's")).toBe("'/a b/it'\\''s'");
   });
 });

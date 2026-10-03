@@ -8,7 +8,7 @@
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
-import { createWriteStream, mkdirSync, writeFileSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import readline from 'node:readline';
 import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
@@ -22,7 +22,7 @@ import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
 import { NepSysteem } from './ports/nep.js';
-import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen } from './sets/index.js';
+import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen, PADEN_PAD, toonPad } from './sets/index.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -48,11 +48,20 @@ function nieuwLogboek(soort, naam) {
   return { pad, logboek, sluit: () => new Promise((r) => stroom.end(r)) };
 }
 
-/** Netjes afsluiten bij Ctrl-C: LEDs uit, poorten dicht, logboek dicht. @param {() => Promise<void>|void} opruimen */
+/**
+ * Netjes afsluiten bij Ctrl-C (SIGINT), kill (SIGTERM) en bij het sluiten van het Terminal-venster (SIGHUP):
+ * LEDs uit, poorten dicht, logboek dicht, gestarte apps dicht.
+ * @param {() => Promise<void>|void} opruimen
+ */
 function bijStoppen(opruimen) {
   let bezig = false;
-  const stop = async () => { if (bezig) return; bezig = true; await opruimen(); process.exit(0); };
-  process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  const stop = async () => {
+    if (bezig) return;
+    bezig = true;
+    try { await opruimen(); } catch (e) { console.error(e); process.exit(1); }
+    process.exit(0);
+  };
+  for (const sein of /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP'])) process.on(sein, stop);
 }
 
 /**
@@ -78,11 +87,19 @@ const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i +
 function draaiSet(set, hub, hubPoort, naStop) {
   const log = (/** @type {string} */ r) => console.log(r);
   const openUrl = args.includes('--zonder-chrome') ? null : openInChrome();
+  // Een venster dat dichtgaat geeft EPIPE/EIO op stdout: dat mag het opruimen niet afbreken.
+  for (const s of [process.stdout, process.stderr]) s.on('error', () => {});
   let paden = {};
+  if (!existsSync(PADEN_PAD)) console.log(`${toonPad(PADEN_PAD)} ontbreekt — doe eenmalig: cp sets/paden.voorbeeld.json sets/paden.json en zet je mappen erin (docs/SETS.md)`);
   try { paden = laadPaden(); } catch (e) { console.error(/** @type {Error} */ (e).message); }
   const s = startSet({ set, config, paden, hub, hubPoort, klok: echteKlok, startProces, openUrl, poortOpen, log, toonUitvoer: args.includes('--uitvoer') });
+  // Vangnet: valt dit proces weg zonder dat stop() kon lopen (een fout, process.exit elders), dan krijgen de
+  // eigen apps toch SIGTERM — anders blijven ze als wees draaien en houden ze hun poort bezet.
+  process.on('exit', () => s.stopNu());
   bijStoppen(async () => { console.log('\nStoppen…'); await s.stop(); await naStop(); });
-  s.klaar.then((u) => { if (u.some((x) => !x.klaar)) console.log('De hub blijft draaien; start wat mist met de hand of los het op en draai de set opnieuw. Ctrl-C stopt alles wat de set startte.'); });
+  s.klaar
+    .then((u) => { if (u.some((x) => !x.klaar)) console.log('De hub blijft draaien; start wat mist met de hand of los het op en draai de set opnieuw. Ctrl-C stopt alles wat de set startte.'); })
+    .catch((e) => console.error(`De starter liep vast: ${/** @type {Error} */ (e)?.message ?? e} — de hub draait door; Ctrl-C stopt alles wat de set startte.`));
 }
 
 /** De setnaam: het eerste argument dat geen optie (of de waarde van een optie) is. */
@@ -123,7 +140,7 @@ const opdrachten = {
       if (set && code === 'EADDRINUSE') {
         // Er draait al een hub: niet opnieuw starten, alleen verbinden (als cockpit) en de set erbij zetten.
         try {
-          const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`);
+          const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`, { log: (r) => console.log(r) });
           console.log(`Er draait al een hub op poort ${poort} — de set "${set.naam}" verbindt daarmee.`);
           draaiSet(set, toegang, poort, () => toegang.sluit());
           return;

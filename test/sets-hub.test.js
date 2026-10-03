@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
-import { echteKlok } from '../src/core/klok.js';
+import { echteKlok, NepKlok } from '../src/core/klok.js';
 import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
 import { EventEmitter } from 'node:events';
 import { startSet, kernToegang, cockpitToegang, startProces, poortOpen, openInChrome } from '../src/sets/index.js';
@@ -94,6 +94,43 @@ describe('starter met de echte hub', () => {
     expect(h.kern.beeld().focus).toBe('td-lab');
   });
 
+  it('cockpitToegang: stopt die hub tijdens de set, dan zegt hij dat en is het beeld leeg (geen oud beeld, geen stille zetten)', async () => {
+    const h = await startHub({ config, systeem: new NepSysteem(), poort: 0, drivers: false });
+    const poort = Number(new URL(h.adres).port);
+    const app = new NepApp({ url: `ws://localhost:${poort}/app`, manifest: voorbeeldManifest('flux') }).start();
+    opruimen.push(() => app.stop());
+    /** @type {string[]} */
+    const log = [];
+    const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`, { log: (r) => log.push(r) });
+    await tot(() => toegang.beeld().apps.length === 1);
+    await h.stop();
+    expect(await tot(() => log.length)).toBeTruthy();
+    expect(log).toEqual([`verbinding met de hub op ws://localhost:${poort}/cockpit verbroken — de set kan niets meer zetten (draait die hub nog?)`]);
+    expect(toegang.beeld()).toEqual({ apps: [], focus: null });
+  });
+
+  it('cockpitToegang: zelf sluiten is geen melding; de time-out loopt op de geïnjecteerde klok', async () => {
+    const { poort } = await hub();
+    /** @type {string[]} */
+    const log = [];
+    const toegang = await cockpitToegang(`ws://localhost:${poort}/cockpit`, { log: (r) => log.push(r) });
+    toegang.sluit();
+    await wacht(100);
+    expect(log).toEqual([]);
+    // Een server die wel verbindt maar nooit een beeld stuurt: pas als de nep-klok de time-out passeert.
+    const stil = net.createServer((sock) => { opruimen.push(() => sock.destroy()); });
+    await new Promise((r) => stil.listen(0, '127.0.0.1', () => r(undefined)));
+    opruimen.push(() => new Promise((r) => stil.close(() => r(undefined))));
+    const klok = new NepKlok();
+    let fout = /** @type {Error|null} */ (null);
+    cockpitToegang(`ws://127.0.0.1:${/** @type {net.AddressInfo} */ (stil.address()).port}/cockpit`, { ms: 3000, klok }).catch((e) => { fout = e; });
+    await wacht(100);
+    expect(fout).toBe(null);
+    klok.loop(3000);
+    await tot(() => fout);
+    expect(String(fout)).toMatch(/geen beeld van de hub op .* binnen 3000 ms/);
+  });
+
   it('cockpitToegang: geen hub op die poort → duidelijke fout', async () => {
     const vrij = net.createServer();
     await new Promise((r) => vrij.listen(0, '127.0.0.1', () => r(undefined)));
@@ -135,6 +172,30 @@ describe.skipIf(process.platform === 'win32')('echte processen en poorten', () =
     expect(leeftPid()).toBe(false);
     await tot(() => !p.leeft());
     expect(p.leeft()).toBe(false);
+  });
+
+  it('startProces: een groep die eenmaal leeg was, krijgt nooit meer een sein (zijn nummer kan hergebruikt zijn)', async () => {
+    let stand = 'leeft';
+    /** @type {[number, any][]} */
+    const seinen = [];
+    const kill = (/** @type {number} */ pid, /** @type {any} */ sein) => {
+      seinen.push([pid, sein]);
+      if (stand === 'leeg') throw Object.assign(new Error('ESRCH'), { code: 'ESRCH' });
+      return true;
+    };
+    const p = startProces({ commando: 'exit 0', cwd: tmpdir(), omgeving: {} }, { kill, kijkMs: 10 });
+    /** @type {any} */
+    let einde = null;
+    p.bij('einde', (e) => { einde = e; stand = 'leeg'; });  // het commando is klaar en had geen kinderen
+    await tot(() => einde);
+    await tot(() => seinen.some(([, s]) => s === 0) && !p.leeft());
+    stand = 'hergebruikt';                              // een ander proces kreeg hetzelfde nummer als groepsleider
+    const voor = seinen.length;
+    expect(p.leeft()).toBe(false);
+    p.stop('SIGTERM');
+    p.stop('SIGKILL');
+    expect(seinen.slice(voor)).toEqual([]);
+    expect(seinen.every(([pid]) => pid === -(/** @type {number} */ (p.pid)))).toBe(true);
   });
 
   it('openInChrome: macOS open -a "Google Chrome", Linux xdg-open; een fout wordt een melding, geen crash', async () => {

@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import net from 'node:net';
 
 const HUB_MAP = join(import.meta.dirname, '..');
 const CLI = join(HUB_MAP, 'src', 'cli.js');
@@ -31,7 +32,8 @@ describe('cli start [set]', () => {
     expect(r.uit).not.toMatch(/varve-hub draait/);
   });
 
-  it.skipIf(process.platform === 'win32')('start hub + set: app start in de map uit paden.json, snapshot en focus; Ctrl-C stopt de app en de hub', async () => {
+  /** Een set met één nep-app (td-lab) die zijn shell-pid in <map>/pid zet. */
+  function proefSet() {
     const map = mkdtempSync(join(tmpdir(), 'set-cli-'));
     const paden = join(map, 'paden.json');
     writeFileSync(paden, JSON.stringify({ 'td-lab': map }));
@@ -42,6 +44,23 @@ describe('cli start [set]', () => {
       snapshot: { 'td-lab': { helder: 0.2 } },
       focus: 'td-lab',
     }));
+    const pid = () => (existsSync(join(map, 'pid')) ? Number(readFileSync(join(map, 'pid'), 'utf8')) : null);
+    const leeft = () => { const p = pid(); if (!p) return false; try { process.kill(p, 0); return true; } catch { return false; } };
+    const ruimOp = () => { const p = pid(); if (p) { try { process.kill(p, 'SIGKILL'); } catch { /* al weg */ } } };
+    return { map, paden, set, leeft, ruimOp };
+  }
+
+  /** Een vrije poort. */
+  const vrijePoort = async () => {
+    const s = net.createServer();
+    await new Promise((r) => s.listen(0, '127.0.0.1', () => r(undefined)));
+    const p = /** @type {net.AddressInfo} */ (s.address()).port;
+    await new Promise((r) => s.close(() => r(undefined)));
+    return p;
+  };
+
+  it.skipIf(process.platform === 'win32')('start hub + set: app start in de map uit paden.json, snapshot en focus; Ctrl-C stopt de app en de hub', async () => {
+    const { map, paden, set, leeft, ruimOp } = proefSet();
     const r = cli(['start', set, '--zonder-midi', '--geen-drivers', '--poort', '0', '--zonder-chrome'], { VARVE_HUB_PADEN: paden });
     try {
       expect(await tot(() => /Set "Proef": 1\/1 klaar/.test(r.uit))).toBe(true);
@@ -49,8 +68,6 @@ describe('cli start [set]', () => {
       expect(r.uit).toMatch(/td-lab: klaar \(verbonden met de hub\)/);
       expect(r.uit).toMatch(/snapshot td-lab: helder=0\.2/);
       expect(r.uit).toMatch(/focus: td-lab/);
-      const pid = Number(readFileSync(join(map, 'pid'), 'utf8'));
-      const leeft = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
       expect(leeft()).toBe(true);
       r.p.kill('SIGINT');
       expect(await tot(() => r.code !== undefined)).toBe(true);
@@ -59,7 +76,50 @@ describe('cli start [set]', () => {
       expect(await tot(() => !leeft(), 3000)).toBe(true);
     } finally {
       if (r.code === undefined) r.p.kill('SIGKILL');
-      if (existsSync(join(map, 'pid'))) { try { process.kill(Number(readFileSync(join(map, 'pid'), 'utf8')), 'SIGKILL'); } catch { /* al weg */ } }
+      ruimOp();
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('het Terminal-venster sluiten (SIGHUP) ruimt net zo op als Ctrl-C: geen wezen die hun poort vasthouden', async () => {
+    const { paden, set, leeft, ruimOp } = proefSet();
+    const r = cli(['start', set, '--zonder-midi', '--geen-drivers', '--poort', '0', '--zonder-chrome'], { VARVE_HUB_PADEN: paden });
+    try {
+      expect(await tot(() => /Set "Proef": 1\/1 klaar/.test(r.uit))).toBe(true);
+      expect(leeft()).toBe(true);
+      r.p.kill('SIGHUP');
+      expect(await tot(() => r.code !== undefined)).toBe(true);
+      expect(await tot(() => !leeft(), 3000)).toBe(true);
+      expect(r.code).toBe(0);
+    } finally {
+      if (r.code === undefined) r.p.kill('SIGKILL');
+      ruimOp();
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('er draait al een hub: de set verbindt daarmee; Ctrl-C stopt alleen de app, de eerste hub blijft', async () => {
+    const poort = await vrijePoort();
+    const eerste = cli(['start', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
+    const { paden, set, leeft, ruimOp } = proefSet();
+    /** @type {ReturnType<typeof cli>|null} */
+    let r = null;
+    try {
+      expect(await tot(() => /varve-hub draait/.test(eerste.uit))).toBe(true);
+      r = cli(['start', set, '--zonder-midi', '--geen-drivers', '--poort', String(poort), '--zonder-chrome'], { VARVE_HUB_PADEN: paden });
+      const tweede = r;
+      expect(await tot(() => /Set "Proef": 1\/1 klaar/.test(tweede.uit))).toBe(true);
+      expect(tweede.uit).toMatch(new RegExp(`Er draait al een hub op poort ${poort} — de set "Proef" verbindt daarmee`));
+      expect(tweede.uit).toMatch(/td-lab: klaar \(verbonden met de hub\)/);
+      expect(tweede.uit).toMatch(/focus: td-lab/);
+      tweede.p.kill('SIGINT');
+      expect(await tot(() => tweede.code !== undefined)).toBe(true);
+      expect(tweede.code).toBe(0);
+      expect(await tot(() => !leeft(), 3000)).toBe(true);
+      expect(eerste.code).toBe(undefined);              // de hub die al draaide, draait nog
+      expect(tweede.uit).not.toMatch(/verbinding met de hub .* verbroken/);
+    } finally {
+      if (r && r.code === undefined) r.p.kill('SIGKILL');
+      if (eerste.code === undefined) eerste.p.kill('SIGKILL');
+      ruimOp();
     }
   });
 });

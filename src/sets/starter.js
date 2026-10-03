@@ -4,16 +4,18 @@
 //   1. Per app: draait hij al (al verbonden met de hub, of zijn poort is bezet)? Dan niet opnieuw starten
 //      — alleen verbinden (en bij een bezette poort zonder verbinding de URL openen).
 //      Anders: het startcommando in de map van de repo (sets/paden.json), in een eigen procesgroep.
-//   2. De URL (met ?hub=) gaat open in Chrome zodra de poort van de app open is.
+//   2. De URL (met ?hub=) gaat open in Chrome zodra de poort van de app open is. Draaide de app al zonder
+//      verbinding, dan eerst HERVERBIND_MS wachten: na een hub-herstart komt een bestaande tab vanzelf terug.
 //   3. Wachten tot elke app zich bij de kern meldt (kern.beeld: status "actief"), met een time-out en een
 //      melding per app die zegt wáár het hangt.
 //   4. Daarna de beginsnapshot (via de cockpit-ingang van de kern) en de beginfocus.
 //   5. stop(): alleen wat de starter zelf startte gaat dicht (SIGTERM, na STOP_MS SIGKILL); wat al draaide blijft.
+//      Ctrl-C midden in het opstarten: na stop() start er niets meer. stopNu() is de synchrone noodrem (exit).
 //
 // Tijd komt van de geïnjecteerde Klok; processen, Chrome en poortcontrole zijn geïnjecteerd (tests: nep).
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { STANDAARD_TIME_OUT_S, thuisPad, vulIn } from './set.js';
+import { PADEN_PAD, STANDAARD_TIME_OUT_S, thuisPad, toonPad, vulIn } from './set.js';
 
 /** Hoe vaak de starter kijkt (poorten, beeld, processen). */
 export const TIK_MS = 250;
@@ -21,6 +23,12 @@ export const TIK_MS = 250;
 export const RUST_MS = 500;
 /** Hoe lang een eigen proces na SIGTERM krijgt voor SIGKILL. */
 export const STOP_MS = 3000;
+/**
+ * Een app die al draait maar (nog) niet verbonden is: zo lang wachten voor de starter een tab opent. Na een
+ * hub-herstart herverbindt een bestaande tab met een backoff tot 5 s (MediSynth: 500/1000/2000/5000 ms); een
+ * tweede tab zou de eerste verdringen (PROTOCOL §11), maar de oude blijft dan wél klank maken.
+ */
+export const HERVERBIND_MS = 6000;
 /** Zoveel regels uitvoer per proces bewaren (voor de melding als het misgaat). */
 const STAART = 12;
 
@@ -39,7 +47,7 @@ const STAART = 12;
  *   id: string, naam: string, spec: SetApp, poort: number|undefined, wacht: 'kern'|'poort'|'geen',
  *   timeOutMs: number, url: string|null, hoe: Hoe|null, klaar: boolean, mis: string|null,
  *   proces: Proces|null, staart: string[], einde: { code: number|null, sein?: string, fout?: string }|null,
- *   poortIsOpen: boolean, urlOpen: boolean,
+ *   poortIsOpen: boolean, urlOpen: boolean, urlNa: number,
  * }} AppGang
  */
 
@@ -49,12 +57,15 @@ const STAART = 12;
  *   klok: import('../core/klok.js').Klok, startProces: StartProces, openUrl: ((url: string) => Promise<void>|void)|null,
  *   poortOpen: (poort: number) => Promise<boolean>, bestaat?: (pad: string) => boolean,
  *   log?: (regel: string) => void, toonUitvoer?: boolean, tikMs?: number, rustMs?: number, stopMs?: number,
+ *   herverbindMs?: number, padenPad?: string,
  * }} o
  */
 export function startSet({
   set, config, paden = {}, hub, hubPoort, klok, startProces, openUrl, poortOpen, bestaat = existsSync,
   log = () => {}, toonUitvoer = false, tikMs = TIK_MS, rustMs = RUST_MS, stopMs = STOP_MS,
+  herverbindMs = HERVERBIND_MS, padenPad = PADEN_PAD,
 }) {
+  const padenNaam = toonPad(padenPad);
   const hubUrl = `ws://localhost:${hubPoort}/app`;
   /** @type {AppGang[]} */
   const gangen = Object.entries(set.apps).map(([id, spec]) => {
@@ -66,7 +77,7 @@ export function startSet({
       wacht: spec.wacht ?? 'kern',
       timeOutMs: (spec.time_out_s ?? set.time_out_s ?? STANDAARD_TIME_OUT_S) * 1000,
       url: spec.url ? vulIn(spec.url, vars) : null,
-      hoe: null, klaar: false, mis: null, proces: null, staart: [], einde: null, poortIsOpen: false, urlOpen: false,
+      hoe: null, klaar: false, mis: null, proces: null, staart: [], einde: null, poortIsOpen: false, urlOpen: false, urlNa: 0,
     };
   });
   let gestopt = false;
@@ -85,18 +96,25 @@ export function startSet({
   /** @param {string} id */
   const inBeeld = (id) => hub.beeld().apps.find((a) => a.app === id);
 
-  /** De URL openen (één keer). @param {AppGang} g */
-  const openOnce = async (g) => {
+  /**
+   * De URL openen (één keer). Er wordt niet op gewacht: `xdg-open` kan blijven hangen tot de browser sluit,
+   * en dan mogen de time-outs, snapshot en focus van de rest niet stilvallen.
+   * @param {AppGang} g
+   */
+  const openOnce = (g) => {
     if (!g.url || g.urlOpen || gestopt) return;
     g.urlOpen = true;
-    if (!openUrl) { log(`  ${g.id}: open zelf in Chrome → ${g.url}`); return; }
-    log(`  ${g.id}: Chrome → ${g.url}`);
-    try { await openUrl(g.url); } catch (e) { log(`  ${g.id}: kon de URL niet openen (${/** @type {Error} */ (e).message}) — open hem zelf: ${g.url}`); }
+    const url = g.url;
+    if (!openUrl) { log(`  ${g.id}: open zelf in Chrome → ${url}`); return; }
+    log(`  ${g.id}: Chrome → ${url}`);
+    void Promise.resolve().then(() => openUrl(url))
+      .catch((e) => log(`  ${g.id}: kon de URL niet openen (${/** @type {Error} */ (e)?.message ?? e}) — open hem zelf: ${url}`));
   };
 
   /** @param {AppGang} g */
   async function begin(g) {
     g.poortIsOpen = g.poort !== undefined ? await poortOpen(g.poort) : false;
+    if (gestopt) return; // Ctrl-C tijdens het kijken: niets meer starten (stop() heeft zijn lijst al gemaakt)
     const b = inBeeld(g.id);
     // Een driver (uurwerk via HTTP) meldt zich ook als de app er niet is; daarom telt "verbonden" alleen
     // samen met een open poort als de app er een heeft.
@@ -109,7 +127,11 @@ export function startSet({
     if (g.poortIsOpen) {
       g.hoe = 'draaide al';
       log(`  ${g.id}: poort ${g.poort} is al bezet — draait al, niet opnieuw gestart`);
-      await openOnce(g);
+      if (g.url && g.wacht === 'kern') {
+        // Misschien is er al een tab die na een hub-herstart nog aan het herverbinden is: eerst even afwachten.
+        g.urlNa = klok.nu() + herverbindMs;
+        log(`  ${g.id}: nog niet verbonden — ${Math.round(herverbindMs / 1000)} s kijken of een open tab vanzelf terugkomt, anders gaat de URL open`);
+      }
       return;
     }
     const start = g.spec.start;
@@ -119,26 +141,28 @@ export function startSet({
       const map = repo && paden[repo] ? thuisPad(paden[repo]) : `<map van ${repo ?? g.id}>`;
       const hoe = vulIn(g.spec.handmatig ?? 'start hem zelf', { poort: g.poort, hub: hubUrl, hub_poort: hubPoort, repo: map });
       log(`  ${g.id}: start niet vanzelf — ${hoe}`);
-      if (g.poort === undefined) await openOnce(g);
+      if (g.poort === undefined) openOnce(g);
       return;
     }
     const repo = config?.apps?.[g.id]?.repo;
     const basis = repo ? paden[repo] : undefined;
     if (!basis) {
       g.hoe = 'niet gestart';
-      faal(g, `geen map voor repo "${repo}" in sets/paden.json (voorbeeld: sets/paden.voorbeeld.json)`);
+      faal(g, `geen map voor repo "${repo}" in ${padenNaam} (voorbeeld: sets/paden.voorbeeld.json)`);
       return;
     }
     const cwd = join(thuisPad(basis), start.map ?? '.');
     if (!bestaat(cwd)) {
       g.hoe = 'niet gestart';
-      faal(g, `map ${cwd} bestaat niet (sets/paden.json → "${repo}")`);
+      faal(g, `map ${cwd} bestaat niet (${padenNaam} → "${repo}")`);
       return;
     }
     const vars = { poort: g.poort, hub: hubUrl, hub_poort: hubPoort, repo: thuisPad(basis) };
-    const commando = vulIn(start.commando, vars);
+    // In het commando (via de shell) gequote: een map met een spatie, $ of ; blijft één woord.
+    const commando = vulIn(start.commando, Object.fromEntries(Object.entries(vars).map(([k, v]) => [k, v === undefined ? v : shellQuote(String(v))])));
     const omgeving = Object.fromEntries(Object.entries(start.omgeving ?? {}).map(([k, v]) => [k, vulIn(v, vars)]));
     log(`  ${g.id}: start "${commando}" in ${cwd}`);
+    if (gestopt) return;
     try {
       g.proces = startProces({ commando, cwd, omgeving });
     } catch (e) {
@@ -156,7 +180,7 @@ export function startSet({
       }
     });
     g.proces.bij('einde', (/** @type {any} */ e) => { g.einde = e; });
-    if (g.poort === undefined) await openOnce(g);
+    if (g.poort === undefined) openOnce(g);
   }
 
   /** Waarom een app (nog) niet klaar is, in Clay's woorden. @param {AppGang} g */
@@ -166,6 +190,10 @@ export function startSet({
       return g.hoe === 'handmatig' ? `poort ${g.poort} gaat niet open — is hij gestart?` : `poort ${g.poort} gaat niet open`;
     }
     if (g.wacht === 'kern') {
+      const cfg = config?.apps?.[g.id];
+      if (!b && cfg?.koppeling === 'midi') {
+        return `de hub heeft geen virtuele MIDI-poort "${cfg.midipoort ?? '?'}" voor ${g.naam} — draait de hub met echte MIDI (zonder --zonder-midi, en zonder --geen-drivers)?`;
+      }
       if (!b) return g.url
         ? `meldt zich niet bij de hub — is de tab open met ${g.url.includes('?hub=') || g.url.includes('&hub=') ? 'die URL' : `?hub=${hubUrl}`}, en heeft deze versie van de app de hub-koppeling?`
         : 'meldt zich niet bij de hub';
@@ -179,7 +207,10 @@ export function startSet({
   async function kijk(g, begon) {
     if (g.klaar || g.mis) return;
     if (g.poort !== undefined && !g.poortIsOpen) g.poortIsOpen = await poortOpen(g.poort);
-    if (g.poortIsOpen) await openOnce(g);
+    if (gestopt) return;
+    // Kwam een open tab vanzelf terug (na een hub-herstart)? Dan geen tweede tab.
+    if (g.hoe === 'draaide al' && inBeeld(g.id)?.status === 'actief') g.urlOpen = true;
+    if (g.poortIsOpen && klok.nu() >= g.urlNa) openOnce(g);
     // Een proces dat stopt met een fout vóór het klaar is: meteen melden, niet wachten op de time-out.
     // (Code 0 is normaal voor een startscript dat zijn servers op de achtergrond zet, zoals uurwerk/start.sh.)
     if (g.einde && g.einde.code !== 0 && !g.klaar) {
@@ -266,6 +297,14 @@ export function startSet({
     /** Wat de starter zelf startte (voor tests en de melding bij stoppen). */
     eigen: () => gangen.filter((g) => g.proces).map((g) => g.id),
     uitslag,
+    /**
+     * Noodrem, synchroon (mag in process.on('exit')): SIGTERM naar elk eigen proces dat nog leeft, en daarna
+     * niets meer starten. Voor als het proces wegvalt zonder dat stop() kon lopen.
+     */
+    stopNu() {
+      gestopt = true;
+      for (const g of gangen) if (g.proces?.leeft()) g.proces.stop('SIGTERM');
+    },
     /** Ruim op wat de starter zelf startte. Wat al draaide, blijft draaien. */
     async stop() {
       if (gestopt) return;
@@ -287,3 +326,6 @@ export function startSet({
     },
   };
 }
+
+/** Eén shell-woord: 'tekst' met enkele quotes (een ' erin wordt '\''). @param {string} x */
+export const shellQuote = (x) => (/^[\w@%+=:,./-]+$/.test(x) ? x : `'${x.replace(/'/g, `'\\''`)}'`);

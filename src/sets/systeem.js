@@ -15,35 +15,53 @@ import net from 'node:net';
  * @typedef {(o: { commando: string, cwd: string, omgeving: Record<string, string> }) => Proces} StartProces
  */
 
+/** Hoe vaak na het einde van het commando gekeken wordt of zijn procesgroep leeg is. */
+export const GROEP_KIJK_MS = 2000;
+
 /**
  * Start een commando via de shell in een eigen procesgroep (`detached`). Zo kan de starter later alles
  * stoppen wat het commando zelf startte — ook wat `./start.sh` op de achtergrond zette, of vite onder
  * `npm run dev` — en krijgen de kinderen Ctrl-C van de terminal niet rechtstreeks (de starter ruimt op).
- * @type {StartProces}
+ *
+ * Is de groep eenmaal leeg gezien, dan krijgt hij nooit meer een sein: zijn nummer kan na een lange avond
+ * hergebruikt zijn voor een heel ander proces (macOS: pid-max ±99999). Daarom wordt na het einde van het
+ * commando om de GROEP_KIJK_MS gekeken tot de groep leeg is (zolang er nog iets in zit, wordt het nummer niet
+ * hergebruikt).
+ * @param {{ commando: string, cwd: string, omgeving: Record<string, string> }} o
+ * @param {{ kill?: (pid: number, sein: NodeJS.Signals|0) => unknown, kijkMs?: number }} [x] (tests)
+ * @returns {Proces}
  */
-export const startProces = ({ commando, cwd, omgeving }) => {
+export function startProces({ commando, cwd, omgeving }, { kill = (pid, sein) => process.kill(pid, sein), kijkMs = GROEP_KIJK_MS } = {}) {
   const p = spawn(commando, { cwd, env: { ...process.env, ...omgeving }, shell: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
   /** @type {{ uitvoer: ((x: any) => void)[], einde: ((x: any) => void)[] }} */
   const l = { uitvoer: [], einde: [] };
   let klaar = false;
+  /** De groep is leeg gezien: nooit meer signaleren. */
+  let leeg = p.pid === undefined;
+  /** @type {ReturnType<typeof setInterval>|null} */
+  let kijker = null;
+  const groepLeeft = () => {
+    if (leeg) return false;
+    try { kill(-(/** @type {number} */ (p.pid)), 0); return true; } catch { leeg = true; if (kijker) clearInterval(kijker); return false; }
+  };
   const meld = (/** @type {'uitvoer'|'einde'} */ n, /** @type {any} */ x) => { for (const fn of l[n]) fn(x); };
   for (const s of [p.stdout, p.stderr]) s?.on('data', (/** @type {Buffer} */ d) => meld('uitvoer', String(d)));
   p.on('error', (e) => { if (klaar) return; klaar = true; meld('einde', { code: null, fout: e.message }); });
-  p.on('exit', (code, sein) => { if (klaar) return; klaar = true; meld('einde', { code, sein }); });
+  p.on('exit', (code, sein) => {
+    if (!leeg && groepLeeft()) { kijker = setInterval(groepLeeft, kijkMs); kijker.unref(); }
+    if (klaar) return; klaar = true; meld('einde', { code, sein });
+  });
   return {
     pid: p.pid,
     bij: (naam, fn) => { l[naam].push(fn); },
     // Een negatieve pid = de hele procesgroep. Is de groep al weg (ESRCH), dan is er niets te doen.
     stop: (sein = 'SIGTERM') => {
-      if (p.pid === undefined) return;
-      try { process.kill(-p.pid, sein); } catch { try { p.kill(sein); } catch { /* al weg */ } }
+      if (!groepLeeft()) return;
+      try { kill(-(/** @type {number} */ (p.pid)), sein); } catch { /* net weg */ }
     },
-    leeft: () => {
-      if (p.pid === undefined) return false;
-      try { process.kill(-p.pid, 0); return true; } catch { return false; }
-    },
+    leeft: groepLeeft,
   };
-};
+}
 
 /**
  * Open een URL in Chrome: macOS `open -a "Google Chrome" <url>`, anders `xdg-open <url>`.

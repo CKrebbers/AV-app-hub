@@ -7,12 +7,14 @@
 // Poorten komen uit config.json → apps.<id>.poort (huisregel 6); in een set staat {poort}.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { HUB_MAP } from '../config.js';
 
 export const SETS_MAP = join(HUB_MAP, 'sets');
 /** sets/paden.json, of $VARVE_HUB_PADEN (tests, of een tweede computer). */
 export const PADEN_PAD = process.env.VARVE_HUB_PADEN || join(SETS_MAP, 'paden.json');
+/** Een pad zoals Clay het in de meldingen leest: relatief als het in de hub-map ligt (sets/paden.json). @param {string} pad */
+export const toonPad = (pad) => (pad.startsWith(HUB_MAP + sep) ? relative(HUB_MAP, pad) : pad);
 /** Hoe de starter weet dat een app klaar is (zie docs/SETS.md). */
 export const WACHT_SOORTEN = /** @type {const} */ (['kern', 'poort', 'geen']);
 /** Standaard time-out per app (seconden) als de set niets zegt. Een eerste `npm run dev` kan traag zijn. */
@@ -83,7 +85,8 @@ export function valideerSet(ruw, config) {
   /** @param {string} waar @param {unknown} tekst */
   const sjabloon = (waar, tekst) => {
     if (typeof tekst !== 'string') return;
-    for (const [, v] of tekst.matchAll(/\{([^}]*)\}/g)) if (!VARIABELEN.has(v)) f.push(`${waar}: onbekende variabele {${v}} (wel: ${[...VARIABELEN].map((x) => `{${x}}`).join(', ')})`);
+    // Alleen {naam}: ${VAR} en {a,b} van de shell blijven gewoon shell.
+    for (const [, v] of tekst.matchAll(/(?<!\$)\{([A-Za-z_]\w*)\}/g)) if (!VARIABELEN.has(v)) f.push(`${waar}: onbekende variabele {${v}} (wel: ${[...VARIABELEN].map((x) => `{${x}}`).join(', ')})`);
   };
   for (const [id, a] of Object.entries(apps)) {
     const waar = `apps.${id}`;
@@ -109,6 +112,8 @@ export function valideerSet(ruw, config) {
     if (gebruiktPoort && poort === undefined) f.push(`${waar}: {poort} gebruikt, maar config.json → apps.${id}.poort ontbreekt`);
     if (a.wacht !== undefined && !WACHT_SOORTEN.includes(a.wacht)) f.push(`${waar}.wacht moet ${WACHT_SOORTEN.join('|')} zijn`);
     if (a.wacht === 'poort' && poort === undefined) f.push(`${waar}.wacht is "poort", maar er is geen poort`);
+    // "geen" is meteen klaar: een URL die pas open kan als de poort open is, zou dan nooit opengaan.
+    if (a.wacht === 'geen' && typeof a.url === 'string' && poort !== undefined) f.push(`${waar}.wacht is "geen", maar de URL wacht op poort ${poort} — gebruik "poort"`);
     if (a.time_out_s !== undefined && !(typeof a.time_out_s === 'number' && a.time_out_s > 0)) f.push(`${waar}.time_out_s moet een getal > 0 zijn`);
     for (const k of ['opmerking', 'handmatig']) if (a[k] !== undefined && typeof a[k] !== 'string') f.push(`${waar}.${k} moet tekst zijn`);
     sjabloon(`${waar}.handmatig`, a.handmatig);
