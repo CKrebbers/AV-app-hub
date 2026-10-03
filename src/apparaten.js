@@ -78,6 +78,8 @@ export class ApcSessie extends Sessie {
   zet(id, s) { this.leds.zet(id, s); }
   /** Stuur alle LED-wijzigingen. Geeft het aantal berichten terug. */
   teken() { const w = this.leds.wijzigingen(); this.rij.zetAlle(w); return w.length; }
+  /** De volgende `teken()` stuurt alles opnieuw (bv. nadat een lease-app buiten het LED-model om tekende). */
+  vergeet() { this.leds.vergeet(); }
   zwart() { this.leds.zwart(); return this.teken(); }
   /** Bij afsluiten: alles uit via de wachtrij (niet overspoelen), en wachten tot het verstuurd is. */
   async zwartEnWacht(maxMs = 500) {
