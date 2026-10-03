@@ -1,7 +1,7 @@
 // @ts-check
 // Specificatie: de LPD8 en de globale laag (PROTOCOL.md §6) — werkt altijd, los van de focus.
 import { describe, it, expect, afterEach } from 'vitest';
-import { Kern, MELDING, Bank, P, manifest } from './hulp.js';
+import { Kern, MELDING, Bank, P, manifest, fysiek } from './hulp.js';
 
 /**
  * Gemeten ademperiode in seconden uit de globaal-berichten die app `app` ontving vanaf moment `vanaf`.
@@ -54,23 +54,29 @@ describe.skipIf(!Kern)(`LPD8 en de globale laag${MELDING}`, () => {
     expect(h.kern.beeld().globaal['macro.ruimte']).toBeCloseTo(64 / 127, 2);
   });
 
-  it('LPD8-knoppen hebben pickup: een knop ver van de macro doet niets tot hij de macro kruist', () => {
+  it('LPD8-knoppen hebben pickup, ook bij de eerste aanraking: een knop ver van de app-waarde doet niets tot hij die kruist', () => {
+    // Niemand heeft de LPD8 nog aangeraakt; de app staat op 0.5. De knop staat fysiek helemaal rechts.
+    // Bij de eerste draai mag "kracht" niet naar de knopstand springen (open vraag: beginwaarde van een macro).
     const h = bank();
     const fl = h.app(manifest('formula-lab', [P.waarde('kracht', { rol: 'macro.intensiteit' })]), { kracht: 0.5 });
     h.even();
-    const m = h.kern.beeld().globaal['macro.intensiteit'];
-    expect(typeof m).toBe('number');
-    const ver = m > 0.5 ? 0 : 1, tegenover = m > 0.5 ? 1 : 0;
-    const halfweg = (ver * 3 + m) / 4;
     h.wisApps();
-    h.lpdKnop(1, ver);
-    h.lpdKnop(1, halfweg);
+    h.lpdKnop(1, 1);
+    h.lpdKnop(1, 0.9);
+    h.lpdSchuif(1, 0.9, 0.6);
     h.even();
     expect(fl.zetten('kracht')).toEqual([]);
-    h.lpdSchuif(1, halfweg, tegenover);
+    expect(h.appBeeld('formula-lab').waarden.kracht).toBeCloseTo(0.5, 3);
+
+    h.lpdSchuif(1, 0.6, 0); // kruist 0.5 → opgepakt
     h.even();
     expect(fl.zetten('kracht').length).toBeGreaterThan(0);
-    expect(fl.laatsteZet('kracht')?.v).toBeCloseTo(tegenover, 2);
+    expect(fl.zetten('kracht')[0].v).toBeLessThanOrEqual(0.52);
+    expect(fl.laatsteZet('kracht')).toMatchObject({ v: 0, bron: 'lpd8' });
+
+    // Eenmaal opgepakt volgt de macro de knop.
+    h.lpdKnop(1, 0.3);
+    expect(fl.laatsteZet('kracht')?.v).toBeCloseTo(fysiek(0.3), 2);
   });
 
   it('een trage app (slew_s) krijgt de macro in kleine stapjes over zijn eigen tijd, een snelle app meteen', () => {
@@ -140,7 +146,9 @@ describe.skipIf(!Kern)(`LPD8 en de globale laag${MELDING}`, () => {
     expect(ws.globaal().some((b) => 'paniek' in b.waarden)).toBe(false);
 
     h.lpdDruk(1);
-    h.tijd(1100); // nog steeds ingedrukt
+    h.tijd(900); // nog steeds ingedrukt, net niet lang genoeg
+    expect(fl.trigs('paniek')).toEqual([]);
+    h.tijd(200); // nu ruim 1 s
     expect(fl.trigs('paniek')[0]).toEqual({ t: 'trig', id: 'paniek', aan: true });
     expect(ws.trigs()).toEqual([]);
     for (const a of [fl, ws]) expect(a.globaal().some((b) => b.waarden.paniek === 1)).toBe(true);
@@ -185,6 +193,8 @@ describe.skipIf(!Kern)(`LPD8 en de globale laag${MELDING}`, () => {
     ws.zet('x', 0.1);
     h.wisApps();
     h.lpdHoud(6, 100); // ander, leeg snapshot: verandert niets
+    h.even();
+    expect([...fl.zetten(), ...ws.zetten()].filter((b) => b.bron === 'snapshot')).toEqual([]);
     h.lpdHoud(5, 100); // laden
     h.even();
     expect(fl.laatsteZet('in1')).toMatchObject({ bron: 'snapshot' });

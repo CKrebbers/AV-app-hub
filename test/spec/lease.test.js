@@ -153,8 +153,33 @@ describe.skipIf(!Kern)(`Lease-apps: Varve DJ en av-kern${MELDING}`, () => {
     h.even();
     h.metHubtoets(() => h.tik('sel1'));
     h.even();
-    expect(h.apc.sysex.filter(isModeSysex)).toEqual([]);
-    expect(h.opp.gestuurd.filter(isModeSysex)).toEqual([]);
+    // De hub mag zelf de modus zetten (0x42, bv. na een herstart van de APC); de 0x41 van de app nooit.
+    const vanApp = (/** @type {number[]} */ b) => isModeSysex(b) && b[7] !== 0x42;
+    expect(h.apc.sysex.filter(vanApp)).toEqual([]);
+    expect(h.opp.gestuurd.filter(vanApp)).toEqual([]);
+  });
+
+  it('een pulserend pad van een lease-app komt na wisselen terug als puls op zijn basiskleur', () => {
+    const h = bank();
+    const dj = h.app(leaseManifest('varve-dj'));
+    h.app(manifest('formula-lab', []));
+    h.even();
+    // Basiskleur 5 op kanaal 0, dan puls naar 21 op kanaal 7 (PROTOCOL.md: eerst basis, dan animatie).
+    dj.led([[0x90, 10, 5], [0x97, 10, 21]]);
+    h.even();
+    expect(h.apc.rgb('pad2-3')).toMatchObject({ basis: 5, anim: 'puls', animKleur: 21 });
+    for (let ronde = 0; ronde < 2; ronde++) {
+      h.metHubtoets(() => h.tik('sel2'));
+      h.even();
+      expect(h.apc.rgb('pad2-3').aan).toBe(false);
+      h.metHubtoets(() => h.tik('sel1'));
+      h.even();
+      expect(h.apc.rgb('pad2-3'), `ronde ${ronde + 1}`).toMatchObject({ basis: 5, anim: 'puls', animKleur: 21 });
+    }
+    // Hubtoets indrukken en loslaten tekent ook alles opnieuw.
+    h.metHubtoets(() => h.even());
+    h.even();
+    expect(h.apc.rgb('pad2-3')).toMatchObject({ basis: 5, anim: 'puls', animKleur: 21 });
   });
 
   it('rings auto (av-kern): draaien zet ook de ring, zoals APC-modus 0x41; rings host (Varve DJ) laat de ring aan de app', () => {

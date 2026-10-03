@@ -2,7 +2,7 @@
 // Specificatie: focus, slots en de hubtoets (PROTOCOL.md §3, §7 "Hubtoets ingedrukt").
 // Zwarte doos: alleen wat Clay op de APC ziet en wat de apps ontvangen.
 import { describe, it, expect, afterEach } from 'vitest';
-import { Kern, MELDING, Bank, P, manifest, configKleur, appKleur } from './hulp.js';
+import { Kern, MELDING, Bank, P, manifest, leaseManifest, configKleur, appKleur, vindPad } from './hulp.js';
 
 describe.skipIf(!Kern)(`Focus en de hubtoets${MELDING}`, () => {
   /** @type {Bank[]} */
@@ -127,6 +127,73 @@ describe.skipIf(!Kern)(`Focus en de hubtoets${MELDING}`, () => {
     const naarApp = fl.ontvangen.filter((b) => ['zet', 'trig', 'scene', 'midi'].includes(b.t));
     expect(naarApp).toEqual([]);
     expect(h.appBeeld('formula-lab').waarden.in1).toBeCloseTo(0.5, 2);
+  });
+
+  it('trigger vasthouden en dan Bank of een focuswissel → bij loslaten krijgt dezelfde app zijn trigger uit; niets blijft hangen', () => {
+    const h = bank();
+    const m = (/** @type {string} */ app) => manifest(app, [P.trigger('take'), P.trigger('paniek')]);
+    const fl = h.app(m('formula-lab'));
+    const ws = h.app(m('waterschaal'));
+    h.even();
+    const pad = /** @type {string} */ (vindPad(h, fl, (b) => b.t === 'trig' && b.id === 'take'));
+    expect(pad).not.toBe(null);
+
+    // 1. Pad vast, Bank erbij, pad los, Bank los.
+    h.wisApps();
+    h.druk(pad);
+    h.druk(h.hubtoets());
+    h.los(pad);
+    h.los(h.hubtoets());
+    h.even();
+    expect(fl.trigs('take')).toEqual([{ t: 'trig', id: 'take', aan: true }, { t: 'trig', id: 'take', aan: false }]);
+    expect(ws.trigs()).toEqual([]);
+
+    // 2. Pad vast, de cockpit geeft de focus aan waterschaal, pad los.
+    h.wisApps();
+    h.druk(pad);
+    h.kern.cockpit({ t: 'focus', app: 'waterschaal' });
+    h.los(pad);
+    h.even();
+    expect(fl.trigs('take')).toEqual([{ t: 'trig', id: 'take', aan: true }, { t: 'trig', id: 'take', aan: false }]);
+    expect(ws.trigs()).toEqual([]);
+
+    // 3. Stop All vast (paniek), Bank + Track Select 1, Stop All los.
+    h.wisApps();
+    h.druk('stopall');
+    h.metHubtoets(() => h.tik('sel1'));
+    h.los('stopall');
+    h.even();
+    expect(ws.trigs('paniek')).toEqual([{ t: 'trig', id: 'paniek', aan: true }, { t: 'trig', id: 'paniek', aan: false }]);
+    expect(fl.trigs()).toEqual([]);
+  });
+
+  it('een andere hubtoets en een kortere hartslag in config.json werken meteen: niets is ingebakken', () => {
+    const h = bank({ config: { hubtoets: 'user', hartslag: { stil_s: 1, weg_s: 2 } } });
+    const fl = h.app(manifest('formula-lab', [P.fader('in1')]), { in1: 0.5 });
+    const dj = h.app(leaseManifest('varve-dj'));
+    h.even();
+    expect(h.hubtoets()).toBe('user');
+
+    h.metHubtoets(() => { h.even(); expect(h.apc.rgb('pad5-1').anim).toBe('puls'); h.tik('sel2'); });
+    h.even();
+    expect(h.kern.beeld().focus).toBe('varve-dj');
+    dj.wis();
+    h.tik('bank'); // gewone knop nu: gaat als MIDI naar de lease-app
+    expect(dj.midi().map((x) => x.bytes)).toEqual([[0x90, 103, 127], [0x80, 103, 0]]);
+    dj.wis();
+    h.metHubtoets(() => h.fader(1, 0.3));
+    expect(dj.midi()).toEqual([]);
+
+    // Hartslag volgens config: stil na 1 s, weer actief bij een bericht, weg na 2 s.
+    fl.zwijg();
+    h.tijd(1300);
+    expect(h.appBeeld('formula-lab').status).toBe('stil');
+    fl.hb();
+    h.even();
+    expect(h.appBeeld('formula-lab').status).toBe('actief');
+    h.tijd(2300);
+    expect(h.appBeeld('formula-lab').status).toBe('weg');
+    expect(h.appBeeld('varve-dj').status).toBe('actief');
   });
 
   it('hubtoets loslaten → de focus-app staat weer precies zoals hij stond', () => {

@@ -2,7 +2,7 @@
 // Specificatie: apps komen en gaan (hartslag, herverbinden, truth), snapshots, cockpit en de kern-events
 // (PROTOCOL.md §3, §6, §8).
 import { describe, it, expect, afterEach } from 'vitest';
-import { Kern, MELDING, Bank, P, manifest, configKleur, fysiek } from './hulp.js';
+import { Kern, MELDING, Bank, P, manifest, leaseManifest, configKleur, fysiek } from './hulp.js';
 
 describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, () => {
   /** @type {Bank[]} */
@@ -37,6 +37,12 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     h.metHubtoets(() => { h.even(); expect(h.apc.rgb('pad5-2').aan).toBe(false); });
     expect(h.appBeeld('waterschaal').waarden.x).toBeCloseTo(0.7, 3);
     expect(h.appBeeld('formula-lab').status).toBe('actief');
+
+    // Hij komt weer tot leven (verbinding was nooit dicht): één bericht is genoeg.
+    ws.hb();
+    h.even();
+    expect(h.appBeeld('waterschaal').status).toBe('actief');
+    h.metHubtoets(() => { h.even(); expect(h.apc.rgb('pad5-2')).toMatchObject({ kleur: configKleur('waterschaal'), anim: null }); });
   });
 
   it('app verbreekt en komt terug → zelfde slot, zelfde waarden, weer actief, focus ongemoeid', () => {
@@ -106,6 +112,7 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
 
     h.metHubtoets(() => h.tik('scene1'));
     h.even();
+    for (const a of [fl, ws, ms]) expect(a.van('scene'), `${a.id}: Bank + Scene is een hub-snapshot, geen scène`).toEqual([]);
     const verwacht = { 'formula-lab': { in1: 0.3, palet: 1 }, waterschaal: { x: 0.7, aan: 1 }, medisynth: { toon: 0.45 } };
     for (const a of [fl, ws, ms]) {
       for (const [id, v] of Object.entries(verwacht[/** @type {keyof typeof verwacht} */ (a.id)])) {
@@ -149,7 +156,7 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     expect(h.appBeeld('formula-lab').waarden).toMatchObject({ in1: 1, k1: 1, aan: 0 });
   });
 
-  it('kern.beeld() geeft de cockpit alles (apps met slot, status, focus, params, waarden; globaal; apparaten) en meldt wijzigingen hooguit 10x per seconde', () => {
+  it('kern.beeld() geeft de cockpit alles (apps met slot, status, focus, params, waarden; globaal; apparaten) en meldt wijzigingen hooguit 10x per seconde, ook tijdens aanhoudend bewegen (throttle, geen debounce)', () => {
     const h = bank();
     h.app(manifest('formula-lab', [P.fader('in1')], { kleur: '#3fbf5f' }), { in1: 0.25 });
     h.app({ v: 1, app: 'varve-dj', naam: 'Varve DJ', lease: true, params: [] });
@@ -187,7 +194,44 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     expect(h.ev.beeld.some((t) => t >= t1)).toBe(true);
   });
 
-  it('de cockpit ziet elke LED die de kern zet, elke controller-gebeurtenis en elk bericht naar een app', () => {
+  it('de virtuele APC in de cockpit toont precies wat de echte APC toont, ook bij de hubtoets en bij een lease-app', () => {
+    const h = bank();
+    h.app(manifest('formula-lab', [P.fader('in1'), P.knop('k1'), P.schakelaar('aan'), P.keuze('palet', ['a', 'b', 'c'])]), { in1: 0.2, k1: 0.4, aan: 1, palet: 0.5 });
+    h.app(manifest('waterschaal', [P.fader('x'), P.knop('y')]), { x: 0.5, y: 0.9 });
+    const dj = h.app(leaseManifest('varve-dj'));
+    h.tijd(500);
+    // De cockpit begint met alles uit en krijgt alleen gewijzigde LEDs (PROTOCOL.md §8): wat hij daaruit opbouwt
+    // moet op elk moment gelijk zijn aan wat er fysiek op de APC staat.
+    for (const e of h.ev.leds) expect(e.dev).toBe('apc40');
+    expect(h.cockpitVerschil(), 'formula-lab met focus').toEqual([]);
+
+    h.druk(h.hubtoets());
+    h.even();
+    expect(h.cockpitVerschil(), 'hubtoets ingedrukt').toEqual([]);
+    h.tik('sel2');
+    h.los(h.hubtoets());
+    h.even();
+    expect(h.cockpitVerschil(), 'waterschaal met focus').toEqual([]);
+    h.fader(1, 0.9); // pickup: clip stop knippert
+    h.even();
+    expect(h.cockpitVerschil(), 'fader niet opgepakt').toEqual([]);
+
+    // Lease-app: zijn LEDs lopen niet via zet() maar als ruwe bytes; de cockpit moet ze toch zien.
+    dj.led([[0x90, 0, 5], [0x90, 9, 13], [0x97, 33, 21], [0x90, 82, 45], [0x92, 48, 127], [0xb0, 16, 100]]);
+    h.metHubtoets(() => h.tik('sel3'));
+    h.even();
+    expect(h.apc.rgb('pad1-1').kleur).toBe(5);
+    expect(h.cockpitVerschil(), 'varve-dj met focus').toEqual([]);
+    dj.led([[0x80, 0, 0], [0x90, 1, 60]]);
+    h.even();
+    expect(h.cockpitVerschil(), 'varve-dj tekent door').toEqual([]);
+
+    h.metHubtoets(() => h.tik('sel1'));
+    h.tijd(500);
+    expect(h.cockpitVerschil(), 'terug naar formula-lab').toEqual([]);
+  });
+
+  it('de cockpit ziet elke controller-gebeurtenis en elk bericht naar een app', () => {
     const h = bank();
     const fl = h.app(manifest('formula-lab', [P.fader('in1'), P.knop('k1'), P.schakelaar('aan')]), { in1: 0.2, k1: 0.4, aan: 1 });
     const ws = h.app(manifest('waterschaal', [P.fader('x')]), { x: 0.5 });
@@ -196,15 +240,6 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
     h.fader(1, 0.5);
     h.lpdKnop(1, 0.5);
     h.tijd(1000);
-
-    // LEDs: voor elke control is de laatste 'leds'-melding gelijk aan de laatste oppervlak.zet.
-    expect(h.ev.leds.length).toBeGreaterThan(0);
-    for (const e of h.ev.leds) expect(e.dev).toBe('apc40');
-    /** @type {Record<string, unknown>} */
-    const gemeld = {}, gezet = {};
-    for (const e of h.ev.leds) Object.assign(gemeld, e.staat);
-    for (const [id, s] of h.opp.zetten) gezet[id] = s;
-    expect(gemeld).toEqual(JSON.parse(JSON.stringify(gezet)));
 
     // Invoer: APC en LPD8.
     const els = h.ev.invoer.map((g) => `${g.dev}:${g.el}`);
@@ -215,6 +250,91 @@ describe.skipIf(!Kern)(`Apps komen en gaan, snapshots en de cockpit${MELDING}`, 
       const zonderWelkom = (/** @type {any[]} */ l) => l.filter((b) => b.t !== 'welkom');
       expect(zonderWelkom(h.ev.naarApp.filter(([app]) => app === a.id).map(([, b]) => b))).toEqual(zonderWelkom(a.ontvangen));
     }
+  });
+
+  it('rommel van apps, cockpit en controllers laat de hub heel; daarna speelt alles gewoon (PROTOCOL.md §1.5)', () => {
+    const h = bank();
+    const fl = h.app(manifest('formula-lab', [P.fader('in1')]), { in1: 0.4 });
+    const dj = h.app(leaseManifest('varve-dj'));
+    h.even();
+    h.wisApps();
+
+    // Een verbinding die nooit hallo zei, stuurt van alles en gaat (twee keer) dicht.
+    /** @type {any[]} */
+    const naamloosOntvangen = [];
+    const naamloos = { app: null, stuur: (/** @type {any} */ b) => naamloosOntvangen.push(b) };
+    h.kern.verbind(naamloos);
+    for (const b of [
+      { t: 'staat', waarden: { in1: 0.9 } }, { t: 'zet', id: 'in1', v: 0.9 }, { t: 'hb' },
+      { t: 'led', bytes: [[0x90, 0, 5], [0x90, 82, 45]] },
+      { t: 'manifest', manifest: manifest('formula-lab', [P.fader('in1')]) },
+    ]) h.kern.ontvang(naamloos, b);
+    h.kern.verbreek(naamloos);
+    h.kern.verbreek(naamloos);
+
+    // Een gewone app zegt onzin: onbekende parameter, en LEDs terwijl hij geen lease-app is.
+    fl.zeg({ t: 'zet', id: 'bestaat-niet', v: 0.5 });
+    fl.zeg({ t: 'staat', waarden: { 'bestaat-niet': 0.3 } });
+    fl.zeg({ t: 'led', bytes: [[0x90, 0, 5], [0x90, 82, 45]] });
+
+    // De cockpit vraagt dingen die niet bestaan.
+    h.kern.cockpit({ t: 'zet', app: 'bestaat-niet', id: 'x', v: 0.5 });
+    h.kern.cockpit({ t: 'zet', app: 'formula-lab', id: 'bestaat-niet', v: 0.5 });
+    h.kern.cockpit({ t: 'zet', app: 'varve-dj', id: 'x', v: 0.5 });
+    h.kern.cockpit({ t: 'focus', app: 'bestaat-niet' });
+    h.kern.focus('bestaat-niet');
+    h.kern.cockpit({ t: 'snapshot', nr: 99, actie: 'laad' });
+    h.kern.cockpit({ t: 'snapshot', nr: 0, actie: 'bewaar' });
+    h.kern.cockpit({ t: 'snapshot', nr: 4, actie: 'laad' }); // nooit bewaard
+
+    // Controllers sturen berichten zonder control (el null): pitchbend, program change, SysEx, onbekende noot.
+    h.midi([0xe0, 0, 64]);
+    h.midi([0xc0, 5]);
+    h.midi([0xf0, 0x7e, 0x00, 0x06, 0x02, 0x47, 0x29, 0x00, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf7]);
+    h.midi([0x90, 120, 127]);
+    h.lpdMidi([0xc0, 3]);
+    h.lpdMidi([0xb0, 1, 64]);
+    h.lpdMidi([0x99, 60, 100]);
+    h.lpdMidi([0xf0, 0x7e, 0x00, 0x06, 0x02, 0x47, 0x4c, 0x00, 0x19, 0x00, 0xf7]);
+    h.tijd(1000);
+
+    // Niets kwam bij de apps of op het oppervlak terecht.
+    expect(fl.ontvangen.filter((b) => ['zet', 'trig', 'scene', 'midi'].includes(b.t))).toEqual([]);
+    expect(dj.ontvangen.filter((b) => ['zet', 'trig', 'scene'].includes(b.t))).toEqual([]);
+    expect(naamloosOntvangen.filter((b) => ['zet', 'trig', 'scene', 'midi'].includes(b.t))).toEqual([]);
+    expect(h.apc.rgb('pad1-1').kleur).not.toBe(5);
+    expect(h.apc.rgb('scene1').kleur).not.toBe(45);
+    expect(h.kern.beeld().focus).toBe('formula-lab');
+    expect(h.kern.beeld().apps.map((/** @type {any} */ a) => a.app).sort()).toEqual(['formula-lab', 'varve-dj']);
+    expect(h.appBeeld('formula-lab')).toMatchObject({ status: 'actief', waarden: { in1: 0.4 } });
+
+    // En de hub speelt gewoon door.
+    h.fader(1, 0.4);
+    h.fader(1, 0.45);
+    expect(fl.laatsteZet('in1')).toMatchObject({ bron: 'apc40' });
+    expect(fl.laatsteZet('in1')?.v).toBeCloseTo(fysiek(0.45), 2);
+  });
+
+  it('app verbindt opnieuw terwijl de oude verbinding nog niet dicht is → de nieuwe telt; het late sluiten van de oude maakt de app niet weg', () => {
+    const h = bank();
+    const fl = h.app(manifest('formula-lab', [P.fader('in1')]), { in1: 0.4 });
+    h.even();
+    const oud = fl.v;
+    /** @type {any[]} */
+    const oudOntvangen = [];
+    oud.stuur = (/** @type {any} */ b) => oudOntvangen.push(b);
+    fl.verbind(); // zelfde app, nieuwe socket; de oude hangt nog
+    h.even();
+    h.kern.verbreek(oud); // de oude socket sluit pas nu
+    h.tijd(500);
+    expect(h.appBeeld('formula-lab')).toMatchObject({ status: 'actief', slot: 1 });
+    expect(h.kern.beeld().apps).toHaveLength(1);
+
+    fl.wis();
+    h.fader(1, 0.4);
+    h.fader(1, 0.45);
+    expect(fl.laatsteZet('in1')?.v).toBeCloseTo(fysiek(0.45), 2);
+    expect(oudOntvangen.filter((b) => b.t === 'zet')).toEqual([]);
   });
 
   it('stop() ruimt alle timers op: daarna gebeurt er niets meer', () => {

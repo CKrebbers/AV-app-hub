@@ -9,10 +9,25 @@
 //
 // De kern wordt geladen uit src/core/kern.js (of uit $VARVE_KERN). Bestaat hij nog niet, dan is `Kern` null
 // en slaan de specificatietests zich over met een duidelijke melding.
+//
+// Gekozen lezingen waar PROTOCOL.md of het kern-contract dubbelzinnig is (open vragen voor de orchestrator):
+// - Beginwaarde van een LPD8-macro: niet vastgelegd. De tests eisen alleen dat ook de EERSTE aanraking pickup
+//   heeft (geen sprong naar de knopstand); een vaste 0.5 of de waarde van de app-parameters met die rol voldoen.
+// - 'leds' naar de cockpit: alleen gewijzigde (§8), niet per oppervlak.zet. Getoetst wordt de eigenschap: de
+//   cockpit, beginnend met alles uit, toont na alle meldingen wat de APC toont, ook voor LEDs van een lease-app.
+// - 'beeld' is een throttle (max 10x/s, ook tijdens aanhoudend bewegen), geen trailing debounce.
+// - Een trigger (of Stop All/paniek) die is ingedrukt vóór de hubtoets of een focuswissel krijgt zijn 'uit' bij
+//   loslaten naar dezelfde app: uitzondering op "niets wat binnenkomt met de hubtoets ingedrukt bereikt een app".
+// - Device ◄/► = devL/devR (noot 58/59), niet left/right (96/97); een pagina per groep.
+// - Een tweede verbinding met hetzelfde app-id terwijl de eerste nog open is: de nieuwste telt, het late
+//   sluiten van de oude maakt de app niet 'weg'.
+// - Niet getoetst (open): wat er op de APC staat als een lease-app MET focus wegvalt; of APC-SysEx
+//   (identiteitsantwoord) als midi naar een lease-app met focus mag.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { laadConfig } from '../../src/config.js';
 import { NepKlok } from '../../src/core/klok.js';
 import { LedBeeld } from '../../src/core/leds.js';
 import * as APC from '../../src/devices/apc40mk2.js';
@@ -38,12 +53,8 @@ export const MELDING = Kern ? '' : ' [OVERGESLAGEN: src/core/kern.js bestaat nog
 
 // ── config ────────────────────────────────────────────────────────────────────────────────────────
 
-/** Inhoud van config.json, zoals de hub hem leest. */
-export const CONFIG = (() => {
-  const c = JSON.parse(readFileSync(fileURLToPath(new URL('../../config.json', import.meta.url)), 'utf8'));
-  delete c._doc;
-  return Object.freeze(c);
-})();
+/** Inhoud van config.json, zoals de hub hem leest (via src/config.js, dus ook met $VARVE_HUB_CONFIG). */
+export const CONFIG = Object.freeze(laadConfig());
 
 /** Paletindex van een app zoals de hub hem moet tonen. @param {string} hex */
 export const appKleur = (hex) => APC.dichtsteKleur(hex);
@@ -315,7 +326,7 @@ export class Bank {
   /** Control-id van de hubtoets volgens config. */
   hubtoets() { return this.config.hubtoets; }
 
-  // LPD8 (mk2-fabrieksprofiel): knoppen CC 70-77, pads noot 36-43
+  // LPD8 (mk2-fabrieksprofiel, ONDERZOEK.md §6): knoppen CC 70-77 op kanaal 1, pads noot 36-43 op kanaal 10
   /** @param {number[]} bytes */
   lpdMidi(bytes) { this.kern.invoer(LPD8_ONTLEDER(bytes), bytes); this.klok.loop(0); }
   /** @param {number} k 1..8 @param {number} v 0..1 */
@@ -326,9 +337,9 @@ export class Bank {
     for (let r = ra; r !== rb + stap; r += stap) this.lpdKnop(k, r / 127);
   }
   /** @param {number} p 1..8 */
-  lpdDruk(p) { this.lpdMidi([0x90, LPD8_PROFIEL.pads[p - 1].n, 100]); }
+  lpdDruk(p) { this.lpdMidi([0x99, LPD8_PROFIEL.pads[p - 1].n, 100]); }
   /** @param {number} p 1..8 */
-  lpdLos(p) { this.lpdMidi([0x80, LPD8_PROFIEL.pads[p - 1].n, 0]); }
+  lpdLos(p) { this.lpdMidi([0x89, LPD8_PROFIEL.pads[p - 1].n, 0]); }
   /** Pad indrukken, ms vasthouden (tijd loopt, apps blijven leven), loslaten. @param {number} p @param {number} ms */
   lpdHoud(p, ms) { this.lpdDruk(p); this.tijd(ms); this.lpdLos(p); }
 
@@ -336,6 +347,25 @@ export class Bank {
   appBeeld(app) { return this.kern.beeld().apps.find((/** @type {any} */ a) => a.app === app); }
   /** Alle globaal-berichten die app a ontving, samengevoegd tot de laatste stand. @param {NepApp} a */
   globaalStand(a) { return Object.assign({}, ...a.globaal().map((b) => b.waarden)); }
+  /**
+   * De virtuele APC in de cockpit: begint met alles uit en past elke 'leds'-melding van de kern toe.
+   * Geeft de controls terug waar die iets anders toont dan de echte APC (leeg = de cockpit ziet wat Clay ziet).
+   */
+  cockpitVerschil() {
+    const cockpit = new NepApc();
+    for (const e of this.ev.leds) {
+      for (const [id, s] of Object.entries(e.staat ?? {})) for (const b of APC.ledBerichten(ctrl(id), /** @type {any} */ (s))) cockpit.verwerk(b);
+    }
+    /** @type {{ id: string, apc: unknown, cockpit: unknown }[]} */
+    const uit = [];
+    for (const c of APC.MET_LED) {
+      const toon = (/** @type {NepApc} */ a) => c.led === 'rgb' ? (({ kleur, anim }) => ({ kleur, anim }))(a.rgb(c.id))
+        : c.led === 'ring' ? Math.round((a.ring(c.id) ?? 0) * 127) : a.noot(c.id);
+      const x = toon(this.apc), y = toon(cockpit);
+      if (JSON.stringify(x) !== JSON.stringify(y)) uit.push({ id: c.id, apc: x, cockpit: y });
+    }
+    return uit;
+  }
   stop() { this.kern.stop(); }
 }
 
@@ -343,3 +373,18 @@ export class Bank {
 export const keuzeWaarde = (i, n) => i / (n - 1);
 /** Ruwe 7-bit afronding zoals een fysieke control hem stuurt. @param {number} v */
 export const fysiek = (v) => ruw(v) / 127;
+
+const PADS = Array.from({ length: 40 }, (_, i) => APC.padId(Math.floor(i / 8) + 1, (i % 8) + 1));
+/**
+ * Zoek een pad zoals een speler dat doet: elk pad indrukken en loslaten tot de app iets ontvangt dat aan
+ * `treffer` voldoet. De plek van pads op het grid ligt niet vast in het protocol.
+ * @param {Bank} h @param {NepApp} a @param {(b: any) => boolean} treffer
+ */
+export function vindPad(h, a, treffer) {
+  for (const id of PADS) {
+    const n = a.ontvangen.length;
+    h.tik(id);
+    if (a.ontvangen.slice(n).some(treffer)) return id;
+  }
+  return null;
+}
