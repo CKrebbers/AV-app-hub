@@ -94,6 +94,8 @@ export async function startNepServer({ poort = 0, host = '127.0.0.1' } = {}) {
     },
     /** Verbreek alle cockpits (om herverbinden te toetsen). */
     verbreekAlle() { for (const ws of klanten) ws.terminate(); },
+    /** Aantal verbonden cockpits. */
+    get aantalKlanten() { return klanten.size; },
     async sluit() {
       for (const ws of klanten) ws.terminate();
       await new Promise((r) => wss.close(() => r(undefined)));
