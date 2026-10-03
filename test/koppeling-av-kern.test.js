@@ -50,6 +50,19 @@ describe('koppelingen/av-kern: de bestanden', () => {
     const alles = PATCHES.map((f) => readFileSync(join(MAP, f), 'utf8')).join('\n');
     expect(alles).not.toMatch(/^diff --git a\/src\/kern\/(midi|bus)\.ts/m);
   });
+  it('de patches raken LOG.md en CLAUDE.md niet (die veranderen elke sessie: git am zou na 25 okt vastlopen); de LEESMIJ heeft de tekst', () => {
+    const alles = PATCHES.map((f) => readFileSync(join(MAP, f), 'utf8')).join('\n');
+    expect(alles).not.toMatch(/^diff --git a\/(LOG|CLAUDE)\.md/m);
+    const leesmij = readFileSync(join(MAP, 'LEESMIJ.md'), 'utf8');
+    expect(leesmij).toMatch(/LOG\.md/);
+    expect(leesmij).toMatch(/## AV-app-hub \(`\?hub=ws:\/\/localhost:7700\/app`\)/); // de CLAUDE.md-alinea om te plakken
+    expect(leesmij).toMatch(/git am --abort/); // wat Clay doet als het toch vastloopt
+  });
+  it('geen kleur in het manifest: config.json is de enige bron (apps.av-kern.kleur)', () => {
+    expect(MANIFEST.kleur).toBeUndefined();
+    const cfg = JSON.parse(readFileSync(fileURLToPath(new URL('../config.json', import.meta.url)), 'utf8'));
+    expect(cfg.apps['av-kern'].kleur).toMatch(/^#[0-9a-f]{6}$/i);
+  });
   it('het manifest is geldig: lease, rings "auto", en een av-kern-parameter voor elke LPD8-rol', () => {
     const v = valideerManifest(MANIFEST);
     expect(v.ok, v.ok ? '' : v.fouten.join('; ')).toBe(true);

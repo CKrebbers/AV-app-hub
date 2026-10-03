@@ -1,4 +1,4 @@
-From ebef5193032e4ef9fb2a515273ff4fa09fcd19e3 Mon Sep 17 00:00:00 2001
+From 6decde2ee4c7843010899a04c8301403546599c9 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Sat, 3 Oct 2026 15:43:27 +0000
 Subject: [PATCH 2/2] =?UTF-8?q?Hub-koppeling:=20AV-kern=20als=20lease-app?=
@@ -7,87 +7,75 @@ MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
-Alleen met ?hub=ws://localhost:7700/app (src/ui/hub-vlag.ts) wordt
-src/ui/hub.ts geladen. De kern blijft onaangeroerd (regel 1): de koppeling
-gebruikt alleen Driver.input, Driver.onSend en Bus.set/tgt/stopAll, net als
-main.ts.
+Alleen met ?hub=ws://localhost:7700/app (src/ui/hub-vlag.ts, apcBron) wordt
+src/ui/hub.ts geladen. De kern blijft onaangeroerd (regel 1). APC-invoer gaat
+door Driver.input en de LED's komen van Driver.onSend, net als bij de echte
+APC in main.ts. De LPD8-rollen zet hub.ts met Bus.set/tgt/stopAll direct,
+buiten Driver.input om, dus niet in het actielog (zie de LEESMIJ).
 
 - APC-invoer van de hub ({t:'midi'}) → Driver.input(bytes, 'hub'), met
-  focus; loslaten altijd (geen hangende Shift). Verbinding weg = Shift los.
+  focus; loslaten altijd (geen hangende Shift). Alleen volledige
+  note/CC-berichten (3 bytes, databytes ≤ 127). Verbinding weg = een Shift
+  die via de hub kwam los; een Shift van toetsenbord of virtuele APC blijft.
 - LED- en ringuitvoer van de driver (Driver.onSend) → per beeld gebundeld
   als {t:'led'}; bij (her)verbinden de hele set (ringtypes, LED's, ringen).
   Modus-SysEx gaat nooit naar de hub (de hub zet 0x42).
 - Met de vlag: nooit requestMIDIAccess, geen Web Lock av-kern-apc; de knop
-  wordt "APC via hub". Een ?hub= naar een niet-lokale host wordt geweigerd
-  (tenzij &hub_extern=1) en opent dan ook geen MIDI.
+  wordt "APC via hub". Een ?hub= zonder ws:// of naar een host buiten deze
+  machine, het LAN of de tailnet (100.64/10; *.ts.net niet, want Funnel is
+  publiek) wordt geweigerd met een melding die zegt waarom, en opent dan ook
+  geen MIDI. &hub_extern=1 laat een vreemde host toe.
 - Manifest (src/ui/hub-manifest.json): lease, rings "auto" (de hub emuleert
   APC-modus 0x41), rollen: master → macro.intensiteit, kleur/ruimte/
   beweging/dichtheid/helderheid → de gelijknamige macro, balans (xf) →
   macro.balans, ademtempo → klok.adem_periode; korrel, contrast en adem
   zonder rol. paniek (LPD8 P1) = Stop All (langzaam naar stilte en zwart).
+  Geen kleur: die komt uit config.json van de hub.
   Slew als op de APC (macro's 1,5 s, master 0,15 s), snapshots 2 s.
+  Neemt AV-kern een waarde niet over (ademtempo > 14 s), dan gaat de echte
+  waarde terug als zet. Tijdens een replay negeert hij zets van de hub
+  (paniek werkt wel).
 - Hartslag op de tijd, herverbinden 0,5 → 1 → 2 → 5 s, na 4001 30 s.
-- Zonder vlag verandert er niets (headless nagemeten: geen WebSocket,
-  hub.ts niet geladen, "Verbind APC40" vraagt MIDI en de lock zoals altijd).
+- Zonder vlag verandert er niets (apcBron → 'midi'; headless nagemeten:
+  geen WebSocket, hub.ts niet geladen, "Verbind APC40" vraagt MIDI en de
+  lock zoals altijd).
 
-Tests: test/hub.test.ts (16, nep-WebSocket en nep-tijd); 57 groen.
-scripts/hub-headless.mjs: conformiteitstoets van de hub (toetsApp) en de
-echte hub met nep-APC/LPD8 in Chromium: Bank + Track Select geeft focus,
-pad/knop/LPD8 komen als LED's en ringen op de APC. CLAUDE.md en LOG.md bij.
+Tests: test/hub.test.ts (25, nep-WebSocket en nep-tijd); 66 groen.
+scripts/hub-headless.mjs: conformiteitstoets van de hub (toetsApp), een
+geweigerd ?hub= (0× MIDI, 0× lock) en de echte hub met nep-APC/LPD8 in
+Chromium: Bank + Track Select geeft focus, pad/knop/LPD8 komen als LED's
+en ringen op de APC. CLAUDE.md en LOG.md bewust niet in deze commit (die
+veranderen elke sessie): de tekst staat in de LEESMIJ van de patch.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01MNPX1p9pByM4NBLEt7Tita
 ---
- CLAUDE.md                |   4 +
- LOG.md                   |   1 +
- scripts/hub-headless.mjs | 199 +++++++++++++++++++++++
- src/main.ts              |  24 ++-
- src/ui/hub-manifest.json |  24 +++
- src/ui/hub-vlag.ts       |  39 +++++
- src/ui/hub.ts            | 338 +++++++++++++++++++++++++++++++++++++++
- test/hub.test.ts         | 296 ++++++++++++++++++++++++++++++++++
- 8 files changed, 922 insertions(+), 3 deletions(-)
+ scripts/hub-headless.mjs | 221 +++++++++++++++++++++
+ src/main.ts              |  23 ++-
+ src/ui/hub-manifest.json |  23 +++
+ src/ui/hub-vlag.ts       |  80 ++++++++
+ src/ui/hub.ts            | 356 +++++++++++++++++++++++++++++++++
+ test/hub.test.ts         | 416 +++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 1116 insertions(+), 3 deletions(-)
  create mode 100644 scripts/hub-headless.mjs
  create mode 100644 src/ui/hub-manifest.json
  create mode 100644 src/ui/hub-vlag.ts
  create mode 100644 src/ui/hub.ts
  create mode 100644 test/hub.test.ts
 
-diff --git a/CLAUDE.md b/CLAUDE.md
-index c055bfb..f1d8953 100644
---- a/CLAUDE.md
-+++ b/CLAUDE.md
-@@ -25,6 +25,10 @@ AV-meditatie-instrument voor de APC40 mkII. Web-native: Vite + TypeScript, Web M
- 
- APC40 → `Driver.input` (parse, pick-up, Shift) → `Loader.dispatch` (element × laag → binding) → `R[key].run` (register) → `Bus` (slew, crossfade) → modules. LED's gaan terug via `Driver.computeLeds` (alleen verschillen). De virtuele APC40 gebruikt dezelfde bytes.
- 
-+## AV-app-hub (`?hub=ws://localhost:7700/app`)
-+
-+Met die vlag bezit de AV-app-hub (repo AV-app-hub) de APC40 en de LPD8, en praat AV-kern alleen met de hub: `src/ui/hub.ts` (buiten de kern, alleen met de vlag geladen). Dan wordt `requestMIDIAccess` **nooit** aangeroepen en de Web Lock `av-kern-apc` niet gebruikt; de hub zet de APC in modus 0x42 en tekent de ringen mee (`rings:"auto"`). APC-invoer komt als `{t:'midi'}` binnen en gaat door `Driver.input(bytes, 'hub')`; de LED-uitvoer van de driver (`Driver.onSend`) gaat als `{t:'led'}` naar de hub. Focus: Bank + Track Select op de APC. LPD8-macro's via rollen in `src/ui/hub-manifest.json` (master, kleur, ruimte, beweging, dichtheid, helderheid, balans, ademtempo; P1 = Stop All). **Zonder vlag verandert er niets.** Toets: `npm test` (`test/hub.test.ts`) en `node scripts/hub-headless.mjs` (conformiteitstoets van de hub + echte hub met nep-APC/LPD8 in Chromium; zet `AVKERN_HUB_REPO` als de hub niet naast deze repo staat).
-+
- ## Commando's
- 
- - `npm run dev`: app op :5173
-diff --git a/LOG.md b/LOG.md
-index fb7cfb3..482bc1c 100644
---- a/LOG.md
-+++ b/LOG.md
-@@ -5,3 +5,4 @@ Eén regel per sessie: wat werkt, wat niet, wat de volgende moet weten.
- - 2026-09-23 · sessie 01–05 in één keer (Claude, Cowork): kern (driver, loader, register, bus, actielog), Drone + Veld in de sfeer water en diepte, 5 scènes, virtuele APC40, signaalpad, video-opname. 17 tests groen. Headless getest: replay identiek (hash), 56–58 fps met swiftshader. **Nog niet getest:** de echte APC40 en het geluid op de M1 Air. Eerste taak voor Clay: aansluiten, alles één keer indrukken, afwijkingen hier noteren.
- - 2026-09-24 · fase 0 klaarzetten (Claude Code, branch `fase0-apc-veilig`): alle MIDI naar de APC door een wachtrij (16 per 4 ms, pagehide direct); alleen poorten met state connected, en na hotplug opnieuw 0x41; `npm run niet-gemapt` maakt van een actielog de lijst voor 0.1; Web Lock `av-kern-apc`: één AV-kern-tabblad met de APC (niet tegen Varve: andere origin); invoerpoort weg = Shift los. 40 tests groen, build groen, headless zonder MIDI gestart. **Niet getest:** niets op de echte APC en niets in Clay's Chrome. Nog open: geen echofilter, pad-pulse (kanaal 8) vraagt misschien MIDI-clock. Volgende stap: Clay loopt `FASE0-TEST.md` af en zet de uitkomst hier.
- - 2026-09-24 · Totaalplan 0.4 (Claude Code): `reference/ademmachine.html` opgehaald uit Clay's artifact (versie 1790188107-a849, ongewijzigd), met `reference/README.md`. Let op: de mockup heeft een eigen MIDI-koppeling zonder wachtrij en zonder lock, dus niet openen met de APC aangesloten.
-+- 2026-10-03 · koppeling AV-app-hub (Claude Code, als patch tot na 25 okt): `?hub=ws://…` → `src/ui/hub.ts` (lease, `rings:"auto"`, rollen voor de LPD8, paniek = Stop All); zonder vlag niets anders. 57 tests groen, build groen, headless tegen de conformiteitstoets én de echte hub met nep-APC/LPD8 groen (Bank + Track Select geeft focus, LED's en ringen op de APC). Apart: ◄/► in `apc40.ts` naar protocol v1.2. **Niet getest:** de echte APC/LPD8 via de hub in Clay's Chrome. Let op: `zet`s van de hub (LPD8) staan niet in het actielog, dus een replay met LPD8-bewegingen is niet identiek.
 diff --git a/scripts/hub-headless.mjs b/scripts/hub-headless.mjs
 new file mode 100644
-index 0000000..03459d0
+index 0000000..d79df4a
 --- /dev/null
 +++ b/scripts/hub-headless.mjs
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,221 @@
 +// De koppeling met de AV-app-hub (src/ui/hub.ts) in een echte Chromium, met de conformiteitstoets van de
 +// hub zelf (AV-app-hub tools/nep-hub.mjs: toetsApp) en daarna de echte hub (startHub) met een nep-APC en
 +// een nep-LPD8.
 +//
 +//   1. ZONDER ?hub=: alles zoals altijd. Geen WebSocket, hub.ts wordt niet geladen, en "Verbind APC40"
 +//      vraagt Web MIDI (en de Web Lock av-kern-apc) zoals nu.
++//   1b. Een GEWEIGERD ?hub= (geen ws://, of een vreemde host): ook dan geen MIDI en geen Web Lock.
 +//   2. MET ?hub=<nep-hub>: toetsApp moet slagen (hallo, geldig manifest, staat, hartslag, onbekende
 +//      berichten, geen mode-SysEx, herverbinden). requestMIDIAccess en de Web Lock worden NOOIT gebruikt.
 +//   3. De echte hub: eerst een andere app (die krijgt de focus), dan AV-kern. Bank + Track Select op de
@@ -99,7 +87,8 @@ index 0000000..03459d0
 +// Nodig: de repo AV-app-hub (voor toetsApp, startHub, ws en playwright-core uit zijn node_modules).
 +// Gebruik:  node scripts/hub-headless.mjs
 +//   AVKERN_HUB_REPO=<map>  de AV-app-hub (standaard ../av-app-hub naast deze repo)
-+//   AVKERN_CHROME=<pad>    een eigen Chromium (standaard /opt/pw-browsers/chromium als die er is)
++//   AVKERN_CHROME=<pad>    een eigen Chromium (standaard /opt/pw-browsers/chromium als die er is). Op de Mac:
++//                          AVKERN_CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 +//   AVKERN_KIJK_POORT      poort voor de Vite-server (standaard 5199)
 +import { existsSync } from 'node:fs';
 +import { join } from 'node:path';
@@ -169,6 +158,18 @@ index 0000000..03459d0
 +    await page.close();
 +  }
 +
++  console.log('\nmet een geweigerd ?hub=: geen MIDI, geen lock, en een melding die klopt');
++  for (const [h, verwacht] of [['localhost:7700', /moet met ws:\/\/ beginnen/], ['ws://voorbeeld.nl/app', /hub_extern=1/]]) {
++    const { page, verzoeken } = await open(`${BASIS}?hub=${encodeURIComponent(h)}`);
++    await page.click('#btnMidi', { force: true, timeout: 1000 }).catch(() => {});
++    await wacht(300);
++    const g = await page.evaluate(() => ({ midi: window.__midi, locks: window.__locks, txt: document.getElementById('midiTxt').textContent,
++      knop: document.getElementById('btnMidi').textContent, uit: document.getElementById('btnMidi').disabled }));
++    ok(`?hub=${h}: 0× MIDI, 0× lock, hub.ts niet geladen`, g.midi === 0 && g.locks === 0 && !hubGeladen(verzoeken) && g.uit, `${g.midi}× MIDI, ${g.locks}× lock`);
++    ok(`?hub=${h}: melding "${g.txt}"`, verwacht.test(g.txt));
++    await page.close();
++  }
++
 +  console.log('\nmet ?hub=: de conformiteitstoets van de hub');
 +  let hub = null;
 +  const r = await toetsApp({ poort: 0, start: async (url) => { hub = await open(`${BASIS}?hub=${encodeURIComponent(url)}`); } });
@@ -188,6 +189,10 @@ index 0000000..03459d0
 +  const { startHub } = await import(join(HUB, 'src/hub.js'));
 +  const { NepSysteem } = await import(join(HUB, 'src/ports/nep.js'));
 +  const { laadConfig } = await import(join(HUB, 'src/config.js'));
++  const APC = await import(join(HUB, 'src/devices/apc40mk2.js'));
++  const { ROLLEN } = await import(join(HUB, 'src/protocol/manifest.js'));
++  /** LPD8 mk2 (fabrieksindeling): K1..K8 = CC 70..77, in de volgorde van ROLLEN (PROTOCOL.md §6). */
++  const knopCC = (rol) => 70 + ROLLEN.indexOf(rol);
 +  const { default: WebSocket } = await import(join(HUB, 'node_modules/ws/index.js'));
 +  const systeem = new NepSysteem();
 +  const apc = systeem.voegToe('APC40 mkII');
@@ -214,11 +219,15 @@ index 0000000..03459d0
 +    const app = () => echt.kern.beeld().apps.find((a) => a.app === 'av-kern');
 +    ok('av-kern aangemeld (actief, lease), focus nog bij de andere app', await tot(() => app()?.status === 'actief' && app()?.lease && echt.kern.beeld().focus === 'scene'));
 +    const slot = app().slot;
++    // De hubtoets uit de config van de hub (standaard Bank, noot 103), niet hardcoded.
++    const ht = APC.OP_ID.get(echt.kern.hubtoets);
++    if (!ht || ht.t !== 'note') throw new Error(`hubtoets ${echt.kern.hubtoets} is geen noot op de APC`);
++    const HT = ht.n, HTCH = ht.ch ?? 0;
 +    const mark = apc.verstuurd.length;
-+    apc.injecteer([0x90, 103, 127]);                          // Bank (hubtoets) vast
++    apc.injecteer([0x90 | HTCH, HT, 127]);                    // hubtoets (Bank) vast
 +    apc.injecteer([0x90 | (slot - 1), 51, 127]);              // Track Select van het slot van av-kern
 +    apc.injecteer([0x80 | (slot - 1), 51, 0]);
-+    apc.injecteer([0x80, 103, 0]);
++    apc.injecteer([0x80 | HTCH, HT, 0]);
 +    ok(`Bank + Track Select ${slot} geeft av-kern de focus`, await tot(() => echt.kern.beeld().focus === 'av-kern'));
 +    ok('… en av-kern weet het', await tot(() => page.evaluate(() => window.avKern.hub.status().focus)));
 +    const naarApc = (pred) => apc.verstuurd.slice(mark).some(pred);
@@ -242,17 +251,17 @@ index 0000000..03459d0
 +    // LPD8 K5 = macro.kleur → av-kern macro kleur → av-kern tekent de ring van tk1 (CC 48) → APC.
 +    await tot(() => echt.apparaten.lpd8.model === 'mk2');
 +    const m3 = apc.verstuurd.length;
-+    for (let v = 0; v <= 127; v += 4) { lpd8.injecteer([0xb0, 74, v]); await wacht(15); }   // door de huidige stand (pickup)
-+    for (let v = 127; v >= 100; v -= 3) { lpd8.injecteer([0xb0, 74, v]); await wacht(15); }
-+    lpd8.injecteer([0xb0, 74, 100]);
++    for (let v = 0; v <= 127; v += 4) { lpd8.injecteer([0xb0, knopCC('macro.kleur'), v]); await wacht(15); }   // door de huidige stand (pickup)
++    for (let v = 127; v >= 100; v -= 3) { lpd8.injecteer([0xb0, knopCC('macro.kleur'), v]); await wacht(15); }
++    lpd8.injecteer([0xb0, knopCC('macro.kleur'), 100]);
 +    const kl = () => page.evaluate(() => window.avKern.bus.tgt('macro0'));
 +    ok('LPD8 K5 (macro.kleur) → av-kern macro kleur', await tot(async () => Math.abs((await kl()) - 100 / 127) < 0.02), (await kl()).toFixed(3));
 +    ok('… en av-kern tekent de ring van tk1 op de APC', await tot(() => apc.verstuurd.slice(m3).some((b) => b[0] === 0xb0 && b[1] === 48 && Math.abs(b[2] - 100) <= 2)));
 +
 +    // LPD8 K1 = macro.intensiteit → master.
-+    for (let v = 0; v <= 127; v += 4) { lpd8.injecteer([0xb0, 70, v]); await wacht(15); }
-+    for (let v = 127; v >= 64; v -= 4) { lpd8.injecteer([0xb0, 70, v]); await wacht(15); }
-+    lpd8.injecteer([0xb0, 70, 64]);
++    for (let v = 0; v <= 127; v += 4) { lpd8.injecteer([0xb0, knopCC('macro.intensiteit'), v]); await wacht(15); }
++    for (let v = 127; v >= 64; v -= 4) { lpd8.injecteer([0xb0, knopCC('macro.intensiteit'), v]); await wacht(15); }
++    lpd8.injecteer([0xb0, knopCC('macro.intensiteit'), 64]);
 +    const ms = () => page.evaluate(() => window.avKern.bus.tgt('master'));
 +    ok('LPD8 K1 (macro.intensiteit) → master', await tot(async () => Math.abs((await ms()) - 64 / 127) < 0.02), (await ms()).toFixed(3));
 +
@@ -266,7 +275,7 @@ index 0000000..03459d0
 +    lpd8.injecteer([0x89, 36, 0]);
 +
 +    // Focus terug naar de andere app (Bank + Track Select 1): de LED's van av-kern gaan van de APC af.
-+    apc.injecteer([0x90, 103, 127]); apc.injecteer([0x90, 51, 127]); apc.injecteer([0x80, 51, 0]); apc.injecteer([0x80, 103, 0]);
++    apc.injecteer([0x90 | HTCH, HT, 127]); apc.injecteer([0x90, 51, 127]); apc.injecteer([0x80, 51, 0]); apc.injecteer([0x80 | HTCH, HT, 0]);
 +    ok('Bank + Track Select 1: focus terug naar de andere app', await tot(() => echt.kern.beeld().focus === 'scene' && page.evaluate(() => !window.avKern.hub.status().focus)));
 +    const voor = await page.evaluate(() => window.avKern.bus.tgt('macro2'));
 +    apc.injecteer([0xb0, 50, 5]);
@@ -282,41 +291,40 @@ index 0000000..03459d0
 +console.log(fails.length ? `\n${fails.length} FOUT(EN): ${fails.join(', ')}` : '\nAlle checks groen: av-kern conform PROTOCOL.md.');
 +process.exit(fails.length ? 1 : 0);
 diff --git a/src/main.ts b/src/main.ts
-index c5f434d..3362912 100644
+index c5f434d..3019f61 100644
 --- a/src/main.ts
 +++ b/src/main.ts
 @@ -14,6 +14,7 @@ import type { Globals } from './modules/contract';
  import { FlowView } from './ui/flow';
  import { Virtual } from './ui/virtual';
  import { parseBlueprint, renderBlueprint, renderRegister } from './ui/panels';
-+import { hubAdres, hubGeweigerd } from './ui/hub-vlag';
++import { apcBron } from './ui/hub-vlag';
  
  const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
  const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-@@ -99,10 +100,27 @@ async function startAudio() {
+@@ -99,10 +100,26 @@ async function startAudio() {
  $('btnAudio').addEventListener('click', () => { void startAudio(); bus.touch('play', 'geluid aan'); });
  
  // ---- echte APC40 ----
 +// Met ?hub=ws://… (AV-app-hub) bezit de hub de APC: dan nooit requestMIDIAccess en geen Web Lock,
 +// de APC komt via src/ui/hub.ts (alleen dan geladen). Zonder de vlag: precies zoals het was.
-+const hubUrl = hubAdres(location.href);
-+const hubFout = hubGeweigerd(location.href);
++const bron = apcBron(location.href);
 +const midiStatus = (ok: boolean, txt: string) => { $('midiDot').className = 'dot ' + (ok ? 'ok' : 'warn'); $('midiTxt').textContent = txt; };
 +const resumeAudio = () => { if (engine && engine.ctx.state !== 'running') void engine.ctx.resume(); };
  let midiStarted = false;
 -$('btnMidi').addEventListener('click', () => { if (midiStarted) return; midiStarted = true; void connectApc40(driver, (ok, txt) => {
 -  $('midiDot').className = 'dot ' + (ok ? 'ok' : 'warn'); $('midiTxt').textContent = txt;
 -}, () => { if (engine && engine.ctx.state !== 'running') void engine.ctx.resume(); }); });
-+if (hubUrl || hubFout) {
++if (bron.soort !== 'midi') {
 +  // Ook een geweigerd hub-adres opent geen MIDI: wie ?hub= meegeeft, heeft een hub die de APC al bezit.
 +  const knop = $<HTMLButtonElement>('btnMidi'); knop.disabled = true; knop.textContent = 'APC via hub';
-+  if (hubFout) midiStatus(false, `Hub geweigerd: ${hubFout} is niet lokaal (voeg &hub_extern=1 toe als je het zeker weet)`);
++  if (bron.soort === 'geweigerd') midiStatus(false, bron.melding);
 +  else {
 +    midiStatus(false, 'Hub: verbinden…');
-+    void import('./ui/hub').then(({ HubKoppeling }) => {
-+      const hub = new HubKoppeling({ url: hubUrl!, driver, bus, onStatus: (ok, txt) => midiStatus(ok, txt), onInput: resumeAudio }).start();
++    import('./ui/hub').then(({ HubKoppeling }) => {
++      const hub = new HubKoppeling({ url: bron.url, driver, bus, onStatus: (ok, txt) => midiStatus(ok, txt), onInput: resumeAudio }).start();
 +      (window as unknown as { avKern: unknown }).avKern = { hub, bus, driver, loader };
-+    });
++    }).catch((e: unknown) => midiStatus(false, `hub.ts laden mislukt: ${e instanceof Error ? e.message : String(e)} (herlaad de pagina)`));
 +  }
 +} else {
 +  $('btnMidi').addEventListener('click', () => { if (midiStarted) return; midiStarted = true; void connectApc40(driver, midiStatus, resumeAudio); });
@@ -326,15 +334,14 @@ index c5f434d..3362912 100644
  addEventListener('keydown', (e) => {
 diff --git a/src/ui/hub-manifest.json b/src/ui/hub-manifest.json
 new file mode 100644
-index 0000000..e3c31be
+index 0000000..e707aac
 --- /dev/null
 +++ b/src/ui/hub-manifest.json
-@@ -0,0 +1,24 @@
+@@ -0,0 +1,23 @@
 +{
 +  "v": 1,
 +  "app": "av-kern",
 +  "naam": "AV-kern",
-+  "kleur": "#2e5bff",
 +  "truth": "app",
 +  "hb_s": 1,
 +  "lease": true,
@@ -356,27 +363,49 @@ index 0000000..e3c31be
 +}
 diff --git a/src/ui/hub-vlag.ts b/src/ui/hub-vlag.ts
 new file mode 100644
-index 0000000..1aafba2
+index 0000000..86af84e
 --- /dev/null
 +++ b/src/ui/hub-vlag.ts
-@@ -0,0 +1,39 @@
-+// De vlag voor de AV-app-hub: ?hub=ws://localhost:7700/app. Klein en zonder DOM, zodat main.ts
-+// hem altijd kan lezen terwijl hub.ts alleen geladen wordt als de vlag er staat.
+@@ -0,0 +1,80 @@
++// De vlag voor de AV-app-hub: ?hub=ws://localhost:7700/app. Klein, puur en zonder DOM, zodat main.ts
++// hem altijd kan lezen terwijl hub.ts alleen geladen wordt als de vlag er staat. Alle keuzes over de APC
++// zitten in apcBron(): main.ts doet alleen wat die zegt (en de test bewaakt het).
 +//
 +// Met de vlag bezit de hub de APC (en de LPD8): AV-kern roept dan nooit requestMIDIAccess aan en
 +// gebruikt de Web Lock `av-kern-apc` niet. Zonder de vlag is alles zoals het was.
 +
 +/**
-+ * Waar de hub mag staan zonder extra vlag: deze machine, het privé-LAN en de eigen tailnet.
++ * Waar de hub mag staan zonder extra vlag: deze machine, het privé-LAN (ook `.local`-namen) en
++ * tailnet-adressen (100.64.0.0/10). Namen op `*.ts.net` tellen NIET mee: daar vallen ook Tailscale
++ * Funnel-adressen van anderen onder, en die zijn publiek. Die alleen met &hub_extern=1.
 + * Een hub geeft APC-invoer en zet master en macro's: een link naar een vreemde host doet dat niet stilletjes.
 + */
 +export function isLokaleHost(host: string): boolean {
 +  const h = String(host).toLowerCase().replace(/^\[|\]$/g, '');
-+  if (h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h.endsWith('.local') || h.endsWith('.ts.net')) return true;
++  if (h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h.endsWith('.local')) return true;
 +  const ip = h.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
 +  if (!ip) return false;
 +  const a = Number(ip[1]), b = Number(ip[2]);
 +  return a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31) || (a === 100 && b >= 64 && b <= 127);
++}
++
++/** Waarom een ?hub=-waarde niet gebruikt wordt: geen ws://-adres, of een host buiten deze machine/LAN/tailnet. */
++export type Weigerreden = 'geen-ws' | 'extern';
++
++function lees(href: string): { v: string | null; q: URLSearchParams } | null {
++  try { const q = new URL(href).searchParams; return { v: q.get('hub'), q }; } catch { return null; }
++}
++
++/** Het ?hub=-adres beoordeeld: null (geen vlag), of het adres met `reden` als het geweigerd wordt. */
++function beoordeel(href: string): { adres: string; reden: Weigerreden | null } | null {
++  const l = lees(href);
++  if (!l || l.v === null) return null;
++  const v = l.v;
++  if (!/^wss?:\/\//i.test(v)) return { adres: v, reden: 'geen-ws' };
++  let host: string;
++  try { host = new URL(v).hostname; } catch { return { adres: v, reden: 'geen-ws' }; }
++  if (!host) return { adres: v, reden: 'geen-ws' };
++  return { adres: v, reden: isLokaleHost(host) || l.q.get('hub_extern') === '1' ? null : 'extern' };
 +}
 +
 +/**
@@ -384,27 +413,46 @@ index 0000000..1aafba2
 + * tailnet alleen met &hub_extern=1. Niet onthouden: zonder ?hub= is het gewoon AV-kern.
 + */
 +export function hubAdres(href: string): string | null {
-+  let q: URLSearchParams;
-+  try { q = new URL(href).searchParams; } catch { return null; }
-+  const v = q.get('hub');
-+  if (!v || !/^wss?:\/\//i.test(v)) return null;
-+  let host: string;
-+  try { host = new URL(v).hostname; } catch { return null; }
-+  return isLokaleHost(host) || q.get('hub_extern') === '1' ? v : null;
++  const b = beoordeel(href);
++  return b && !b.reden ? b.adres : null;
 +}
 +
-+/** Het ?hub=-adres als het er wel staat maar hubAdres() het weigert, anders null (main.ts meldt het). */
-+export function hubGeweigerd(href: string): string | null {
-+  let v: string | null;
-+  try { v = new URL(href).searchParams.get('hub'); } catch { return null; }
-+  return v && !hubAdres(href) ? v : null;
++/** Het ?hub=-adres als het er wel staat maar hubAdres() het weigert, met de reden; anders null. */
++export function hubGeweigerd(href: string): { adres: string; reden: Weigerreden } | null {
++  const b = beoordeel(href);
++  return b && b.reden ? { adres: b.adres, reden: b.reden } : null;
++}
++
++/** De statusregel bij een geweigerd adres: zeg wat Clay moet doen (en geef geen advies dat niet helpt). */
++export function weigerMelding(g: { adres: string; reden: Weigerreden }): string {
++  return g.reden === 'geen-ws'
++    ? `Hub-adres "${g.adres}" moet met ws:// beginnen, bv. ?hub=ws://localhost:7700/app`
++    : `Hub geweigerd: ${g.adres} staat niet op deze Mac, het LAN of de tailnet (voeg &hub_extern=1 toe als je het zeker weet)`;
++}
++
++/**
++ * Wie de APC levert. `hub`: alleen via de hub (hub.ts laden). `geweigerd`: er staat een ?hub=, maar
++ * die gebruiken we niet; ook dan GEEN MIDI (wie ?hub= meegeeft, heeft een hub die de APC al bezit).
++ * `midi`: zoals altijd (knop "Verbind APC40" → Web MIDI en de Web Lock).
++ */
++export type ApcBron =
++  | { soort: 'hub'; url: string }
++  | { soort: 'geweigerd'; adres: string; reden: Weigerreden; melding: string }
++  | { soort: 'midi' };
++
++export function apcBron(href: string): ApcBron {
++  const b = beoordeel(href);
++  if (!b) return { soort: 'midi' };
++  if (!b.reden) return { soort: 'hub', url: b.adres };
++  const g = { adres: b.adres, reden: b.reden };
++  return { soort: 'geweigerd', ...g, melding: weigerMelding(g) };
 +}
 diff --git a/src/ui/hub.ts b/src/ui/hub.ts
 new file mode 100644
-index 0000000..75fff25
+index 0000000..95890bc
 --- /dev/null
 +++ b/src/ui/hub.ts
-@@ -0,0 +1,338 @@
+@@ -0,0 +1,356 @@
 +// Koppeling met de AV-app-hub (repo AV-app-hub, PROTOCOL.md §5: lease). Alleen met ?hub=ws://… (hub-vlag.ts);
 +// zonder vlag wordt dit bestand niet eens geladen.
 +//
@@ -415,9 +463,11 @@ index 0000000..75fff25
 +// de hub: de nieuwste wint, de oude krijgt 4001). De modus-SysEx stuurt AV-kern hier niet: de hub zet de APC in
 +// 0x42 en tekent de ringen mee met de knop (`rings:"auto"`), zoals de APC zelf in 0x41 doet.
 +//
-+// De kern blijft onaangeroerd (regel 1): dit bestand gebruikt alleen wat main.ts ook gebruikt (Driver.input,
-+// Driver.onSend, Bus.set/tgt/stopAll). Daarnaast parameters met een rol (hub-manifest.json), zodat de
-+// LPD8-macro's iets doen; wat AV-kern zelf verandert gaat terug als `zet` (de app is de bron van waarheid).
++// De kern blijft onaangeroerd (regel 1). APC-invoer gaat door Driver.input en de LED's komen van Driver.onSend,
++// net als bij de echte APC in main.ts. Daarnaast parameters met een rol (hub-manifest.json), zodat de
++// LPD8-macro's iets doen: die zet dit bestand met Bus.set/tgt/stopAll DIRECT, buiten Driver.input om, dus
++// niet in het actielog (zie de LEESMIJ). Tijdens een replay (driver.enabled false) negeren we ze, behalve
++// paniek. Wat AV-kern zelf verandert, of niet overneemt, gaat terug als `zet` (de app is de bron van waarheid).
 +//
 +// Geen eigen klok: tijd en timers komen binnen via `Tijd` (de test geeft een nep).
 +import type { Driver } from '../kern/midi';
@@ -467,8 +517,12 @@ index 0000000..75fff25
 +export type WsKlasse = new (url: string) => WsLike;
 +
 +const klem = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-+const isBytes = (b: unknown): b is number[] =>
-+  Array.isArray(b) && b.length > 0 && b.length <= 512 && b.every((x) => Number.isInteger(x) && x >= 0 && x <= 255);
++/** Een volledig kanaalbericht van de APC: note-off, note-on of CC, precies 3 bytes, databytes 0..127. */
++const isApcBericht = (b: unknown): b is number[] =>
++  Array.isArray(b) && b.length === 3 && b.every((x) => Number.isInteger(x)) &&
++  [0x80, 0x90, 0xb0].includes(b[0] & 0xf0) && b[0] <= 0xbf && b[1] >= 0 && b[1] <= 127 && b[2] >= 0 && b[2] <= 127;
++/** Shift op de APC40 mkII: noot 98. */
++const SHIFT = 98;
 +/** Loslaten (note-off, of note-on met 0) komt ook zonder focus door: dan blijft er nooit een knop hangen. */
 +const isLos = (b: number[]) => (b[0] & 0xf0) === 0x80 || ((b[0] & 0xf0) === 0x90 && b[2] === 0);
 +
@@ -547,6 +601,8 @@ index 0000000..75fff25
 +  nLeds = 0;
 +  nMidi = 0;
 +  private gestopt = false;
++  /** Shift is via de hub ingedrukt (en nog niet losgelaten): alleen die laten we los als de hub wegvalt. */
++  private hubShift = false;
 +  /** param-id → laatste waarde die de hub van ons kent */
 +  private gezet = new Map<string, number>();
 +  private leds: number[][] = [];
@@ -592,8 +648,8 @@ index 0000000..75fff25
 +
 +  private meld() {
 +    const s = this.status();
-+    const tekst = s.vervangen ? 'Hub: een nieuwer AV-kern-tabblad heeft de hub (dit tabblad wacht)'
-+      : !s.verbonden ? `Hub niet bereikbaar (${this.url}) — probeert opnieuw`
++    const tekst = s.vervangen ? 'Hub: een nieuwer AV-kern-tabblad heeft de hub: sluit dit tabblad'
++      : !s.verbonden ? `Hub niet bereikbaar (${this.url}): start de hub met \`npm start\` in AV-app-hub; AV-kern probeert het zelf opnieuw`
 +      : s.focus ? 'APC via de hub · focus' : 'APC via de hub · geen focus (Bank + Track Select)';
 +    this.onStatus(s.verbonden && !s.vervangen, tekst, s);
 +  }
@@ -649,7 +705,10 @@ index 0000000..75fff25
 +    this.focus = false;
 +    this.leds = [];
 +    // Zoals bij een losgetrokken APC (midi.ts): Shift los, anders staat na terugkomen de Shift-laag nog vast.
-+    if (this.driver.shiftHeld) this.driver.input([0x80, 98, 0], 'hub');
++    // Alleen als die Shift van de hub kwam: een Shift van het toetsenbord of de virtuele APC blijft staan
++    // (ook bij elke mislukte herverbindpoging als de hub niet draait).
++    if (this.hubShift && this.driver.shiftHeld) this.driver.input([0x80, SHIFT, 0], 'hub');
++    this.hubShift = false;
 +    if (code === VERVANGEN) this.vervangen = true;
 +    this.meld();
 +    this.opnieuw(code);
@@ -668,12 +727,12 @@ index 0000000..75fff25
 +    try { b = JSON.parse(String(tekst)); } catch { return; }
 +    if (!b || typeof b !== 'object') return;
 +    if (b.t === 'midi') {
-+      if (b.dev !== 'apc40' || !isBytes(b.bytes)) return;
++      if (b.dev !== 'apc40' || !isApcBericht(b.bytes)) return;
 +      const bytes = b.bytes;
-+      if (bytes[0] === 0xf0) return;
 +      if (!this.focus && !isLos(bytes)) return;
 +      this.nMidi++;
 +      this.onInput();
++      if (bytes[1] === SHIFT && (bytes[0] & 0xe0) === 0x80) this.hubShift = !isLos(bytes);
 +      this.driver.input(bytes, 'hub');
 +    } else if (b.t === 'focus') {
 +      const aan = b.aan === true;
@@ -683,9 +742,15 @@ index 0000000..75fff25
 +      const id = String(b.id);
 +      const k = KOPPEL[id];
 +      if (!k?.zet || !k.lees || typeof b.v !== 'number' || !Number.isFinite(b.v)) return;
-+      k.zet(this.bus, klem(b.v), b.bron === 'snapshot' || b.bron === 'replay' ? SNAPSHOT_TAU : undefined);
-+      this.gezet.set(id, k.lees(this.bus)); // niet terugkaatsen
++      // Tijdens een replay van het actielog niets van buiten: dan blijft de replay identiek.
++      if (!this.driver.enabled) return;
++      const v = klem(b.v);
++      k.zet(this.bus, v, b.bron === 'snapshot' || b.bron === 'replay' ? SNAPSHOT_TAU : undefined);
++      // Wat de hub vroeg, niet wat AV-kern ervan maakte: wijkt dat af (ademtempo boven 14 s), dan meldt
++      // tik() de echte waarde terug. Gelijk = niet terugkaatsen.
++      this.gezet.set(id, v);
 +    } else if (b.t === 'trig') {
++      // Paniek werkt bewust ook tijdens een replay: stilte en zwart gaan altijd voor.
 +      const k = KOPPEL[String(b.id)];
 +      if (k?.trig && b.aan === true) k.trig(this.bus);
 +    } else if (b.t === 'fout') {
@@ -716,6 +781,7 @@ index 0000000..75fff25
 +        const k = KOPPEL[p.id];
 +        if (p.soort === 'trigger' || !k?.lees) continue;
 +        const v = klem(k.lees(this.bus));
++        if (!Number.isFinite(v)) continue; // nooit null naar de hub
 +        if (Math.abs(v - (this.gezet.get(p.id) ?? -1)) < 1e-4) continue;
 +        this.gezet.set(p.id, v);
 +        this.stuur({ t: 'zet', id: p.id, v });
@@ -745,10 +811,10 @@ index 0000000..75fff25
 +}
 diff --git a/test/hub.test.ts b/test/hub.test.ts
 new file mode 100644
-index 0000000..088356c
+index 0000000..01d0a8a
 --- /dev/null
 +++ b/test/hub.test.ts
-@@ -0,0 +1,296 @@
+@@ -0,0 +1,416 @@
 +// De koppeling met de AV-app-hub (src/ui/hub.ts), met een nep-WebSocket en een nep-tijd.
 +// De echte hub en een echte Chromium: scripts/hub-headless.mjs (conformiteitstoets van de hub zelf).
 +import { describe, expect, it } from 'vitest';
@@ -759,7 +825,7 @@ index 0000000..088356c
 +import { Driver } from '../src/kern/midi';
 +import { SCENES, SLOTS } from '../src/modules/slots';
 +import type { Blueprint } from '../src/kern/types';
-+import { hubAdres, hubGeweigerd } from '../src/ui/hub-vlag';
++import { apcBron, hubAdres, hubGeweigerd } from '../src/ui/hub-vlag';
 +import {
 +  HubKoppeling, MANIFEST, KOPPEL, HB_MS, TIK_MS, WACHT_MS, VERVANGEN, VERVANGEN_MS, STABIEL_MS, BEELD_MS, SNAPSHOT_TAU,
 +  periodeNaarRate, rateNaarPeriode, type Tijd, type WsLike,
@@ -834,20 +900,48 @@ index 0000000..088356c
 +  it('lokaal, LAN en tailnet mogen; alleen ws:// of wss://', () => {
 +    expect(hubAdres('http://localhost:5173/?hub=ws://localhost:7700/app')).toBe('ws://localhost:7700/app');
 +    expect(hubAdres('http://localhost:5173/?hub=ws%3A%2F%2F192.168.1.20%3A7700%2Fapp')).toBe('ws://192.168.1.20:7700/app');
-+    expect(hubAdres('http://x/?hub=wss://mac.tail1234.ts.net/app')).toBe('wss://mac.tail1234.ts.net/app');
++    expect(hubAdres('http://x/?hub=ws://100.101.102.103:7700/app')).toBe('ws://100.101.102.103:7700/app'); // tailnet-IP
 +    expect(hubAdres('http://x/?hub=http://localhost:7700/app')).toBeNull();
 +    expect(hubAdres('http://x/?hub=1')).toBeNull();
 +  });
 +  it('een vreemde host alleen met &hub_extern=1; anders geweigerd (en main.ts opent dan ook geen MIDI)', () => {
 +    expect(hubAdres('http://x/?hub=ws://voorbeeld.nl/app')).toBeNull();
-+    expect(hubGeweigerd('http://x/?hub=ws://voorbeeld.nl/app')).toBe('ws://voorbeeld.nl/app');
++    expect(hubGeweigerd('http://x/?hub=ws://voorbeeld.nl/app')).toEqual({ adres: 'ws://voorbeeld.nl/app', reden: 'extern' });
 +    expect(hubAdres('http://x/?hub=ws://voorbeeld.nl/app&hub_extern=1')).toBe('ws://voorbeeld.nl/app');
++  });
++  it('*.ts.net is niet "de eigen tailnet" (Funnel-adressen van anderen zijn publiek): alleen met &hub_extern=1', () => {
++    expect(hubAdres('http://x/?hub=wss://iemand.tail1234.ts.net/app')).toBeNull();
++    expect(hubGeweigerd('http://x/?hub=wss://iemand.tail1234.ts.net/app')).toEqual({ adres: 'wss://iemand.tail1234.ts.net/app', reden: 'extern' });
++    expect(hubAdres('http://x/?hub=wss://mac.tail1234.ts.net/app&hub_extern=1')).toBe('wss://mac.tail1234.ts.net/app');
++  });
++  it('een adres zonder ws:// krijgt de juiste reden en melding (niet "niet lokaal", en &hub_extern=1 helpt daar niet)', () => {
++    for (const v of ['localhost:7700', 'localhost:7700/app', 'http://localhost:7700/app', '1']) {
++      expect(hubGeweigerd(`http://x/?hub=${v}`), v).toEqual({ adres: v, reden: 'geen-ws' });
++      const b = apcBron(`http://x/?hub=${v}&hub_extern=1`);
++      expect(b.soort, v).toBe('geweigerd');
++      if (b.soort === 'geweigerd') { expect(b.melding).toMatch(/moet met ws:\/\/ beginnen/); expect(b.melding).not.toMatch(/lokaal|hub_extern/); }
++    }
++    const b = apcBron('http://x/?hub=ws://voorbeeld.nl/app');
++    expect(b).toMatchObject({ soort: 'geweigerd', reden: 'extern' });
++    if (b.soort === 'geweigerd') expect(b.melding).toMatch(/hub_extern=1/);
++  });
++  it('apcBron (wat main.ts doet): zonder ?hub= Web MIDI zoals altijd; met ?hub= nooit, ook niet als het geweigerd is', () => {
++    expect(apcBron('http://localhost:5173/')).toEqual({ soort: 'midi' });
++    expect(apcBron('http://localhost:5173/?blauwdruk=x&scene=2')).toEqual({ soort: 'midi' });
++    expect(apcBron('geen url')).toEqual({ soort: 'midi' });
++    expect(apcBron('http://localhost:5173/?hub=ws://localhost:7700/app')).toEqual({ soort: 'hub', url: 'ws://localhost:7700/app' });
++    for (const h of ['localhost:7700', 'ws://voorbeeld.nl/app', '', 'wss://iemand.tail1234.ts.net/app']) {
++      expect(apcBron(`http://localhost:5173/?hub=${h}`).soort, h).toBe('geweigerd');
++    }
 +  });
 +});
 +
 +describe('manifest', () => {
 +  it('lease met rings:"auto" (AV-kern is gebouwd op APC-modus 0x41: de APC tekent de ringen zelf)', () => {
 +    expect(MANIFEST).toMatchObject({ v: 1, app: 'av-kern', lease: true, rings: 'auto', truth: 'app' });
++  });
++  it('geen kleur in het manifest: die komt uit config.json van de hub (één bron)', () => {
++    expect('kleur' in MANIFEST).toBe(false);
 +  });
 +  it('rollen voor de LPD8 op de macro\'s die er een hebben, master = intensiteit, xf = balans, adem = klok', () => {
 +    const rol = Object.fromEntries(MANIFEST.params.filter((p) => 'rol' in p).map((p) => [p.id, (p as { rol: string }).rol]));
@@ -1043,6 +1137,98 @@ index 0000000..088356c
 +    r.driver.send([0x90, 0, 5]);
 +    r.tijd.verzet(60000);
 +    expect(NepWS.alle.length).toBe(n);
++  });
++
++  it('alleen volledige APC-berichten: 3 bytes, databytes ≤ 127 (anders NaN op de bus en null naar de hub)', () => {
++    const r = rig();
++    r.ws().openen();
++    r.ws().hub({ t: 'focus', aan: true });
++    const k0 = r.bus.tgt('macro0'), m0 = r.bus.tgt('master');
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0xb0, 48] });        // te kort
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0xb0, 14] });        // master, te kort
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0xb0, 48, 200] });   // databyte > 127
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0xb0, 48, 1, 2] });  // te lang
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0xe0, 0, 64] });     // pitch bend: geen APC
++    expect(r.hub.nMidi).toBe(0);
++    expect(r.bus.tgt('macro0')).toBe(k0);
++    expect(r.bus.tgt('master')).toBe(m0);
++    r.tijd.verzet(TIK_MS * 2);
++    expect(r.ws().van('zet').every((z) => typeof z.v === 'number' && Number.isFinite(z.v))).toBe(true);
++    // en mocht er toch NaN op de bus staan: nooit een zet met null
++    r.bus.set('macro0', NaN);
++    r.tijd.verzet(TIK_MS * 2);
++    expect(JSON.stringify(r.ws().uit)).not.toMatch(/null/);
++  });
++
++  it('wegvallen laat alleen een Shift van de hub los, niet die van het toetsenbord (ook niet bij elke herverbindpoging)', () => {
++    const r = rig();
++    // de hub draait niet: Shift van het toetsenbord blijft staan, wat er ook mislukt
++    r.driver.input([0x90, 98, 127], 'toets');
++    expect(r.driver.shiftHeld).toBe(true);
++    for (const ms of WACHT_MS) { r.ws().sluitDoorHub(); r.tijd.verzet(ms); }
++    expect(r.driver.shiftHeld).toBe(true);
++    r.driver.input([0x80, 98, 0], 'toets');
++    // verbonden, Shift via het toetsenbord, dan valt de hub weg: blijft staan
++    r.ws().openen();
++    r.driver.input([0x90, 98, 127], 'toets');
++    r.ws().sluitDoorHub();
++    expect(r.driver.shiftHeld).toBe(true);
++    r.driver.input([0x80, 98, 0], 'toets');
++    // Shift via de hub ingedrukt en weer losgelaten, dan toetsenbord-Shift: wegvallen laat hem staan
++    r.tijd.verzet(WACHT_MS[0] + WACHT_MS[1] + 10);
++    r.ws().openen();
++    r.ws().hub({ t: 'focus', aan: true });
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0x90, 98, 127] });
++    r.ws().hub({ t: 'midi', dev: 'apc40', bytes: [0x90, 98, 0] });
++    r.driver.input([0x90, 98, 127], 'toets');
++    r.ws().sluitDoorHub();
++    expect(r.driver.shiftHeld).toBe(true);
++  });
++
++  it('tijdens een replay (driver.enabled false) verandert een zet van de hub niets; paniek wel (bewust)', () => {
++    const r = rig();
++    r.ws().openen();
++    const k0 = r.bus.tgt('macro0');
++    r.driver.enabled = false;
++    r.ws().hub({ t: 'zet', id: 'kleur', v: 0.9, bron: 'lpd8' });
++    r.ws().hub({ t: 'zet', id: 'master', v: 0.1, bron: 'snapshot' });
++    expect(r.bus.tgt('macro0')).toBe(k0);
++    expect(r.bus.tgt('master')).toBeCloseTo(0.85);
++    r.ws().hub({ t: 'trig', id: 'paniek', aan: true });
++    expect(r.bus.tgt('master')).toBe(0);
++    r.driver.enabled = true;
++    r.ws().hub({ t: 'zet', id: 'kleur', v: 0.9, bron: 'lpd8' });
++    expect(r.bus.tgt('macro0')).toBe(0.9);
++  });
++
++  it('neemt AV-kern een waarde niet over (ademtempo 1 = 16 s, AV-kern kan 14 s), dan meldt hij de echte waarde terug', () => {
++    const r = rig();
++    r.ws().openen();
++    r.tijd.verzet(TIK_MS * 2);
++    r.ws().uit.length = 0;
++    r.ws().hub({ t: 'zet', id: 'ademtempo', v: 1 });
++    expect(r.bus.breathCycle()).toBe(14);
++    r.tijd.verzet(TIK_MS);
++    const z = r.ws().van('zet');
++    expect(z).toHaveLength(1);
++    expect(z[0].id).toBe('ademtempo');
++    expect(z[0].v as number).toBeCloseTo(10 / 12, 4);
++    // binnen het bereik: niets terug
++    r.ws().uit.length = 0;
++    r.ws().hub({ t: 'zet', id: 'ademtempo', v: 0.5 });
++    r.ws().hub({ t: 'zet', id: 'kleur', v: 0.3 });
++    r.tijd.verzet(TIK_MS * 2);
++    expect(r.ws().van('zet')).toEqual([]);
++  });
++
++  it('de statusregel zegt wat Clay moet doen', () => {
++    const r = rig();
++    r.ws().sluitDoorHub();
++    expect(r.status.at(-1)).toMatch(/npm start.*AV-app-hub/);
++    r.tijd.verzet(WACHT_MS[0]);
++    r.ws().openen();
++    r.ws().sluitDoorHub(VERVANGEN);
++    expect(r.status.at(-1)).toMatch(/sluit dit tabblad/);
 +  });
 +});
 -- 
