@@ -149,8 +149,40 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 
 Zodat transports, drivers en kern los van elkaar gebouwd kunnen worden. Types in `src/protocol/types.js`.
 
-- Een **Verbinding** is alles waarlangs de hub met één app praat: `{ app, stuur(bericht) }`. De WS-server maakt er één per socket; een driver (MIDI, HTTP, OSC) is er zelf één.
-- `kern.verbind(verbinding)` → de kern weet van de app; daarna `kern.ontvang(app, bericht)` voor elk bericht van de app (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`); `kern.verbreek(app)` bij sluiten.
-- `kern.invoer(gebeurtenis)` voor elke gebeurtenis van `ApcSessie`/`Lpd8Sessie` (en virtuele controllers).
-- De kern schrijft LEDs via een **Oppervlak** `{ zet(id, LedStaat), teken() }` (`ApcSessie` voldoet) en stuurt naar apps via `verbinding.stuur()`.
-- `kern.beeld()` → wat de cockpit nodig heeft (§8). Kern meldt wijzigingen via `kern.bij('beeld'|'leds'|'invoer', fn)`.
+- Een **Verbinding** is alles waarlangs de hub met één app praat: `{ app, stuur(bericht), sluit?() }`. De WS-server maakt er één per socket; een driver (MIDI, HTTP) is er zelf één.
+- `kern.verbind(v)` → nieuwe verbinding (app nog onbekend); `kern.ontvang(v, bericht)` voor elk gecontroleerd bericht (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`) — bij `hallo` zet de kern `v.app`; `kern.verbreek(v)` bij sluiten.
+- `kern.invoer(g, bytes)` voor elke gebeurtenis van `ApcSessie`/`Lpd8Sessie` en van de virtuele controllers (ruwe bytes zijn nodig voor lease).
+- `kern.cockpit(b)`, `kern.focus(app)`, `kern.bewaar(nr)`, `kern.laad(nr)`, `kern.herteken()` (na opnieuw aansluiten), `kern.apparaatWeg(dev)`, `kern.zetApparaat(dev, info)`, `kern.beeld()`, `kern.stop()`.
+- De kern schrijft LEDs via een **Oppervlak** `{ zet(id, LedStaat), teken(), stuur(bytes), vergeet() }` (`ApcSessie` voldoet) en stuurt naar apps via `verbinding.stuur()`.
+- Events via `kern.bij(naam, fn)`: `beeld`, `leds`, `invoer`, `opname`, `naarApp`.
+- Bedrading van alles samen: `src/hub.js` (`startHub`), gestart met `varve-hub start`.
+
+## 10. Beslissingen (golf 1)
+
+Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend als de rest.
+
+**Verbinden**
+- `welkom` stuurt de hub; de server garandeert er precies één per verbinding.
+- Een tweede `hallo` op dezelfde verbinding met dezelfde `app` en een nieuwe `inst` = herstart (drivers gebruiken dit na een storing): pickup opnieuw "wachten", bij `truth:"hub"` opnieuw afspelen.
+- `truth:"hub"`: bij `hallo` speelt de hub alle bekende waarden opnieuw af (`bron:"replay"`) en negeert hij het eerstvolgende `staat` van die app, zodat standaardwaarden de bewaarde niet overschrijven. Alleen binnen dezelfde hub-sessie (nog niet op schijf).
+- Hartslag: `config.hartslag.stil_s`/`weg_s` gelden voor `hb_s = 1`; een app met `hb_s = 2` krijgt twee keer zo lang.
+
+**Globaal (§6)**
+- Sleutels in `globaal` zijn de rolnamen (`macro.ruimte`, …), plus `adem` (fase 0..1), `klok.adem_periode` (0..1 → `4 + 12·v` seconden), `bpm`, `grondtoon`, `paniek` (1 tijdens paniek, 0 na loslaten van P1).
+- P3 zet `adem` terug op 0 (geen aparte `adem_fase`).
+- LPD8-knoppen werken met pickup tegen de huidige waarde (eerste app met die rol, anders 0,5): er springt nooit iets, ook niet bij de eerste aanraking.
+- P5–P8 en Bank+Scene: kort of lang wordt beslist bij loslaten (> 600 ms = bewaren). Snapshots bewaren app-waarden, geen globale macro's.
+
+**APC (§7)**
+- Slots in de Bank-laag: focus = pulseren, `actief` = vol, `nieuw` (hallo, nog geen manifest) = gedimd, `stil` = knipperen, `weg`/leeg = uit. Bank + Shift + Scene = snapshot bewaren; bewaarde scènes branden wit.
+- Faders: de fysieke stand is bij de start onbekend → de clip-stop-LED van die strip knippert tot de fader de doelwaarde kruist.
+- `config.ringen_nemen_waarde_over` (standaard `true`, te bevestigen door proef V1): bij focus krijgt elke ringknop de waarde van de app. Bij `false` krijgen ringknoppen pickup en toont de ring alleen een bekende fysieke stand.
+- Kaarten per app: `maps/<app>.json` (`{ "<control-id>": { "id": "<param>", "takeover"?: … } }`), door de hub ingelezen als `config.kaarten`.
+- Een keuze met meer dan 5 opties: pad stapt door de opties.
+
+**Cockpit (§8)**
+- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`).
+- Bij verbinden krijgt een cockpit `beeld` én een volledig `leds`. Ongeldige cockpitberichten → `{ t:"fout", reden }`.
+- Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
+- Valt een cockpit weg terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los.
+- De virtuele LPD8 stuurt altijd de mk2-fabrieksstand (noot 36–43 kanaal 10, CC 70–77); de hub leest die los van het profiel van de echte LPD8.

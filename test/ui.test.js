@@ -35,7 +35,7 @@ describe('indeling van de virtuele APC40', () => {
     expect(INDELING['pad1-1'].x).toBeLessThan(INDELING['pad1-8'].x);
     expect(INDELING.left.x).toBeLessThan(INDELING.right.x);
     expect(C('left').n).toBe(97);
-    expect(INDELING.scene1.y).toBeGreaterThan(INDELING.scene5.y);
+    expect(INDELING.scene1.y).toBeLessThan(INDELING.scene5.y); // Scene Launch 1 (note 82) bovenaan, protocol v1.2
   });
 });
 

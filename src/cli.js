@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
+//   start [--poort N] [--host H] [--zonder-midi] [--geen-drivers]
+//                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
@@ -17,6 +19,8 @@ import { doctor } from './doctor.js';
 import { voerUit, terminalIO } from './proef/runner.js';
 import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
+import { startHub } from './hub.js';
+import { NepSysteem } from './ports/nep.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
 const config = laadConfig();
@@ -49,7 +53,32 @@ function bijStoppen(opruimen) {
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
 }
 
+/** @param {string} naam */
+const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
+
 const opdrachten = {
+  async start() {
+    let systeem;
+    if (args.includes('--zonder-midi')) systeem = new NepSysteem();
+    else {
+      const r = await laadRtMidi();
+      if (r.systeem) systeem = r.systeem;
+      else { console.log(`Geen MIDI (${r.reden}) — de hub draait zonder controllers; gebruik de virtuele in de cockpit.`); systeem = new NepSysteem(); }
+    }
+    const log = (/** @type {unknown[]} */ ...x) => console.log(...x);
+    const hub = await startHub({
+      config, systeem, poort: optie('--poort') ? Number(optie('--poort')) : undefined, host: optie('--host'),
+      drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), log,
+    });
+    for (const [dev, s] of [['APC40', hub.apparaten.apc], ['LPD8', hub.apparaten.lpd8]]) {
+      /** @type {any} */ (s).bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
+      /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
+    }
+    hub.kern.bij('naarApp', () => {});
+    console.log(`varve-hub draait. Cockpit: ${hub.adres}   Apps: ${hub.adres.replace('http', 'ws')}/app   Ctrl-C stopt.`);
+    bijStoppen(() => hub.stop());
+  },
+
   async doctor() {
     const { tekst, data } = await doctor({ config, laadMidi: laadRtMidi });
     console.log(args.includes('--json') ? JSON.stringify(data, null, 2) : tekst);
@@ -121,6 +150,7 @@ const opdrachten = {
 
   help() {
     console.log(`varve-hub — opdrachten:
+  start             de hub: cockpit op http://localhost:7700 (--poort, --host, --zonder-midi, --geen-drivers)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt

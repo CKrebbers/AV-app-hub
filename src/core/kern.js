@@ -166,6 +166,8 @@ export class Kern extends Zender {
     /** @type {any} */ this.p1Timer = null;
     /** De volgende tekening is een volledige repaint (na opnieuw aansluiten of een nieuw manifest). */
     this.alles = false;
+    /** Stand van de fysieke controllers voor de cockpit (gezet door de hub-bedrading). @type {Record<string, { verbonden: boolean, naam?: string|null, model?: string|null }>} */
+    this.apparaatInfo = { apc40: { verbonden: false }, lpd8: { verbonden: false } };
     // Een ApcSessie meldt zelf wanneer hij (opnieuw) is aangesloten of wegvalt.
     /** @type {(() => void)[]} */
     this.afmelden = [];
@@ -965,11 +967,17 @@ export class Kern extends Zender {
       })),
       focus: this.focusApp,
       globaal: { ...this.globaal },
-      apparaten: {},
+      apparaten: { ...this.apparaatInfo },
       snapshots: [...this.snapshots.keys()].sort((x, y) => x - y),
       opname: this.opname,
       pickup,
     };
+  }
+
+  /** De hub meldt de stand van een controller (voor de cockpit). @param {string} dev @param {{ verbonden: boolean, naam?: string|null, model?: string|null }} info */
+  zetApparaat(dev, info) {
+    this.apparaatInfo[dev] = { ...info };
+    this.#beeldGewijzigd();
   }
 
   /** Alle timers weg. */

@@ -114,5 +114,13 @@
   "hartslag": {
     "stil_s": 3,
     "weg_s": 10
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "origins": []
+  },
+  "ringen_nemen_waarde_over": true,
+  "drivers": {
+    "uitstel_ms": 3000
   }
 }

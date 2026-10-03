@@ -22,7 +22,8 @@ const P = (id, x, y, w, h, kort) => { INDELING[id] = { x: x + OX, y: y + OY, w, 
 for (let i = 0; i < 8; i++) P(`tk${i + 1}`, i * 1.1 + 0.05, 0, 0.9, 0.9, `${i + 1}`);
 // Grid: rij 5 bovenaan, rij 1 onderaan.
 for (let r = 5; r >= 1; r--) for (let c = 1; c <= 8; c++) P(`pad${r}-${c}`, (c - 1) * 1.1, 1.2 + (5 - r) * 0.75, 1, 0.65, `${r}·${c}`);
-for (let r = 5; r >= 1; r--) P(`scene${r}`, 9, 1.2 + (5 - r) * 0.75 + 0.05, 0.8, 0.55, `${r}`);
+// Scene Launch 1 (note 82) zit bovenaan, naast de bovenste padrij (noten 32-39) — protocol v1.2 en Ableton.
+for (let r = 1; r <= 5; r++) P(`scene${r}`, 9, 1.2 + (r - 1) * 0.75 + 0.05, 0.8, 0.55, `${r}`);
 for (let c = 1; c <= 8; c++) {
   const x = (c - 1) * 1.1;
   P(`stop${c}`, x, 5.05, 1, 0.38, '■');

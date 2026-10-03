@@ -397,15 +397,27 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     ws.on('error', () => {});
     const stuur = (/** @type {object} */ b) => { if (ws.readyState === WebSocket.OPEN) try { ws.send(JSON.stringify(b)); } catch { /* weg */ } };
     uitzender.voegToe(ws);
+    /** Noten die deze cockpit virtueel ingedrukt houdt: bij wegvallen loslaten, anders blijft een knop "hangen". */
+    const ingedrukt = new Map();
     ws.on('message', (data, binair) => {
       levend.add(ws);
       if (binair) return stuur({ t: 'fout', reden: 'alleen tekstberichten (JSON)' });
       const r = leesVanCockpit(String(data));
       if (!r.ok) return stuur({ t: 'fout', reden: r.fout });
-      if ('virtueel' in r) { const { dev, bytes } = r.virtueel; return veilig('opVirtueel', () => opVirtueel?.(dev, bytes)); }
+      if ('virtueel' in r) {
+        const { dev, bytes } = r.virtueel;
+        const st = bytes[0] & 0xf0, sleutel = `${dev}:${bytes[0] & 0x0f}:${bytes[1]}`;
+        if (st === 0x90 && bytes[2] > 0) ingedrukt.set(sleutel, { dev, bytes: [0x80 | (bytes[0] & 0x0f), bytes[1], 0] });
+        else if (st === 0x80 || st === 0x90) ingedrukt.delete(sleutel);
+        return veilig('opVirtueel', () => opVirtueel?.(dev, bytes));
+      }
       if ('kern' in r) veilig('kern.cockpit', () => kern.cockpit(r.kern));
     });
-    ws.on('close', () => uitzender.verwijder(ws));
+    ws.on('close', () => {
+      uitzender.verwijder(ws);
+      for (const { dev, bytes } of ingedrukt.values()) veilig('opVirtueel (loslaten)', () => opVirtueel?.(dev, bytes));
+      ingedrukt.clear();
+    });
   });
 
   // Half-open TCP opruimen: wie twee pings lang niets laat horen, wordt afgesloten (sluiten → verbreek).
