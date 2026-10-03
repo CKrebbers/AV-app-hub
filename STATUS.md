@@ -44,6 +44,8 @@ Klaar als (op jouw Mac):
 - [ ] LPD8-knop 2 verandert "Helderheid" in beide nep-apps
 - [ ] TD: device 1 = "VARVE-HUB TD" → APC-knoppen bewegen de TD-hub (zie `docs/TOUCHDESIGNER.md`)
 
+## Golf 2 — breken ✓
+6 zoekers (MIDI-chaos, netwerkchaos, levensduur, lease-chaos, protocol-feiten, volledigheid) → 23 bevindingen door een scepticus bevestigd (6 belangrijk, 17 klein, 0 blokkerend) → per gebied opgelost, elk met een test die de fout eerst liet zien. Belangrijkste: slots komen vrij, twee tabs van dezelfde app verdringen elkaar niet meer, LPD8-pickup volgt snapshots en app-wijzigingen, lease-LEDs strikt gefilterd en begrensd, Sediment-waarden op log-schaal in de cockpit, nette foutmelding als poort 7700 bezet is. Beslissingen: `PROTOCOL.md` §11.
+
 ## Volgende
-- Golf 2: stresstest (proberen te breken) + volledigheidscontrole
 - Golf 3: koppelingen in de apps zelf (Varve DJ, formula-lab, waterschaal, medisynth, flux; av-kern na 25 okt)
