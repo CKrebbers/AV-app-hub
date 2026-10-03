@@ -45,7 +45,7 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
 
 ## Eenmalig instellen (±15 minuten)
 
-1. **Start eerst de hub** (`varve-hub`). De poort "VARVE-HUB Logic" bestaat alleen zolang de hub draait.
+1. **Start eerst de hub** (`npm start` in de map van de hub, oftewel `node src/cli.js start`). De poort "VARVE-HUB Logic" bestaat alleen zolang de hub draait.
    Controle: *Audio MIDI-configuratie → MIDI-studio* toont "VARVE-HUB Logic".
 2. **Logic → Instellingen → MIDI → Invoer** (*Settings → MIDI → Inputs*): vink **VARVE-HUB Logic** aan.
    (Staat hij er niet, start Logic dan opnieuw nadat de hub draait.)
@@ -95,7 +95,7 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
 | Shape … Resonance bewegen mee met de TD-knoppen | De toewijzing heeft Input *All*, of VARVE-HUB TD staat aan als invoer. Stap 2 en 6. |
 | Leer-modus pakt niets als ik een APC-fader beweeg | Pickup: de hub stuurt pas als de fader de huidige waarde kruist. Leer via de cockpit, of beweeg de fader over zijn hele bereik. |
 | Werkt alleen als het spoor geselecteerd is | In de expertweergave staat *Selected Track*; kies het Sediment-spoor. |
-| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. De hub onthoudt waarden alleen zolang hij draait: na een herstart van de hub krijgt Sediment de standaardwaarden uit het manifest, niet je laatste stand. |
+| Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. De hub onthoudt waarden alleen zolang hij draait en stuurt na een herstart niets: dan houdt Sediment zijn eigen stand, maar gaat de hub (cockpit, ringen, pickup) uit van de standaardwaarden uit het manifest. Laad een snapshot, of beweeg de fader over de standaardwaarde heen: dan staan ze weer gelijk. |
 
 *Later (ONDERZOEK.md §7):* een vaste CC→parameter-tabel in de Sediment-processor zelf maakt deze Logic-stap
 overbodig. De CC-nummers hierboven zijn dan de tabel.
