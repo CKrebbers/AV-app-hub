@@ -22,7 +22,18 @@ import * as LPD8 from './devices/lpd8.js';
 export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {} }) {
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
   const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
-  const kern = new Kern({ klok, config: cfg, oppervlak: apparaten.apc });
+  // De kern tekent via een poortwachter: zodra stop() begint, komt er van de kern niets meer op de APC.
+  // Anders kan een app die tijdens het afsluiten nog `zet` stuurt LEDs aanzetten ná het zwart.
+  let stoppend = false;
+  const apc = apparaten.apc;
+  const oppervlak = {
+    /** @param {string} id @param {any} s */ zet(id, s) { if (!stoppend) apc.zet(id, s); },
+    teken() { return stoppend ? 0 : apc.teken(); },
+    /** @param {number[]} b */ stuur(b) { if (!stoppend) apc.stuur(b); },
+    vergeet() { if (!stoppend) apc.vergeet(); },
+    /** @param {string} naam @param {Function} fn */ bij(naam, fn) { return apc.bij(naam, /** @type {any} */ (fn)); },
+  };
+  const kern = new Kern({ klok, config: cfg, oppervlak });
 
   // Echte controllers → kern; hun stand → cockpit.
   apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => kern.invoer(g, b));
@@ -54,10 +65,12 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
     kern, apparaten, server, opVirtueel,
     adres: server.adres,
     async stop() {
+      if (stoppend) return;
+      stoppend = true;
       actieveDrivers?.stop();
+      await server.stop();               // geen app- of cockpitberichten meer
       kern.stop();
-      await apparaten.stop();
-      await server.stop();
+      await apparaten.stop();            // LEDs uit, poorten dicht
     },
   };
 }
