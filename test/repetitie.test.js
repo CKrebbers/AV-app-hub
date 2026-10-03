@@ -12,15 +12,32 @@ import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { NepKlok } from '../src/core/klok.js';
 import { laadConfig } from '../src/config.js';
-import { valideerManifest } from '../src/protocol/manifest.js';
+import { valideerManifest, keuzeNaarWaarde } from '../src/protocol/manifest.js';
 import { NepApp } from '../tools/nep-app.mjs';
-import { speelAvond, wandklok, koppel, latencyVan, rapportMd } from '../tools/repetitie-avond.mjs';
+import { speelAvond, wandklok, koppel, latencyVan, rapportMd, fysiek } from '../tools/repetitie-avond.mjs';
+import { totUiterlijk } from '../tools/repetitie-proces.mjs';
 
 const MAP = fileURLToPath(new URL('./fixtures/manifesten/', import.meta.url));
 /** @type {Record<string, { manifest: any, staat: Record<string, number> }>} */
 const FIXTURES = Object.fromEntries(readdirSync(MAP).filter((f) => f.endsWith('.json')).map((f) => [f.replace(/\.json$/, ''), JSON.parse(readFileSync(join(MAP, f), 'utf8'))]));
 const VIJF = ['formula-lab', 'waterschaal', 'medisynth', 'flux', 'varve-dj'];
 const echt = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Bekende problemen in de HUB die de repetitie vindt (open vragen, niet in de apps op te lossen). Deze controles
+ * tellen niet mee in "stap: …", maar staan in een eigen it.fails: wordt de hub gerepareerd, dan slaagt die test
+ * en meldt vitest dat it.fails onterecht faalt — haal de regel dan hier weg.
+ *
+ * K1 na paniek: Waterschaal zet bij paniek volume op 0 en meldt dat (zet). De pickup van de LPD8 neemt als doel
+ * de waarde van de EERSTE app met de rol (kern.#macroDoel, PROTOCOL §10), dus waterschaal.volume = 0; K1 staat op
+ * 0,283 en doet daarna voor álle apps met macro.intensiteit niets meer (ook medisynth.niveau) tot hij voorbij 0
+ * draait. Repro: deze test, of `node tools/repetitie.mjs` (rapport: "na paniek: K1 twee tikjes verder → … geen zet").
+ * Open vraag (hub/PROTOCOL): pickup-doel uit de laatste fysieke stand of het globale doel, niet uit de eerste app?
+ */
+const BEKEND = [
+  { stap: 'paniek: P1 vasthouden en loslaten', wat: /^na paniek: K1 twee tikjes verder → /, waarom: 'K1 na paniek (pickup-doel uit de eerste app met de rol)' },
+];
+const isBekend = (/** @type {string} */ stap, /** @type {string} */ wat) => BEKEND.some((b) => b.stap === stap && b.wat.test(wat));
 
 /**
  * Nep-app met het echte manifest en de echte beginstaat, die alles logt wat hij ontvangt (met wandklok).
@@ -36,6 +53,8 @@ class RepetitieApp extends NepApp {
       this.ws?.on('message', (d) => { try { log.push({ t: wandklok(), b: JSON.parse(String(d)) }); } catch { /* geen JSON */ } });
     });
     this.bij('bericht', (/** @type {any} */ b) => {
+      // De echte Waterschaal: paniek = "zachte stilte", volume naar 0, en dat meldt hij terug (zet).
+      if (this.manifest.app === 'waterschaal' && b.t === 'trig' && b.id === 'paniek' && b.aan) this.zelfZetten('volume', 0);
       if (!this.manifest.lease) return;
       if (b.t === 'midi' && b.bytes[0] === 0xb0 && b.bytes[1] === 14 && 'master' in this.waarden) {
         this.zelfZetten('master', b.bytes[2] / 127);
@@ -71,7 +90,7 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
         await echt(2);
       }
     };
-    while (!hub.apparaten.apc.verbonden || hub.apparaten.lpd8.model !== 'mk2') await wacht(50);
+    await totUiterlijk(() => hub.apparaten.apc.verbonden && hub.apparaten.lpd8.model === 'mk2', 10000, 'nep-APC40/LPD8 melden zich niet', wacht);
 
     /** @type {Map<string, import('../tools/repetitie-avond.mjs').Deelnemer>} */
     const deelnemers = new Map();
@@ -124,7 +143,7 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
     for (const a of apps.values()) a.stop();
     if (!hub) return;
     let klaar = false;
-    const p = hub.stop().then(() => { klaar = true; });
+    const p = hub.stop().finally(() => { klaar = true; });
     while (!klaar) { klok.loop(50); await echt(1); }
     await p;
   });
@@ -157,11 +176,28 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
     it(`stap: ${naam}`, () => {
       const s = uitslag.stappen.find((x) => x.naam === naam);
       expect(s, `stap "${naam}" liep niet`).toBeTruthy();
-      const mis = /** @type {any} */ (s).controles.filter((/** @type {any} */ x) => !x.ok).map((/** @type {any} */ x) => `${x.wat}${x.detail ? ` — ${x.detail}` : ''}`);
+      const mis = /** @type {any} */ (s).controles.filter((/** @type {any} */ x) => !x.ok && !isBekend(naam, x.wat)).map((/** @type {any} */ x) => `${x.wat}${x.detail ? ` — ${x.detail}` : ''}`);
       expect(mis).toEqual([]);
       expect(/** @type {any} */ (s).controles.length).toBeGreaterThan(0);
     });
   }
+
+  for (const b of BEKEND) {
+    // Faalt zolang het probleem in de hub zit; slaagt deze test, dan is het opgelost: haal hem uit BEKEND.
+    it.fails(`bekend probleem in de hub (open vraag): ${b.waarom}`, () => {
+      const s = uitslag.stappen.find((x) => x.naam === b.stap);
+      const hier = s?.controles.filter((x) => b.wat.test(x.wat)) ?? [];
+      expect(hier.length).toBeGreaterThan(0);
+      expect(hier.filter((x) => !x.ok).map((x) => `${x.wat} — ${x.detail}`)).toEqual([]);
+    });
+  }
+
+  it('de nep-Waterschaal doet bij paniek wat de echte doet: volume naar 0, en meldt dat', () => {
+    const s = uitslag.stappen.find((x) => x.naam === 'paniek: P1 vasthouden en loslaten');
+    expect(s?.controles.find((x) => x.wat === 'waterschaal kreeg trig paniek aan')?.ok).toBe(true);
+    // De hub kent volume 0 omdat de app het terugmeldde (niet omdat de hub het zelf zette).
+    expect(hub.kern.apps.get('waterschaal')?.waarden.volume).toBe(0);
+  });
 
   it('elke app kreeg zijn berichten: latency gemeten, niets verloren buiten een herstart', () => {
     for (const [id, a] of Object.entries(uitslag.perApp)) {
@@ -174,8 +210,18 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
 
   it('LPD8-macro K5 (macro.kleur) bereikt beide keuze-parameters met een gekwantiseerde waarde', () => {
     const s = uitslag.stappen.find((x) => x.naam.startsWith("LPD8: macro's"));
-    const kleur = s?.controles.filter((x) => x.wat.startsWith('macro.kleur →')) ?? [];
-    expect(kleur.map((x) => x.wat.split(' ')[2])).toEqual(expect.arrayContaining(['formula-lab.palette', 'flux.palet']));
+    const doel = fysiek(0.2 + 0.07 * 5); // wat K5 in het draaiboek opdraait
+    for (const [app, id] of [['formula-lab', 'palette'], ['flux', 'palet']]) {
+      const p = FIXTURES[app].manifest.params.find((/** @type {any} */ x) => x.id === id);
+      expect(p?.soort, `${app}.${id}`).toBe('keuze');
+      const n = p.keuzes.length;
+      const verwacht = keuzeNaarWaarde(Math.round(doel * (n - 1)), n);
+      // De controle zelf: de laatste zet die de app kreeg, is precies die gekwantiseerde waarde (en kwam van de LPD8).
+      const ctl = s?.controles.find((x) => x.wat.startsWith(`macro.kleur → ${app}.${id} `));
+      expect(ctl?.wat).toBe(`macro.kleur → ${app}.${id} eindigt op ${verwacht.toFixed(3)}`);
+      expect(ctl?.ok, ctl?.detail).toBe(true);
+      expect(verwacht).not.toBeCloseTo(doel, 3); // anders toetst dit niets over quantiseren
+    }
   });
 
   it('het rapport noemt elke stap en elke app', () => {
@@ -198,6 +244,22 @@ describe('repetitie: latency koppelen', () => {
       ['b', [{ t: 123, b: { t: 'zet', id: 'x', v: 1 } }]],
     ]);
     expect(koppel(v, o).map((x) => x.ms)).toEqual([1, 5, 3, null]);
+  });
+  it('een verloren bericht krijgt niet de ontvangst van een later, gelijk bericht', () => {
+    // Herstart: globaal@100 gaat verloren, de app krijgt wel zet@200 en daarna een gelijk globaal@300.
+    const g = { t: 'globaal', waarden: { paniek: 0 } };
+    const v = [
+      { app: 'a', t: 100, b: g },
+      { app: 'a', t: 200, b: { t: 'zet', id: 'x', v: 0.5 } },
+      { app: 'a', t: 300, b: g },
+    ];
+    const o = new Map([['a', [{ t: 202, b: { t: 'zet', id: 'x', v: 0.5 } }, { t: 303, b: g }]]]);
+    expect(koppel(v, o).map((x) => x.ms)).toEqual([null, 2, 3]);
+  });
+  it('een ontvangst zonder verzonden tegenhanger (welkom) verschuift niets', () => {
+    const v = [{ app: 'a', t: 100, b: { t: 'zet', id: 'x', v: 1 } }];
+    const o = new Map([['a', [{ t: 90, b: { t: 'welkom' } }, { t: 104, b: { t: 'zet', id: 'x', v: 1 } }]]]);
+    expect(koppel(v, o).map((x) => x.ms)).toEqual([4]);
   });
   it('percentielen', () => {
     expect(latencyVan([5, 1, 3, 2, 4])).toEqual({ n: 5, p50: 3, p95: 5, max: 5 });

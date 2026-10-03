@@ -4,7 +4,7 @@
 // Lokaal, niet in CI (daar: test/repetitie.test.js met nep-apps en dezelfde manifesten). Zie docs/REPETITIE.md.
 //
 //   node tools/repetitie.mjs [--paden paden.json] [--uit tools/uitvoer] [--fixtures] [--zonder flux,…]
-//                            [--herstart formula-lab,varve-dj,flux] [--hub-poort 7700] [--zichtbaar]
+//                            [--herstart formula-lab,varve-dj,flux] [--hub-poort 7700] [--zichtbaar] [--max-duur 300]
 //
 // Wat er draait:
 //  - de hub (startHub) met NepSysteem: een nep-APC40 mkII en een nep-LPD8 mk2; poort uit config.json;
@@ -12,11 +12,13 @@
 //    Varve DJ met zijn eigen server (patch uit koppelingen/varve-dj in een tijdelijke worktree),
 //    allemaal in headless Chromium (playwright-core) met ?hub=;
 //  - flux in een pseudo-terminal, via tools/repetitie-flux.py (meet wat flux ontvangt en toepast).
-// Paden: zoals de sets — sets/paden.json, $VARVE_HUB_PADEN of --paden (sleutel = repo-naam uit config.json), per app
+// Paden: sets/paden.json (zelfde bestand als de sets, niet in git), $VARVE_HUB_PADEN of --paden (sleutel = repo-naam uit config.json), per app
 // te overschrijven met $REPETITIE_<APP>; zonder iets: naast deze repo (../formula-lab, ../flux-screensaver, …).
 // Rapport: <uit>/repetitie-<datum>.md en .json. Met --fixtures: de manifesten die de apps echt stuurden naar
 // test/fixtures/manifesten/<app>.json.
-import { spawn, execFileSync } from 'node:child_process';
+// Opruimen (servers, browser, tijdelijke worktree en map) gebeurt ook bij Ctrl-C, SIGTERM, SIGHUP, een onverwachte
+// fout en na --max-duur (dan met een gedeeltelijk rapport): zie tools/repetitie-proces.mjs.
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -26,45 +28,74 @@ import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
 import { echteKlok } from '../src/core/klok.js';
-import { speelAvond, rapportMd, wandklok } from './repetitie-avond.mjs';
+import { speelAvond, rapportMd, wandklok, deelUitslag } from './repetitie-avond.mjs';
+import { Opruimer, start as startProces, stopProces, wachtOpUrl, poortBezet, poortBezetMelding, metTijd, isHoofdmodule, totUiterlijk, wacht } from './repetitie-proces.mjs';
 
 const HUB_MAP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const APPS = ['formula-lab', 'waterschaal', 'medisynth', 'flux', 'varve-dj'];
 /** De formule waarmee Formula Lab start (anders begint hij willekeurig en verandert het manifest bij elke herstart). */
 const FORMULE = 'sin(x * 4.0 + t * 0.7)';
 const CHROMIUM = process.env.CHROMIUM ?? process.env.PW_CHROMIUM ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
+/** Hoe lang één keer teruglezen uit een pagina mag duren (een vastgelopen hoofdthread laat page.evaluate eeuwig wachten). */
+export const LEES_MS = 2000;
+/** Standaard voor --max-duur (s): daarna breekt de waakhond de repetitie af, ruimt op en schrijft een gedeeltelijk rapport. */
+const MAX_DUUR_S = 300;
+export const TE_LAAT = Symbol('te laat');
+/**
+ * Een pagina-evaluatie, maar nooit langer dan `ms`: daarna TE_LAAT (de evaluatie zelf blijft hangen, niemand wacht erop).
+ * @param {{ evaluate: (f: () => any) => Promise<any> }} page @param {() => any} lezer
+ */
+export const leesPagina = (page, lezer, ms = LEES_MS) => metTijd(page.evaluate(lezer).catch(() => null), ms, TE_LAAT);
 
 const args = process.argv.slice(2);
 const optie = (/** @type {string} */ n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 const vlag = (/** @type {string} */ n) => args.includes(n);
-const wacht = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 const log = (/** @type {string} */ s) => console.log(s);
+const opruimer = new Opruimer();
+/** @param {string} cmd @param {string[]} a @param {import('node:child_process').SpawnOptions} o @param {string} naam */
+const start = (cmd, a, o, naam) => startProces(cmd, a, o, naam, opruimer, log);
 
 /**
- * Paden van de koppelingen, in hetzelfde formaat als de sets (docs/SETS.md): sets/paden.json (lokaal, niet in git)
+ * Paden van de koppelingen, in hetzelfde formaat als de sets: sets/paden.json (lokaal, niet in git)
  * of $VARVE_HUB_PADEN of --paden, met als sleutel de repo-naam uit config.json → apps.<id>.repo (`~` = thuismap).
  * Per app te overschrijven met $REPETITIE_<APP> (bv. REPETITIE_FORMULA_LAB). Sleutel "varve-dj" (app-id) mag
  * een kant-en-klare Varve DJ-checkout mét de hub-patch zijn; anders maakt de repetitie zelf een tijdelijke
  * worktree van "youtube-mixer" (origin/main) met de patches uit koppelingen/varve-dj.
  * Zonder iets: de repo's naast deze repo (../formula-lab, ../flux-screensaver, …).
+ * Een expliciet opgegeven bestand (--paden of $VARVE_HUB_PADEN) moet bestaan; ongeldige JSON is altijd een fout.
  * @param {any} config
+ * @param {{ bestand?: string, env?: NodeJS.ProcessEnv, hubMap?: string }} [o] bestand = --paden
  * @returns {Record<string, string>} app-id → map, plus 'youtube-mixer'
  */
-function leesPaden(config) {
-  const bestand = optie('--paden') ?? process.env.VARVE_HUB_PADEN ?? join(HUB_MAP, 'sets/paden.json');
+export function leesPaden(config, { bestand: opgegeven, env = process.env, hubMap = HUB_MAP } = {}) {
+  const expliciet = opgegeven ?? env.VARVE_HUB_PADEN;
+  const bestand = expliciet ?? join(hubMap, 'sets/paden.json');
+  if (expliciet && !existsSync(bestand)) throw new Error(`paden: ${bestand} bestaat niet (${opgegeven ? '--paden' : '$VARVE_HUB_PADEN'}); zie docs/REPETITIE.md voor een voorbeeld`);
   /** @type {Record<string, string>} */
-  const p = existsSync(bestand) ? JSON.parse(readFileSync(bestand, 'utf8')) : {};
+  let p = {};
+  if (existsSync(bestand)) {
+    try { p = JSON.parse(readFileSync(bestand, 'utf8')); } catch (e) { throw new Error(`paden: ${bestand} is geen geldige JSON: ${/** @type {any} */ (e)?.message}`); }
+    if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error(`paden: ${bestand} moet een object zijn ({ "repo-naam": "map" })`);
+  }
   const thuis = (/** @type {string} */ x) => (x === '~' ? homedir() : x.startsWith('~/') ? join(homedir(), x.slice(2)) : x);
   /** @type {Record<string, string>} */
   const uit = {};
   for (const app of [...APPS, 'youtube-mixer']) {
     const repo = app === 'youtube-mixer' ? app : config.apps[app]?.repo ?? app;
-    const env = process.env[`REPETITIE_${app.toUpperCase().replace(/-/g, '_')}`];
+    const e = env[`REPETITIE_${app.toUpperCase().replace(/-/g, '_')}`];
     // varve-dj: alleen een eigen sleutel "varve-dj" (een checkout mét patch); de repo zelf heet youtube-mixer.
-    const v = env ?? p[app] ?? (app === 'varve-dj' ? undefined : p[repo]) ?? (app === 'varve-dj' ? undefined : join('..', repo));
-    if (v) uit[app] = resolve(HUB_MAP, thuis(v));
+    const v = e ?? p[app] ?? (app === 'varve-dj' ? undefined : p[repo]) ?? (app === 'varve-dj' ? undefined : join('..', repo));
+    if (v) uit[app] = resolve(hubMap, thuis(v));
   }
   return uit;
+}
+
+/** App-ids uit een optie als --zonder of --herstart; onbekende ids geven een waarschuwing. @param {string|undefined} waarde @param {string} optieNaam @param {(s: string) => void} [waarschuw] */
+export function appLijst(waarde, optieNaam, waarschuw = (s) => console.warn(s)) {
+  const lijst = (waarde ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const onbekend = lijst.filter((x) => !APPS.includes(x));
+  if (onbekend.length) waarschuw(`let op: ${optieNaam} kent ${onbekend.join(', ')} niet (wel: ${APPS.join(', ')})`);
+  return lijst.filter((x) => APPS.includes(x));
 }
 
 /** git-stand van een map, voor het rapport. @param {string} map */
@@ -76,52 +107,33 @@ function gitStand(map) {
   } catch { return 'geen git'; }
 }
 
-/** Wacht tot een URL antwoordt. @param {string} url @param {number} ms */
-async function wachtOpUrl(url, ms = 30000) {
-  const eind = Date.now() + ms;
-  while (Date.now() < eind) {
-    try { const r = await fetch(url); if (r.status < 500) return; } catch { /* nog niet */ }
-    await wacht(200);
-  }
-  throw new Error(`${url} antwoordt niet binnen ${ms} ms`);
-}
+/** Basis waarop de patches in koppelingen/varve-dj gemaakt zijn (koppelingen/varve-dj/LEESMIJ.md). */
+const VARVE_DJ_BASIS = '99c7fa2';
 
-/** Is er al iets op deze poort? @param {number} poort */
-async function poortBezet(poort) {
-  try { await fetch(`http://127.0.0.1:${poort}/`, { signal: AbortSignal.timeout(500) }); return true; } catch (e) { return /** @type {any} */ (e)?.name === 'TimeoutError'; }
-}
-
-/** @type {(() => Promise<void>|void)[]} */
-const opruimen = [];
-
-/** Start een proces dat bij het opruimen weer stopt. @param {string} cmd @param {string[]} a @param {import('node:child_process').SpawnOptions} o @param {string} naam */
-function start(cmd, a, o, naam) {
-  const p = spawn(cmd, a, { stdio: ['ignore', 'pipe', 'pipe'], detached: true, ...o });
-  let uitvoer = '';
-  p.stdout?.on('data', (d) => { uitvoer = (uitvoer + d).slice(-4000); });
-  p.stderr?.on('data', (d) => { uitvoer = (uitvoer + d).slice(-4000); });
-  opruimen.push(() => stopProces(p));
-  return { p, uitvoer: () => uitvoer, naam };
-}
-/** @param {import('node:child_process').ChildProcess} p */
-async function stopProces(p) {
-  if (p.exitCode !== null || p.signalCode !== null || !p.pid) return;
-  const klaar = new Promise((r) => p.once('exit', r));
-  try { process.kill(-p.pid, 'SIGTERM'); } catch { /* al weg */ }
-  if (await Promise.race([klaar.then(() => true), wacht(4000).then(() => false)])) return;
-  try { process.kill(-p.pid, 'SIGKILL'); } catch { /* al weg */ }
-  await klaar;
-}
-
-/** Varve DJ met de hub-patch: een tijdelijke worktree van youtube-mixer op origin/main. @param {string} repo */
+/**
+ * Varve DJ met de hub-patch: een tijdelijke worktree van youtube-mixer op origin/main. Er wordt niets gecommit;
+ * alleen git's eigen administratie (.git/worktrees) krijgt een tijdelijke regel, die het opruimen weer weghaalt.
+ * @param {string} repo
+ */
 function varveDjWerkboom(repo) {
   const map = mkdtempSync(join(tmpdir(), 'repetitie-varve-dj-'));
   rmSync(map, { recursive: true });
   execFileSync('git', ['-C', repo, 'worktree', 'add', '--detach', map, 'origin/main'], { stdio: 'ignore' });
-  opruimen.push(() => { try { execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', map], { stdio: 'ignore' }); } catch { rmSync(map, { recursive: true, force: true }); } });
+  opruimer.voeg('varve-dj-worktree', () => {
+    try { execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', map], { stdio: 'ignore' }); } catch { rmSync(map, { recursive: true, force: true }); }
+  });
+  const basis = execFileSync('git', ['-C', map, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
   const patches = readdirSync(join(HUB_MAP, 'koppelingen/varve-dj')).filter((f) => f.endsWith('.patch')).sort();
-  for (const f of patches) execFileSync('git', ['-C', map, 'apply', join(HUB_MAP, 'koppelingen/varve-dj', f)]);
-  return { map, basis: execFileSync('git', ['-C', map, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim(), patches };
+  for (const f of patches) {
+    try {
+      execFileSync('git', ['-C', map, 'apply', join(HUB_MAP, 'koppelingen/varve-dj', f)], { stdio: ['ignore', 'ignore', 'pipe'] });
+    } catch (e) {
+      const uit = String(/** @type {any} */ (e)?.stderr ?? '').trim().split('\n').slice(0, 5).join('\n  ');
+      throw new Error(`varve-dj: patch ${f} past niet op origin/main @${basis} (gemaakt op ${VARVE_DJ_BASIS}). `
+        + `Doe \`git fetch\` in ${repo}, of zet "varve-dj" in paden.json naar een checkout mét de patch.${uit ? `\n  ${uit}` : ''}`);
+    }
+  }
+  return { map, basis, patches };
 }
 
 /**
@@ -224,28 +236,57 @@ class Logboek {
   manifest() { return this.uit.filter((x) => x.b.t === 'manifest').at(-1)?.b.manifest; }
 }
 
+/**
+ * Wat er tot nu toe gespeeld is: genoeg voor een gedeeltelijk rapport als de repetitie halverwege stopt
+ * (Ctrl-C, --max-duur, een onverwachte fout).
+ * @type {{ naam: string|null, datum: string, omgeving: Record<string, unknown>, stappen: import('./repetitie-avond.mjs').Stap[], klaar: boolean }}
+ */
+const lopend = { naam: null, datum: '', omgeving: {}, stappen: [], klaar: false };
+
+/** Schrijf een gedeeltelijk rapport (alleen als er al iets gespeeld is en het volledige rapport er nog niet is). @param {string} reden */
+function schrijfDeelrapport(reden) {
+  if (!lopend.naam || lopend.klaar || !lopend.stappen.length) return;
+  const omgeving = { ...lopend.omgeving, afgebroken: reden };
+  const uitslag = deelUitslag(lopend.stappen);
+  writeFileSync(`${lopend.naam}.json`, JSON.stringify({ omgeving, ...uitslag }, null, 2));
+  writeFileSync(`${lopend.naam}.md`, rapportMd({ datum: lopend.datum, omgeving, uitslag }));
+  console.error(`gedeeltelijk rapport (${lopend.stappen.length} stappen): ${lopend.naam}.md`);
+}
+
+/**
+ * Controleer vooraf of een Vite-app zijn afhankelijkheden heeft (anders wacht je 30 s op niets).
+ * @param {string} app @param {string} map @param {string[]} [extra]
+ */
+function moetNodeModules(app, map, extra = []) {
+  const mist = ['vite', ...extra].filter((m) => !existsSync(join(map, 'node_modules', m)));
+  if (mist.length) throw new Error(`${app}: eerst \`npm install\` in ${map} (node_modules mist ${mist.join(', ')})`);
+}
+
 async function main() {
   const config = laadConfig();
-  const paden = leesPaden(config);
-  const zonder = new Set((optie('--zonder') ?? '').split(',').filter(Boolean));
+  const paden = leesPaden(config, { bestand: optie('--paden') });
+  const zonder = new Set(appLijst(optie('--zonder'), '--zonder'));
+  const herstarten = appLijst(optie('--herstart') ?? 'formula-lab,varve-dj,flux', '--herstart');
   const deze = APPS.filter((a) => !zonder.has(a));
   const hubPoort = Number(optie('--hub-poort') ?? config.poorten.http);
   const uitMap = resolve(optie('--uit') ?? join(HUB_MAP, 'tools/uitvoer'));
   const datum = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
   const tmp = mkdtempSync(join(tmpdir(), 'repetitie-'));
-  opruimen.push(() => rmSync(tmp, { recursive: true, force: true }));
+  opruimer.voeg('tijdelijke map', () => rmSync(tmp, { recursive: true, force: true }));
 
   // ── de hub ──────────────────────────────────────────────────────────────────────────────────────
-  if (await poortBezet(hubPoort)) throw new Error(`poort ${hubPoort} is bezet: draait er al een hub? (--hub-poort)`);
+  if (await poortBezet(hubPoort)) throw new Error(`poort ${hubPoort} is bezet: draait er al een hub (of nog een vorige repetitie)? Stop hem (lsof -i :${hubPoort}) of gebruik --hub-poort.`);
   const systeem = new NepSysteem();
   const apc = systeem.voegToe('APC40 mkII');
   const lpd8 = systeem.voegToe('LPD8 mk2');
   lpd8.antwoord = (b) => { if (b[1] === 0x7e) setTimeout(() => lpd8.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7]), 1); };
   const hub = await startHub({ config: { ...config, hotplug_ms: 100 }, systeem, klok: echteKlok, poort: hubPoort, host: '127.0.0.1', drivers: false });
-  opruimen.push(() => hub.stop());
-  const hubUrl = `ws://localhost:${hubPoort}/app`;
+  opruimer.voeg('hub', () => hub.stop());
+  // De echte poort (met --hub-poort 0 kiest het systeem er een).
+  const hubUrl = `ws://localhost:${new URL(hub.adres).port}/app`;
   log(`hub op ${hub.adres} (nep-APC40 + nep-LPD8)`);
-  while (!hub.apparaten.apc.verbonden || hub.apparaten.lpd8.model !== 'mk2') await wacht(50);
+  await totUiterlijk(() => hub.apparaten.apc.verbonden && hub.apparaten.lpd8.model === 'mk2', 10000,
+    `de nep-controllers melden zich niet binnen 10 s (APC40 verbonden: ${hub.apparaten.apc.verbonden}, LPD8-model: ${hub.apparaten.lpd8.model})`);
 
   // ── servers van de apps ─────────────────────────────────────────────────────────────────────────
   /** @type {Record<string, string>} */
@@ -259,25 +300,29 @@ async function main() {
   for (const app of deze) {
     if (app === 'flux') continue;
     const p = poortVan(app);
-    if (await poortBezet(p)) throw new Error(`${app}: poort ${p} (config.json) is bezet`);
+    if (await poortBezet(p)) throw new Error(poortBezetMelding(app, p));
   }
+  /** @type {Record<string, import('./repetitie-proces.mjs').Proces>} */
+  const servers = {};
   if (deze.includes('formula-lab')) {
     const map = moetBestaan('formula-lab');
+    moetNodeModules('formula-lab', map, ['lz-string']);
     const lz = createRequire(join(map, 'package.json'))('lz-string');
     const hash = `#f=${lz.compressToEncodedURIComponent(JSON.stringify({ v: 1, source: FORMULE }))}`;
-    start(process.execPath, [join(map, 'node_modules/vite/bin/vite.js'), '--port', String(poortVan('formula-lab')), '--strictPort', '--host', 'localhost'], { cwd: map }, 'formula-lab');
+    servers['formula-lab'] = start(process.execPath, [join(map, 'node_modules/vite/bin/vite.js'), '--port', String(poortVan('formula-lab')), '--strictPort', '--host', 'localhost'], { cwd: map }, 'formula-lab');
     adres['formula-lab'] = `http://localhost:${poortVan('formula-lab')}/?hub=${encodeURIComponent(hubUrl)}${hash}`;
     omgevingApps['formula-lab'] = `${map} · ${gitStand(map)}`;
   }
   if (deze.includes('medisynth')) {
     const map = moetBestaan('medisynth');
-    start(process.execPath, [join(map, 'node_modules/vite/bin/vite.js'), '--port', String(poortVan('medisynth')), '--strictPort', '--host', 'localhost'], { cwd: map }, 'medisynth');
+    moetNodeModules('medisynth', map);
+    servers.medisynth = start(process.execPath, [join(map, 'node_modules/vite/bin/vite.js'), '--port', String(poortVan('medisynth')), '--strictPort', '--host', 'localhost'], { cwd: map }, 'medisynth');
     adres.medisynth = `http://localhost:${poortVan('medisynth')}/?debug&hub=${encodeURIComponent(hubUrl)}`;
     omgevingApps.medisynth = `${map} · ${gitStand(map)}`;
   }
   if (deze.includes('waterschaal')) {
     const map = moetBestaan('waterschaal');
-    start('python3', ['-m', 'http.server', String(poortVan('waterschaal')), '--bind', '127.0.0.1'], { cwd: map }, 'waterschaal');
+    servers.waterschaal = start('python3', ['-m', 'http.server', String(poortVan('waterschaal')), '--bind', '127.0.0.1'], { cwd: map }, 'waterschaal');
     adres.waterschaal = `http://localhost:${poortVan('waterschaal')}/td/waterschaal-lokaal.html?hub=${encodeURIComponent(hubUrl)}`;
     omgevingApps.waterschaal = `${map} · ${gitStand(map)}`;
   }
@@ -289,21 +334,31 @@ async function main() {
       map = w.map;
       omgevingApps['varve-dj'] = `${repo} · origin/main @ ${w.basis} + ${w.patches.join(', ')} (tijdelijke worktree)`;
     } else omgevingApps['varve-dj'] = `${map} · ${gitStand(map)}`;
-    start(process.execPath, [join(map, 'server/index.js')], {
+    servers['varve-dj'] = start(process.execPath, [join(map, 'server/index.js')], {
       cwd: map,
       env: { ...process.env, PORT: String(poortVan('varve-dj')), VARVE_DB: join(tmp, 'varve.db'), VARVE_MEDIA: join(tmp, 'media'), VARVE_OPNAMES: join(tmp, 'opnames'), VARVE_HERANALYSE: 'uit' },
     }, 'varve-dj');
     adres['varve-dj'] = `http://localhost:${poortVan('varve-dj')}/?hub=${encodeURIComponent(hubUrl)}`;
   }
-  for (const app of Object.keys(adres)) await wachtOpUrl(adres[app].replace(/\?.*$/, ''));
+  for (const app of Object.keys(adres)) await wachtOpUrl(adres[app].replace(/\?.*$/, ''), { proces: servers[app] });
 
   // ── Chromium ────────────────────────────────────────────────────────────────────────────────────
   const { chromium } = await import('playwright-core');
-  const browser = await chromium.launch({
-    executablePath: CHROMIUM, headless: !vlag('--zichtbaar'),
-    args: ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-  });
-  opruimen.unshift(() => browser.close());
+  /** @type {import('playwright-core').Browser} */
+  let browser;
+  try {
+    browser = await chromium.launch({
+      executablePath: CHROMIUM, headless: !vlag('--zichtbaar'),
+      // Signalen handelt de repetitie zelf af (opruimen); anders sluit Playwright alleen Chromium en stopt node.
+      handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false,
+      args: ['--autoplay-policy=no-user-gesture-required', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    });
+  } catch (e) {
+    throw new Error(`Chromium start niet${CHROMIUM ? ` (${CHROMIUM})` : ''}. Installeer hem eenmalig met \`npx playwright-core install chromium\`, `
+      + `of wijs een eigen Chrome aan: CHROMIUM="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node tools/repetitie.mjs\n  ${String(/** @type {any} */ (e)?.message ?? e).split('\n')[0]}`);
+  }
+  // Ná de servers toegevoegd, dus vóór de servers opgeruimd: de pagina's verbinden niet opnieuw met wat al weg is.
+  opruimer.voeg('Chromium', () => browser.close());
 
   /** @type {Map<string, import('./repetitie-avond.mjs').Deelnemer>} */
   const deelnemers = new Map();
@@ -316,7 +371,7 @@ async function main() {
     logboeken.set(app, boek);
     const context = await browser.newContext();
     await context.exposeBinding('__repetitieMeld', (_bron, x) => boek.neem(x));
-    await context.addInitScript(SPION, hubPoort);
+    await context.addInitScript(SPION, Number(new URL(hub.adres).port));
     const page = await context.newPage();
     page.on('console', (m) => { if (m.type() === 'error') boek.fouten.push({ t: wandklok(), tekst: metPlek(m) }); });
     page.on('pageerror', (e) => boek.fouten.push({ t: wandklok(), tekst: e.message }));
@@ -336,10 +391,16 @@ async function main() {
     const lezer = /** @type {any} */ (LEZERS)[app];
     deelnemers.set(app, {
       id: app, soort: 'browser',
-      lees: async () => (lezer ? page.evaluate(lezer).catch(() => null) : null),
+      lees: async () => {
+        if (!lezer) return null;
+        const w = await leesPagina(page, lezer);
+        if (w === TE_LAAT) { boek.fouten.push({ t: wandklok(), tekst: `[repetitie] teruglezen duurde langer dan ${LEES_MS} ms (hangt de pagina?)` }); return null; }
+        return w;
+      },
       ontvangen: async () => boek.in,
       fouten: async () => boek.fouten,
-      herstart: async () => { await page.reload(); await laad().catch(() => {}); },
+      // laad() navigeert zelf al (page.goto): één keer laden, dus één nieuwe verbinding en één nieuwe inst.
+      herstart: async () => { await laad().catch((e) => log(`   ${app}: herladen gaf een fout: ${String(e?.message ?? e).split('\n')[0]}`)); },
       .../** @type {any} */ (PANIEK)[app] ? { paniek: /** @type {any} */ (PANIEK)[app] } : {},
     });
   }
@@ -418,8 +479,8 @@ async function main() {
     await page.goto(hub.adres + '/');
     await page.waitForFunction((n) => document.querySelectorAll('#apps .naam').length >= n, deze.length, { timeout: 10000 }).catch(() => {});
     await page.waitForFunction(() => document.getElementById('verbinding')?.dataset.status === 'verbonden', null, { timeout: 5000 }).catch(() => {});
-    const namen = await page.$$eval('#apps .naam', (l) => l.map((x) => x.textContent ?? ''));
-    const status = await page.$eval('#verbinding', (x) => /** @type {HTMLElement} */ (x).dataset.status ?? '');
+    const namen = await metTijd(page.$$eval('#apps .naam', (l) => l.map((x) => x.textContent ?? '')), LEES_MS, /** @type {string[]} */ ([]));
+    const status = await metTijd(page.$eval('#verbinding', (x) => /** @type {HTMLElement} */ (x).dataset.status ?? ''), LEES_MS, 'geen antwoord');
     await page.screenshot({ path: join(uitMap, `repetitie-${datum}-cockpit.png`) }).catch(() => {});
     return {
       namen, status,
@@ -434,9 +495,14 @@ async function main() {
 
   mkdirSync(uitMap, { recursive: true });
   const begin = Date.now();
+  const naam = join(uitMap, `repetitie-${datum}`);
+  Object.assign(lopend, {
+    naam, datum,
+    omgeving: { datum: new Date().toISOString(), node: process.version, chromium: browser.version(), hub: `${HUB_MAP} · ${gitStand(HUB_MAP)}`, controllers: 'NepSysteem: APC40 mkII + LPD8 mk2 (fabrieksprofiel)', ...omgevingApps },
+  });
   const uitslag = await speelAvond({
-    kern: hub.kern, apc, lpd8, nu: wandklok, wacht, deelnemers, cockpit, log,
-    herstarten: (optie('--herstart') ?? 'formula-lab,varve-dj,flux').split(',').filter(Boolean), opkomstMs: 30000, schuifPauzeMs: 4,
+    kern: hub.kern, apc, lpd8, nu: wandklok, wacht, deelnemers, cockpit, log, stappen: lopend.stappen,
+    herstarten, opkomstMs: 30000, schuifPauzeMs: 4,
   });
 
   const omgeving = {
@@ -444,7 +510,7 @@ async function main() {
     node: process.version, chromium: browser.version(), hub: `${HUB_MAP} · ${gitStand(HUB_MAP)}`,
     controllers: 'NepSysteem: APC40 mkII + LPD8 mk2 (fabrieksprofiel)', ...omgevingApps,
   };
-  const naam = join(uitMap, `repetitie-${datum}`);
+  lopend.klaar = true;
   writeFileSync(`${naam}.json`, JSON.stringify({ omgeving, ...uitslag, manifesten: Object.fromEntries([...logboeken].map(([a, b]) => [a, b.manifest() ?? null])) }, null, 2));
   writeFileSync(`${naam}.md`, rapportMd({ datum, omgeving, uitslag }));
   log(`\nrapport: ${naam}.md`);
@@ -465,9 +531,14 @@ async function main() {
   return uitslag.totaal.ok;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isHoofdmodule(import.meta.url)) {
+  const maxDuur = Number(optie('--max-duur') ?? MAX_DUUR_S);
+  if (!(maxDuur > 0)) { console.error(`--max-duur moet een aantal seconden zijn (kreeg ${optie('--max-duur')})`); process.exit(2); }
+  opruimer.vangAf({ voorAf: schrijfDeelrapport });
+  const uitWaakhond = opruimer.waakhond(maxDuur * 1000);
   let ok = false;
-  try { ok = await main(); } catch (e) { console.error(e); }
-  for (const f of opruimen.splice(0).reverse()) { try { await f(); } catch (e) { console.error('opruimen:', e); } }
+  try { ok = await main(); } catch (e) { console.error(`\nde repetitie stopt: ${/** @type {any} */ (e)?.message ?? e}`); if (process.env.DEBUG) console.error(e); schrijfDeelrapport(`fout: ${/** @type {any} */ (e)?.message ?? e}`); }
+  uitWaakhond();
+  await opruimer.draai();
   process.exit(ok ? 0 : 1);
 }

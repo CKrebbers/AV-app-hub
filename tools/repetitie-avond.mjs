@@ -7,7 +7,7 @@
 //  - kwam het bij de juiste app aan: de berichten die de app ontving (app-zijde gelogd), en de staat die
 //    de app zelf terugleest (pagina, proceslog of nep-app), en geen bediening bij een app die het niet hoort;
 //  - latency hub→app: elk bericht dat de kern verstuurde ('naarApp') gekoppeld aan het moment dat de app
-//    het ontving (zelfde inhoud, eerst-in-eerst-uit per app), p50/p95/max;
+//    het ontving (zelfde inhoud, in de volgorde van de verbinding per app: zie koppel), p50/p95/max;
 //  - fouten: console-fouten van de app tijdens de stap.
 import * as APC from '../src/devices/apc40mk2.js';
 import * as LPD8 from '../src/devices/lpd8.js';
@@ -46,7 +46,9 @@ import { PANIEK_MS, LANG_MS } from '../src/core/kern.js';
  *   opkomstMs?: number,
  *   schuifPauzeMs?: number,
  *   log?: (s: string) => void,
+ *   stappen?: Stap[],
  * }} Regie
+ *   stappen: optioneel; elke afgeronde stap komt hier meteen in (voor een gedeeltelijk rapport als de avond stopt).
  * @typedef {{ wat: string, ok: boolean, detail?: string, opmerking?: boolean }} Controle
  *   opmerking: geen oordeel (telt als ok), maar iets wat opviel en een besluit vraagt — apart in het rapport.
  * @typedef {{ n: number, p50: number|null, p95: number|null, max: number|null }} Latency
@@ -88,28 +90,61 @@ export function latencyVan(lijst) {
 }
 
 /**
- * Koppel verzonden berichten (kern → app) aan wat de app ontving: per app, per inhoud, eerst-in-eerst-uit.
- * @param {{ app: string, t: number, b: any }[]} verzonden
- * @param {Map<string, Ontvangen[]>} ontvangen per app
+ * Koppel verzonden berichten (kern → app) aan wat de app ontving.
+ *
+ * Per app komt alles over één geordende verbinding (WebSocket/TCP): wat aankomt, komt in de volgorde waarin
+ * de kern het verstuurde, en wat verloren gaat (een herstart) valt er alleen tussenuit. Daarom lopen we per app
+ * met een wijzer door de verzonden berichten: elke ontvangst hoort bij het eerste nog niet gekoppelde bericht
+ * met dezelfde inhoud ná het vorige gekoppelde bericht (en niet ná de ontvangst zelf, op 50 ms klokruis na).
+ * Wat de wijzer passeert, is niet aangekomen. Zo krijgt een gelijk bericht dat later wél aankomt (globaal, een
+ * herhaalde zet) niet de ontvangst van een eerder verloren bericht: elk ander bericht dat tussendoor aankwam,
+ * schuift de wijzer voorbij het verloren bericht. Ontvangsten zonder verzonden tegenhanger (welkom) tellen niet.
+ * Grens: verdwijnt een bericht en komt het eerstvolgende bericht mét dezelfde inhoud aan zonder dat er iets
+ * anders tussen zat, dan is niet te zien welke van de twee verloren ging; dan telt het eerste als aangekomen.
+ * @param {{ app: string, t: number, b: any }[]} verzonden in volgorde van versturen
+ * @param {Map<string, Ontvangen[]>} ontvangen per app, in volgorde van ontvangst
  * @returns {{ app: string, t: number, b: any, ms: number|null }[]} ms = null: nooit aangekomen
  */
 export function koppel(verzonden, ontvangen) {
-  /** @type {Map<string, Map<string, number[]>>} */
-  const rijen = new Map();
-  for (const [app, lijst] of ontvangen) {
-    /** @type {Map<string, number[]>} */
-    const m = new Map();
-    for (const x of lijst) { const k = sleutel(x.b); if (!m.has(k)) m.set(k, []); /** @type {number[]} */ (m.get(k)).push(x.t); }
-    rijen.set(app, m);
+  /** @type {(number|null)[]} */
+  const ms = verzonden.map(() => null);
+  /** @type {Map<string, number[]>} indexen in `verzonden`, per app */
+  const perApp = new Map();
+  verzonden.forEach((v, i) => { if (!perApp.has(v.app)) perApp.set(v.app, []); /** @type {number[]} */ (perApp.get(v.app)).push(i); });
+  for (const [app, idx] of perApp) {
+    const sleutels = idx.map((i) => sleutel(verzonden[i].b));
+    let wijzer = 0;
+    for (const x of ontvangen.get(app) ?? []) {
+      const k = sleutel(x.b);
+      for (let j = wijzer; j < idx.length; j++) {
+        const v = verzonden[idx[j]];
+        if (v.t > x.t + 50) break; // pas ná deze ontvangst verstuurd: hoort er niet bij
+        if (sleutels[j] !== k || x.t - v.t > MAX_LATENCY_MS) continue;
+        ms[idx[j]] = Math.max(0, x.t - v.t);
+        wijzer = j + 1;
+        break;
+      }
+    }
   }
-  return verzonden.map((v) => {
-    const rij = rijen.get(v.app)?.get(sleutel(v.b));
-    // Een ontvangst ruim vóór het versturen hoort bij een eerder, gelijk bericht dat zelf verloren ging.
-    while (rij && rij.length && rij[0] < v.t - 50) rij.shift();
-    if (!rij || !rij.length || rij[0] - v.t > MAX_LATENCY_MS) return { ...v, ms: null };
-    const t = /** @type {number} */ (rij.shift());
-    return { ...v, ms: Math.max(0, t - v.t) };
-  });
+  return verzonden.map((v, i) => ({ ...v, ms: ms[i] }));
+}
+
+/**
+ * Een uitslag van wat er tot nu toe gespeeld is (zonder latency): voor een gedeeltelijk rapport.
+ * @param {Stap[]} stappen
+ */
+export function deelUitslag(stappen) {
+  const leeg = latencyVan([]);
+  return {
+    stappen, perApp: /** @type {Record<string, any>} */ ({}), wissels: /** @type {any[]} */ ([]),
+    totaal: {
+      ok: false,
+      controles: stappen.reduce((n, s) => n + s.controles.length, 0),
+      geslaagd: stappen.reduce((n, s) => n + s.controles.filter((x) => x.ok).length, 0),
+      opmerkingen: stappen.reduce((n, s) => n + s.controles.filter((x) => x.opmerking).length, 0),
+      latency: leeg, latencyBediening: leeg,
+    },
+  };
 }
 
 /**
@@ -143,7 +178,7 @@ export async function speelAvond(r) {
   const afmeldenBeeld = kern.bij('beeld', kijkStatus);
 
   /** @type {Stap[]} */
-  const stappen = [];
+  const stappen = r.stappen ?? [];
   /** @param {string} naam @param {(c: ((wat: string, ok: unknown, detail?: string) => void) & { opmerking: (wat: string, detail?: string) => void }) => Promise<void>} fn */
   async function stap(naam, fn) {
     log(`▶ ${naam}`);
@@ -474,6 +509,7 @@ export async function speelAvond(r) {
     // Na de paniek draait de speler K1 (intensiteit) weer open: twee tikjes vanaf waar de knop staat.
     const l = metRol('macro.intensiteit').filter((x) => x.p.soort === 'waarde');
     const k1 = kern.fysiek?.get?.('lpd8:k1');
+    if (l.length && typeof k1 !== 'number') c('na paniek: de hub kent de stand van K1 (kern.fysiek lpd8:k1)', false, `kern.fysiek gaf ${k1}`);
     if (l.length && typeof k1 === 'number' && k1 < 0.9) {
       await r.wacht(300);
       const t2 = r.nu();
@@ -516,6 +552,26 @@ export async function speelAvond(r) {
       const fd = a?.indeling ? Object.entries(toewijzingen(a.indeling, a.pagina)).find(([el, t]) => /^fader\d$/.test(el) && t.rol === 'fader') : undefined;
       if (fd) {
         const [el, t] = fd;
+        // Eerst de pickup zelf: schuif een stukje zonder de waarde van de app te kruisen. Dan mag er niets
+        // naar de app (anders springt de waarde bij de eerste aanraking), pas daarna vangen we hem.
+        const pk = a.pickups?.get?.(el);
+        const f = kern.fysiek?.get?.(el);
+        if (pk && pk.modus === 'pickup' && !pk.gevangen && typeof f === 'number') {
+          const w = /** @type {number} */ (pk.doel);
+          const stap7 = 3 / 127;
+          // Weg van de waarde van de app als dat kan, anders er naartoe maar ruim ervoor stoppen.
+          const weg = f > w ? Math.min(1, f + stap7) : Math.max(0, f - stap7);
+          const naar = Math.abs(weg - f) >= 2 / 127 ? weg : Math.abs(f - w) > 2 * stap7 ? f + Math.sign(w - f) * stap7 : null;
+          if (naar === null) c.opmerking(`na herstart: ${el} staat te dicht bij ${t.id} om de pickup te toetsen`, `fader ${f.toFixed(3)}, app ${w.toFixed(3)}`);
+          else {
+            const tp = r.nu();
+            await schuif(el, f, naar);
+            await r.wacht(300);
+            const z = await sinds(app, tp, (b) => b.t === 'zet' && b.id === t.id);
+            c(`na herstart: ${el} wacht op pickup (geen zet zolang hij ${t.id} niet kruist)`, z.length === 0,
+              z.length ? `${z.length} zet(s), eerste ${z[0].v.toFixed(3)} (fader ${f.toFixed(3)} → ${naar.toFixed(3)}, app ${w.toFixed(3)})` : `fader ${f.toFixed(3)} → ${naar.toFixed(3)}, app ${w.toFixed(3)}`);
+          }
+        } else c.opmerking(`na herstart: ${el} hoefde niet te wachten (pickup ${pk ? (pk.gevangen ? 'meteen gevangen' : pk.modus) : 'onbekend'})`);
         const doel = (a.waarden[t.id] ?? 0) < 0.5 ? 0.8 : 0.2;
         const tx = r.nu();
         await zetControl(el, doel);

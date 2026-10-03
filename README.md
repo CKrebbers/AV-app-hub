@@ -37,7 +37,8 @@ git push
 ## Voor ontwikkelen
 
 ```bash
-npm test   # alles, zonder hardware: nep-poorten en een gesimuleerde gebruiker
+npm test            # alles, zonder hardware: nep-poorten en een gesimuleerde gebruiker
+npm run repetitie   # generale repetitie: de hub met de échte app-koppelingen, één avond lang (docs/REPETITIE.md)
 ```
 
 Indeling: `src/devices/` (APC40, LPD8) · `src/ports/` (poort-interface, nep, RtMidi) · `src/core/` (klok, wachtrij, LED-beeld, hotplug, logboek) · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/cli.js`. Werkafspraken in `CLAUDE.md`.
