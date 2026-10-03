@@ -15,6 +15,8 @@ Varve DJ (`youtube-mixer`) heeft de huisregel **"Nooit committen"**: de repo sta
 - Nog niet met je echte APC in je eigen Chrome.
 
 ## Toepassen (jij commit zelf)
+Gebaseerd op `youtube-mixer` main **99c7fa2** ("Merge remote-tracking branch 'origin/main' into claude/ecstatic-feynman-sm6x58"). Staat je kopie verder terug, haal dan eerst main binnen. Gecontroleerd: beide patches passen op 99c7fa2 en `node test/hub.test.mjs` is daarna groen.
+
 ```bash
 cd ~/Desktop/youtube-mixer        # of waar je VARVE hebt staan
 git apply --check /pad/naar/AV-app-hub/koppelingen/varve-dj/0001-*.patch   # past hij?
