@@ -6,8 +6,8 @@
 //   - de dienst die de hub bij het inloggen start: launchd (macOS) of systemd --user (Linux). Nooit sudo.
 // Alles wat de buitenwereld raakt (thuismap, hostnaam, netwerkkaarten, PATH, kindprocessen, tijd) is injecteerbaar.
 import { randomBytes } from 'node:crypto';
-import { spawn as echteSpawn } from 'node:child_process';
-import { accessSync, chmodSync, constants, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { spawn as echteSpawn, execFileSync } from 'node:child_process';
+import { accessSync, chmodSync, constants, existsSync, linkSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,10 +35,21 @@ export function leesOfMaakToken({ home = os.homedir(), maak = nieuwToken, opnieu
   if (opnieuw || !existsSync(pad)) {
     const token = maak();
     if (!GELDIG.test(token)) throw new Error('nieuw token is ongeldig');
-    if (opnieuw && existsSync(pad)) unlinkSync(pad);
-    writeFileSync(pad, token + '\n', { mode: 0o600, flag: 'wx' });
-    chmodSync(pad, 0o600);                                   // umask kan de mode hebben ingeperkt, nooit verruimd; toch vastzetten
-    return { token, pad, nieuw: true, hersteld: false };
+    // Atomair: eerst volledig naar een eigen tijdelijk bestand (0600), dan in één stap op zijn plaats. Zo blijft er
+    // nooit een leeg of half token staan (schijf vol), en wint bij twee tegelijk (dienst + `token`) één van de twee.
+    const tmp = `${pad}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+    try {
+      writeFileSync(tmp, token + '\n', { mode: 0o600, flag: 'wx' });
+      chmodSync(tmp, 0o600);                                 // umask kan de mode hebben ingeperkt, nooit verruimd; toch vastzetten
+      if (opnieuw) renameSync(tmp, pad);
+      else linkSync(tmp, pad);                               // faalt met EEXIST als een ander net eerder was
+      return { token, pad, nieuw: true, hersteld: false };
+    } catch (e) {
+      if (/** @type {any} */ (e)?.code !== 'EEXIST') throw e;
+      // Een ander proces schreef het token net: dat lezen we hieronder.
+    } finally {
+      try { unlinkSync(tmp); } catch { /* al hernoemd of nooit gemaakt */ }
+    }
   }
   let hersteld = false;
   if (process.platform !== 'win32' && (statSync(pad).mode & 0o077) !== 0) { chmodSync(pad, 0o600); hersteld = true; }
@@ -53,14 +64,32 @@ export function leesOfMaakToken({ home = os.homedir(), maak = nieuwToken, opnieu
 export const isLoopbackHost = (host) => host === undefined || host === 'localhost' || host === '::1' || /^127\./.test(host);
 
 /**
- * De namen waaronder deze machine in het LAN te vinden is: de hostnaam en <hostnaam>.local (mDNS).
- * @param {{ hostnaam?: string, extra?: string[] }} [o]
+ * De mDNS-naam van een Mac (`scutil --get LocalHostName`, bv. "Clays-MacBook-Pro"), of null. Die wijkt vaak af van
+ * os.hostname(): met een DHCP- of eigen HostName is dat bv. "clays-mbp.fritz.box". Elders: null.
+ * @param {{ platform?: string, run?: (bin: string, args: string[]) => string }} [o]
  */
-export function lanNamen({ hostnaam = os.hostname(), extra = [] } = {}) {
+export function bonjourNaam({ platform = process.platform, run = (bin, args) => execFileSync(bin, args, { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }) } = {}) {
+  if (platform !== 'darwin') return null;
+  try { return run('scutil', ['--get', 'LocalHostName']).trim() || null; } catch { return null; }
+}
+
+/**
+ * De namen waaronder deze machine in het LAN te vinden is: de hostnaam, de Bonjour-naam (macOS) en <naam>.local.
+ * De eerste naam die op .local eindigt is de mDNS-naam om te tonen (cockpit-adressen, flux-regel).
+ * @param {{ hostnaam?: string, bonjour?: string|null, extra?: string[] }} [o]
+ */
+export function lanNamen({ hostnaam = os.hostname(), bonjour = bonjourNaam(), extra = [] } = {}) {
   const kaal = hostnaam.toLowerCase().replace(/\.local\.?$/, '').replace(/\.$/, '');
-  const namen = [kaal, `${kaal}.local`, ...extra.map((n) => n.toLowerCase())].filter((n) => /^[a-z0-9.-]+$/.test(n) && n !== 'localhost');
+  const b = bonjour ? bonjour.toLowerCase().replace(/\.local\.?$/, '') : null;
+  // Een hostnaam met domein (x.fritz.box): in mDNS heet hij <eerste deel>.local, niet x.fritz.box.local.
+  const label = kaal.split('.')[0];
+  const namen = [kaal, ...(b ? [`${b}.local`, b] : []), `${label}.local`, ...extra.map((n) => n.toLowerCase())]
+    .filter((n) => /^[a-z0-9][a-z0-9.-]*$/.test(n) && n !== 'localhost');
   return [...new Set(namen)];
 }
+
+/** De mDNS-naam uit lanNamen (de eerste op .local), of null. @param {string[]} namen */
+export const mdnsNaam = (namen) => namen.find((n) => n.endsWith('.local')) ?? null;
 
 /** Origins voor de cockpit vanaf een tablet (http://<naam>:<poort>), voor `origins` van de server. @param {string[]} namen @param {number} poort */
 export const lanOrigins = (namen, poort) => namen.map((n) => `http://${n}:${poort}`);
@@ -102,16 +131,22 @@ export function mdnsCommando({ platform, poort, naam }) {
   return null;
 }
 
+/** Na zoveel mislukte starts op rij (elk korter dan 60 s gelopen) geeft de aankondiging het op. */
+export const MDNS_POGINGEN = 5;
+
 /**
  * Kondig de hub aan via mDNS zolang hij draait. Bestaat dns-sd/avahi-publish niet, dan een melding en verder
  * niets (de hub werkt, alleen niet vindbaar via mDNS). Stopt het kindproces onverwacht, dan opnieuw na een
- * oplopende pauze (5 → 10 → … → 60 s, via de klok).
+ * oplopende pauze (5 → 10 → … → 60 s, via de klok); na MDNS_POGINGEN mislukte starts op rij één melding en klaar
+ * (bv. avahi-publish zonder draaiende avahi-daemon). Stopt de hub zelf (ook bij een crash), dan gaat het
+ * kindproces mee: anders blijft de dienst als wees aangekondigd.
  * @param {{ poort: number, naam?: string, platform?: string, bestaat?: (bin: string) => boolean,
  *   spawn?: (bin: string, args: string[], o: object) => import('node:child_process').ChildProcess,
- *   klok?: import('./core/klok.js').Klok, log?: (...a: unknown[]) => void }} o
+ *   klok?: import('./core/klok.js').Klok, log?: (...a: unknown[]) => void,
+ *   proces?: { on: (e: 'exit', f: () => void) => unknown, off: (e: 'exit', f: () => void) => unknown } }} o
  * @returns {{ actief: boolean, commando: { bin: string, args: string[] } | null, stop: () => void }}
  */
-export function kondigAan({ poort, naam = `Varve hub (${lanNamen()[0] ?? 'hub'})`, platform = process.platform, bestaat = inPad, spawn = echteSpawn, klok = echteKlok, log = console.log }) {
+export function kondigAan({ poort, naam = `Varve hub (${(lanNamen()[0] ?? 'hub').replace(/\.local$/, '')})`, platform = process.platform, bestaat = inPad, spawn = echteSpawn, klok = echteKlok, log = console.log, proces = process }) {
   const commando = mdnsCommando({ platform, poort, naam });
   if (!commando) { log(`mDNS: geen aankondiging op ${platform}; gebruik het IP-adres.`); return { actief: false, commando, stop() {} }; }
   if (!bestaat(commando.bin)) {
@@ -124,6 +159,10 @@ export function kondigAan({ poort, naam = `Varve hub (${lanNamen()[0] ?? 'hub'})
   /** @type {any} */
   let timer = null;
   let pauze = 5000;
+  let mislukt = 0;
+  // Synchroon in 'exit' (ook na een onafgevangen fout): het kindproces niet als wees achterlaten.
+  const bijExit = () => { try { kind?.kill(); } catch { /* al weg */ } };
+  proces.on('exit', bijExit);
   const start = () => {
     timer = null;
     if (gestopt) return;
@@ -131,17 +170,25 @@ export function kondigAan({ poort, naam = `Varve hub (${lanNamen()[0] ?? 'hub'})
     let p;
     try { p = spawn(commando.bin, commando.args, { stdio: 'ignore' }); } catch (e) { return opnieuw(`starten mislukte: ${/** @type {Error} */ (e).message}`); }
     kind = p;
-    p.on('error', (e) => { if (kind === p) { kind = null; opnieuw(e.message); } });
+    p.on('error', (e) => { if (kind === p) { kind = null; mislukt++; opnieuw(e.message); } });
     p.on('exit', (code, sig) => {
       if (kind !== p) return;
       kind = null;
-      if (klok.nu() - gestart > 60000) pauze = 5000;          // liep een tijd goed: vanaf het begin
+      if (klok.nu() - gestart > 60000) { pauze = 5000; mislukt = 0; }   // liep een tijd goed: vanaf het begin
+      else mislukt++;
       opnieuw(`gestopt (${sig ?? code})`);
     });
   };
   /** @param {string} waarom */
   const opnieuw = (waarom) => {
     if (gestopt || timer) return;
+    if (mislukt >= MDNS_POGINGEN) {
+      log(`mDNS: ${commando.bin} ${waarom}; na ${mislukt} pogingen op rij geef ik het op. De hub werkt gewoon, alleen niet vindbaar via mDNS` +
+        `${platform === 'linux' ? ' (draait avahi-daemon? systemctl status avahi-daemon)' : ''}; gebruik het IP-adres.`);
+      gestopt = true;
+      proces.off('exit', bijExit);
+      return;
+    }
     log(`mDNS: ${commando.bin} ${waarom}; opnieuw over ${pauze / 1000} s.`);
     timer = klok.zet(start, pauze);
     pauze = Math.min(pauze * 2, 60000);
@@ -151,6 +198,7 @@ export function kondigAan({ poort, naam = `Varve hub (${lanNamen()[0] ?? 'hub'})
     actief: true, commando,
     stop() {
       gestopt = true;
+      proces.off('exit', bijExit);
       if (timer) klok.wis(timer);
       timer = null;
       const p = kind;
@@ -168,30 +216,50 @@ const DEPLOY = join(dirname(fileURLToPath(import.meta.url)), '..', 'deploy');
 
 /** @param {string} s */
 const xml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-/** Eén argument voor ExecStart= (tussen aanhalingstekens; % en \ en " ontsnapt). @param {string} s */
-const systemdArg = (s) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%')}"`;
+/** Eén argument voor ExecStart= (tussen aanhalingstekens; % en \ en " ontsnapt, en $ want systemd vult $NAAM
+ *  ook binnen aanhalingstekens in). @param {string} s */
+const systemdArg = (s) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/%/g, '%%').replace(/\$/g, '$$$$')}"`;
 /** Pad in een systemd-instelling zonder aanhalingstekens (WorkingDirectory=). @param {string} s */
 const systemdPad = (s) => s.replace(/%/g, '%%');
 /** @param {string} s */
 const shell = (s) => (/^[A-Za-z0-9_./~:-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`);
 
+/** Een node in een versiemap (Homebrew-Cellar, nvm, volta, fnm, asdf, mise): weg na een update of wissel. */
+export const VERSIEMAP = /\/Cellar\/|\/\.nvm\/versions\/|\/\.volta\/tools\/|\/fnm\/node-versions\/|\/\.asdf\/installs\/|\/mise\/installs\//;
+
+/**
+ * Het pad naar node voor het dienstbestand: zoals de shell het vindt (`command -v node`, de eerste in PATH), níét
+ * opgelost via symlinks. process.execPath is wél opgelost (/opt/homebrew/Cellar/node/22.x.y/bin/node) en bestaat
+ * na `brew upgrade node` niet meer; /opt/homebrew/bin/node blijft. Geen node in PATH: process.execPath.
+ * @param {{ PATH?: string, execPath?: string }} [o]
+ */
+export function stabielNode({ PATH = process.env.PATH ?? '', execPath = process.execPath } = {}) {
+  for (const map of PATH.split(delimiter)) {
+    if (!map || !map.startsWith('/')) continue;              // alleen absolute mappen: de dienst draait elders
+    const p = join(map, 'node');
+    try { accessSync(p, constants.X_OK); return p; } catch { /* volgende */ }
+  }
+  return execPath;
+}
+
 /**
  * Het dienstbestand voor dit platform, gevuld met het pad van deze checkout en deze node.
- * @param {{ platform?: string, home?: string, hubMap: string, node?: string, lan?: boolean, sjablonen?: string }} o
- * @returns {{ soort: 'launchd'|'systemd', pad: string, inhoud: string, laad: string, ontlaad: string, log: string, extraWeg: string[] }}
+ * @param {{ platform?: string, home?: string, hubMap: string, node?: string, lan?: boolean, sjablonen?: string, PATH?: string }} o
+ * @returns {{ soort: 'launchd'|'systemd', pad: string, inhoud: string, laad: string, ontlaad: string, log: string, extraWeg: string[], node: string }}
  */
-export function dienstVoor({ platform = process.platform, home = os.homedir(), hubMap, node = process.execPath, lan = true, sjablonen = DEPLOY }) {
+export function dienstVoor({ platform = process.platform, home = os.homedir(), hubMap, PATH, node = stabielNode({ PATH }), lan = true, sjablonen = DEPLOY }) {
   const cli = join(hubMap, 'src', 'cli.js');
   const args = ['start', ...(lan ? ['--lan'] : [])];
   if (platform === 'darwin') {
     const pad = join(home, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
     const log = join(home, 'Library', 'Logs', 'varve-hub.log');
     const inhoud = readFileSync(join(sjablonen, `${LAUNCHD_LABEL}.plist`), 'utf8')
-      .replace('{{ARGUMENTEN}}', [node, cli, ...args].map((a) => `<string>${xml(a)}</string>`).join('\n    '))
-      .replaceAll('{{HUB}}', xml(hubMap))
-      .replaceAll('{{LOG}}', xml(log));
+      // Altijd met een functie vervangen: een pad met $&, $` of $$ is anders een vervangpatroon.
+      .replace('{{ARGUMENTEN}}', () => [node, cli, ...args].map((a) => `<string>${xml(a)}</string>`).join('\n    '))
+      .replaceAll('{{HUB}}', () => xml(hubMap))
+      .replaceAll('{{LOG}}', () => xml(log));
     return {
-      soort: 'launchd', pad, inhoud, log,
+      soort: 'launchd', pad, inhoud, log, node,
       laad: `launchctl bootstrap gui/$(id -u) ${shell(pad)}`,
       ontlaad: `launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`,
       extraWeg: [],
@@ -200,10 +268,10 @@ export function dienstVoor({ platform = process.platform, home = os.homedir(), h
   if (platform === 'linux') {
     const map = join(home, '.config', 'systemd', 'user');
     const inhoud = readFileSync(join(sjablonen, SYSTEMD_NAAM), 'utf8')
-      .replace('{{EXEC}}', [node, cli, ...args].map(systemdArg).join(' '))
-      .replaceAll('{{HUB}}', systemdPad(hubMap));
+      .replace('{{EXEC}}', () => [node, cli, ...args].map(systemdArg).join(' '))
+      .replaceAll('{{HUB}}', () => systemdPad(hubMap));
     return {
-      soort: 'systemd', pad: join(map, SYSTEMD_NAAM), inhoud, log: `journalctl --user -u ${SYSTEMD_NAAM} -f`,
+      soort: 'systemd', pad: join(map, SYSTEMD_NAAM), inhoud, node, log: `journalctl --user -u ${SYSTEMD_NAAM} -f`,
       laad: `systemctl --user daemon-reload && systemctl --user enable --now ${SYSTEMD_NAAM}`,
       ontlaad: `systemctl --user stop ${SYSTEMD_NAAM}; systemctl --user daemon-reload`,
       // Wat `enable` aanlegt; met het unitbestand weg kan `disable` het niet meer vinden, dus ruimen we het zelf op.
@@ -214,7 +282,7 @@ export function dienstVoor({ platform = process.platform, home = os.homedir(), h
 }
 
 /**
- * `varve-hub installeer [--weg]`: schrijf of verwijder het dienstbestand en vertel welke regel Clay moet draaien.
+ * `node src/cli.js installeer [--weg]`: schrijf of verwijder het dienstbestand en vertel welke regel Clay moet draaien.
  * Weigert als root: een LaunchAgent/user-unit hoort bij Clay, niet bij root (nooit sudo).
  * @param {Parameters<typeof dienstVoor>[0] & { weg?: boolean, uid?: number }} o
  * @returns {{ regels: string[], pad: string, soort: string }}
@@ -244,7 +312,13 @@ export function installeer({ weg = false, uid = process.getuid?.() ?? -1, ...o }
       ...(bestond ? [`  ${d.ontlaad}`] : []),
       `  ${d.laad}`,
       `Logboek: ${d.log}`,
-      'Weghalen: varve-hub installeer --weg',
+      `Node: ${d.node}`,
+      ...(VERSIEMAP.test(d.node)
+        ? [`Let op: deze node staat in een versiemap en verdwijnt bij een node-update (brew upgrade, nvm-wissel).${
+          d.soort === 'launchd' ? ' Liever een vast pad, bv. /opt/homebrew/bin/node: zet dat eerst in PATH.' : ''}`]
+        : []),
+      `Na een node-update of verhuizen van de checkout: node src/cli.js installeer opnieuw (in ${o.hubMap}).`,
+      `Weghalen: node src/cli.js installeer --weg (in ${o.hubMap})`,
     ],
   };
 }

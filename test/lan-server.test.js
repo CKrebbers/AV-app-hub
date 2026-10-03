@@ -104,6 +104,21 @@ describe.skipIf(!LAN)(`server met token (LAN-adres ${LAN ?? 'ontbreekt'})`, () =
       expect(verder.status).toBe(200);
       expect(verder.koekje).toBeUndefined();
     });
+    it('een browser met ?token=: cookie en meteen door naar hetzelfde adres zónder token (niet in adresbalk/geschiedenis)', async () => {
+      const r = /** @type {any} */ (await haal(LAN, `/index.html?a=1&token=${TOKEN}&b=2`, { accept: 'text/html,application/xhtml+xml' }));
+      expect(r.status).toBe(302);
+      expect(String(r.koekje)).toContain(`${TOKEN_COOKIE}=${TOKEN}`);
+      expect(r.lijf).not.toContain(TOKEN);
+      const naar = /** @type {any} */ (await new Promise((goed, fout) => {
+        http.get({ host: LAN, port: srv.poort, path: `/?token=${TOKEN}`, headers: { accept: 'text/html' } }, (res) => { res.resume(); goed(res.headers); }).on('error', fout);
+      }));
+      expect(naar.location).toBe('/');
+      expect(naar['cache-control']).toBe('no-store');
+      const met = /** @type {any} */ (await new Promise((goed, fout) => {
+        http.get({ host: LAN, port: srv.poort, path: `/x?a=1&token=${TOKEN}&b=2`, headers: { accept: 'text/html' } }, (res) => { res.resume(); goed(res.headers); }).on('error', fout);
+      }));
+      expect(met.location).toBe('/x?a=1&b=2');
+    });
     it('de Host-controle blijft: een vreemde naam met het goede token is 403', async () => {
       expect((await haal(LAN, `/?token=${TOKEN}`, { host: 'aanvaller.example' })).status).toBe(403);
     });
@@ -164,13 +179,31 @@ describe.skipIf(!LAN)(`server met token (LAN-adres ${LAN ?? 'ontbreekt'})`, () =
       for (const extra of [{}, { token: 'verkeerd-token-0123456789' }]) {
         const c = client(ws(LAN, '/app'));
         await wachtOp(() => c.open);
-        c.ws.send(JSON.stringify({ t: 'zet', id: 'x', v: 1 }));        // vóór hallo: gewoon de bestaande fout
         c.ws.send(JSON.stringify({ t: 'hallo', app: 'indringer', inst: 'x', v: 1, ...extra }));
         expect(await wachtOp(() => c.code)).toBe(CLOSE_TOKEN);
-        expect(c.berichten.map((b) => b.t)).toEqual(['welkom', 'fout', 'fout']);
-        expect(c.berichten[2].reden).toMatch(/token nodig/);
+        expect(c.berichten.map((b) => b.t)).toEqual(['welkom', 'fout']);
+        expect(c.berichten[1].reden).toMatch(/token nodig/);
       }
       expect(kern.aanroepen.map((a) => a.naam).filter((n) => n !== 'beeld')).toEqual([]);
+    });
+    it('van buiten zonder token: elk ander bericht dan hallo (ook kapotte JSON of binair) sluit meteen met 4003', async () => {
+      for (const zend of [JSON.stringify({ t: 'zet', id: 'x', v: 1 }), '{kapot', JSON.stringify({ t: 'onbekend-type' }), Buffer.from([1, 2, 3])]) {
+        const c = client(ws(LAN, '/app'));
+        await wachtOp(() => c.open);
+        c.ws.send(zend);
+        expect(await wachtOp(() => c.code)).toBe(CLOSE_TOKEN);
+        expect(c.berichten.map((b) => b.t)).toEqual(['welkom', 'fout']);
+        expect(c.berichten[1].reden).toMatch(/token nodig/);
+      }
+      expect(kern.van('verbind')).toHaveLength(0);
+    });
+    it('met het token in de URL: vóór hallo gewoon de bestaande fout, de verbinding blijft open', async () => {
+      const c = client(ws(LAN, `/app?token=${TOKEN}`));
+      await wachtOp(() => c.open);
+      c.ws.send(JSON.stringify({ t: 'zet', id: 'x', v: 1 }));
+      await wachtOp(() => c.berichten[1]);
+      expect(c.berichten[1]).toMatchObject({ t: 'fout', reden: 'eerst hallo sturen' });
+      expect(c.code).toBe(null);
     });
     it('na een afgewezen hallo telt niets meer, ook niet een tweede hallo met het goede token', async () => {
       const c = client(ws(LAN, '/app'));
@@ -187,6 +220,48 @@ describe.skipIf(!LAN)(`server met token (LAN-adres ${LAN ?? 'ontbreekt'})`, () =
       c.ws.send(JSON.stringify({ t: 'hallo', app: 'tweede-kans', inst: 'b', v: 1, token: TOKEN }));
       await wachtOp(() => kern.ontvangen('hallo')[0]);
     });
+  });
+});
+
+describe.skipIf(!LAN)('hallo-time-out van buiten zonder token', () => {
+  it('geen hallo op tijd: dicht met 4003 (geen onbeperkt open sockets); met token in de URL geen time-out', async () => {
+    const k = new NepKern();
+    const s = await startServer({ poort: 0, host: '0.0.0.0', kern: k, uiMap: SRC, srcMap: SRC, token: TOKEN, halloMs: 150 });
+    try {
+      const open = [];
+      for (const pad of ['/app', '/app', `/app?token=${TOKEN}`]) {
+        const w = new WebSocket(`ws://${LAN}:${s.poort}${pad}`);
+        const c = { ws: w, code: /** @type {number|null} */ (null), berichten: /** @type {any[]} */ ([]) };
+        w.on('message', (d) => c.berichten.push(JSON.parse(String(d))));
+        w.on('close', (code) => { c.code = code; });
+        w.on('error', () => {});
+        open.push(c);
+      }
+      expect(await wachtOp(() => open[0].code, 2000)).toBe(CLOSE_TOKEN);
+      expect(await wachtOp(() => open[1].code, 2000)).toBe(CLOSE_TOKEN);
+      expect(open[0].berichten.at(-1)).toMatchObject({ t: 'fout', reden: expect.stringMatching(/token nodig/) });
+      await new Promise((r) => setTimeout(r, 300));
+      expect(open[2].code).toBe(null);                       // mét token: gewoon open
+      for (const c of open) c.ws.terminate();
+    } finally { await s.stop(); }
+  });
+});
+
+describe('vangnet: nooit zonder token op het netwerk', () => {
+  it('een host buiten loopback zonder token: geweigerd vóór het luisteren (code GEEN_TOKEN)', async () => {
+    const poort = await vrijePoort();
+    for (const host of ['0.0.0.0', '::', '192.0.2.99']) {
+      await expect(startServer({ poort, host, kern: new NepKern(), uiMap: SRC, srcMap: SRC })).rejects.toMatchObject({ code: 'GEEN_TOKEN' });
+    }
+    // Er luisterde ook niet heel even iets: de poort is gewoon vrij.
+    await new Promise((goed, fout) => { const t = net.createServer().once('error', fout).listen(poort, '0.0.0.0', () => t.close(goed)); });
+  });
+  it('loopback zonder token mag, zoals altijd', async () => {
+    for (const host of ['127.0.0.1', 'localhost']) {
+      const s = await startServer({ poort: 0, host, kern: new NepKern(), uiMap: SRC, srcMap: SRC });
+      expect(s.tokenVereist).toBe(false);
+      await s.stop();
+    }
   });
 });
 

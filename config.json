@@ -117,7 +117,8 @@
   },
   "server": {
     "host": "127.0.0.1",
-    "origins": []
+    "origins": [],
+    "lan_namen": []
   },
   "ringen_nemen_waarde_over": true,
   "drivers": {

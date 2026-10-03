@@ -1,7 +1,7 @@
 // src/lan.js: token op schijf, LAN-namen, mDNS als kindproces (nep-spawn + NepKlok), launchd/systemd-dienst.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,7 @@ import { NepKlok } from '../src/core/klok.js';
 import {
   leesOfMaakToken, tokenPad, nieuwToken, isLoopbackHost, lanNamen, lanOrigins, lanAdressen, cockpitAdressen,
   mdnsCommando, kondigAan, inPad, dienstVoor, installeer, MDNS_TYPE, LAUNCHD_LABEL, SYSTEMD_NAAM,
+  bonjourNaam, mdnsNaam, stabielNode, MDNS_POGINGEN,
 } from '../src/lan.js';
 
 const HUB = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -55,6 +56,26 @@ describe('token in ~/.varve-hub/token', () => {
     expect(mode(b.pad)).toBe(0o600);
   });
   it('nieuwToken: elke keer anders', () => expect(nieuwToken()).not.toBe(nieuwToken()));
+  it('tegelijk voor het eerst (dienst + `token`): wie later is leest het token van de ander, geen EEXIST', () => {
+    const ander = 'token-van-het-andere-proces-0123456789';
+    // Precies tussen "bestaat nog niet" en "op zijn plaats zetten" schrijft een ander proces het token.
+    const t = leesOfMaakToken({ home, maak: () => { mkdirSync(join(home, '.varve-hub'), { recursive: true }); writeFileSync(tokenPad(home), ander + '\n', { mode: 0o600 }); return nieuwToken(); } });
+    expect(t).toMatchObject({ token: ander, nieuw: false });
+    expect(readdirSync(join(home, '.varve-hub'))).toEqual(['token']);   // geen tijdelijke bestanden achtergelaten
+  });
+  it.skipIf(process.getuid?.() === 0)('schrijven mislukt (zoals een volle schijf): geen leeg tokenbestand achtergelaten', () => {
+    mkdirSync(join(home, '.varve-hub'), { mode: 0o700 });
+    chmodSync(join(home, '.varve-hub'), 0o500);
+    try { expect(() => leesOfMaakToken({ home })).toThrow(); } finally { chmodSync(join(home, '.varve-hub'), 0o700); }
+    expect(existsSync(tokenPad(home))).toBe(false);
+  });
+  it('atomair: geen restjes, ook niet bij opnieuw', () => {
+    const t = leesOfMaakToken({ home: mkdtempSync(join(tmpdir(), 'varve-home2-')) });
+    expect(readdirSync(dirname(t.pad))).toEqual(['token']);
+    const n = leesOfMaakToken({ home: dirname(dirname(t.pad)), opnieuw: true });
+    expect(readdirSync(dirname(n.pad))).toEqual(['token']);
+    expect(mode(n.pad)).toBe(0o600);
+  });
 });
 
 describe('namen en adressen', () => {
@@ -66,6 +87,23 @@ describe('namen en adressen', () => {
     expect(lanNamen({ hostnaam: 'Clays-MacBook-Pro.local' })).toEqual(['clays-macbook-pro', 'clays-macbook-pro.local']);
     expect(lanNamen({ hostnaam: 'omarchy' })).toEqual(['omarchy', 'omarchy.local']);
     expect(lanNamen({ hostnaam: 'studio', extra: ['Studio.lan', 'localhost', 'kw@ad'] })).toEqual(['studio', 'studio.local', 'studio.lan']);
+  });
+  it('lanNamen: de Bonjour-naam van de Mac (scutil), ook als de hostnaam iets als x.fritz.box is', () => {
+    const namen = lanNamen({ hostnaam: 'clays-mbp.fritz.box', bonjour: 'Clays-MacBook-Pro' });
+    expect(namen).toContain('clays-macbook-pro.local');
+    expect(namen).toContain('clays-mbp.fritz.box');
+    expect(namen).toContain('clays-mbp.local');
+    expect(namen).not.toContain('clays-mbp.fritz.box.local');
+    expect(mdnsNaam(namen)).toBe('clays-macbook-pro.local');          // die tonen we (cockpit-adres, flux-regel)
+    expect(lanNamen({ hostnaam: 'x.fritz.box', bonjour: null })).toEqual(['x.fritz.box', 'x.local']);
+    expect(mdnsNaam(lanNamen({ hostnaam: 'kw@ad', bonjour: null }))).toBe(null);
+  });
+  it('bonjourNaam: scutil --get LocalHostName op macOS, anders null; een fout is null', () => {
+    /** @type {string[][]} */ const aanroepen = [];
+    expect(bonjourNaam({ platform: 'darwin', run: (b, a) => { aanroepen.push([b, ...a]); return 'Clays-MacBook-Pro\n'; } })).toBe('Clays-MacBook-Pro');
+    expect(aanroepen).toEqual([['scutil', '--get', 'LocalHostName']]);
+    expect(bonjourNaam({ platform: 'darwin', run: () => { throw new Error('geen scutil'); } })).toBe(null);
+    expect(bonjourNaam({ platform: 'linux', run: () => { throw new Error('mag niet'); } })).toBe(null);
   });
   it('lanOrigins: http://<naam>:<poort>', () => {
     expect(lanOrigins(['studio', 'studio.local'], 7700)).toEqual(['http://studio:7700', 'http://studio.local:7700']);
@@ -148,6 +186,42 @@ describe('mDNS-aankondiging', () => {
     expect(kinderen).toHaveLength(1);
   });
 
+  it('crasht de hub (exit van het proces), dan gaat het kindproces mee: geen wees die de dienst blijft aankondigen', () => {
+    const proces = new EventEmitter();
+    const kinderen = /** @type {NepKind[]} */ ([]);
+    const r = kondigAan({ poort: 1, platform: 'linux', bestaat: () => true, klok: new NepKlok(), log: () => {}, proces: /** @type {any} */ (proces),
+      spawn: /** @type {any} */ (() => { const k = new NepKind(); kinderen.push(k); return k; }) });
+    expect(proces.listenerCount('exit')).toBe(1);
+    proces.emit('exit', 1);
+    expect(kinderen[0].gedood).toBe(true);
+    r.stop();
+    expect(proces.listenerCount('exit')).toBe(0);                     // netjes gestopt: geen listener achtergelaten
+  });
+
+  it(`na ${MDNS_POGINGEN} mislukte starts op rij: één duidelijke melding en klaar (geen eindeloos gelog)`, () => {
+    const klok = new NepKlok();
+    const proces = new EventEmitter();
+    const kinderen = /** @type {NepKind[]} */ ([]);
+    const log = /** @type {string[]} */ ([]);
+    kondigAan({ poort: 1, platform: 'linux', bestaat: () => true, klok, log: (m) => log.push(String(m)), proces: /** @type {any} */ (proces),
+      spawn: /** @type {any} */ (() => { const k = new NepKind(); kinderen.push(k); return k; }) });
+    for (let i = 0; i < 20; i++) { kinderen.at(-1)?.emit('exit', 1, null); klok.loop(61000); }
+    expect(kinderen).toHaveLength(MDNS_POGINGEN);
+    expect(log.filter((m) => /geef ik het op/.test(m))).toHaveLength(1);
+    expect(log.at(-1)).toMatch(/avahi-daemon/);
+    expect(proces.listenerCount('exit')).toBe(0);
+  });
+
+  it('liep het kindproces een tijd goed, dan telt een latere crash weer als de eerste', () => {
+    const klok = new NepKlok();
+    const kinderen = /** @type {NepKind[]} */ ([]);
+    const r = kondigAan({ poort: 1, platform: 'linux', bestaat: () => true, klok, log: () => {}, proces: /** @type {any} */ (new EventEmitter()),
+      spawn: /** @type {any} */ (() => { const k = new NepKind(); kinderen.push(k); return k; }) });
+    for (let i = 0; i < 10; i++) { klok.loop(61000); kinderen.at(-1)?.emit('exit', 1, null); klok.loop(5000); }
+    expect(kinderen).toHaveLength(11);
+    r.stop();
+  });
+
   it('inPad vindt uitvoerbare programma\'s in PATH', () => {
     const bin = join(home, 'bin');
     mkdirSync(bin);
@@ -193,6 +267,56 @@ describe('dienst: launchd en systemd --user', () => {
     expect(d.laad + d.ontlaad).not.toMatch(/sudo/);
   });
 
+  it('een pad met $, & en een spatie: het dienstbestand blijft heel (geen vervangpatronen, systemd vult $ niet in)', () => {
+    for (const map of ['/x/geld$&werk', '/x/geld$`x', "/x/geld$'x", '/x/a$$b & c $HOME']) {
+      const mac = dienstVoor({ platform: 'darwin', home, hubMap: map, node });
+      const xml = map.replace(/&/g, '&amp;');
+      expect(mac.inhoud).toContain(`<key>WorkingDirectory</key>\n  <string>${xml}</string>`);
+      expect(mac.inhoud).toContain(`<string>${xml}/src/cli.js</string>`);
+      expect(mac.inhoud.match(/<plist/g)).toHaveLength(1);
+      const lin = dienstVoor({ platform: 'linux', home, hubMap: map, node: '/usr/bin/node' });
+      expect(lin.inhoud).toMatch(/^\[Unit\]$/m);
+      expect(lin.inhoud.match(/^ExecStart=/gm)).toHaveLength(1);
+      expect(lin.inhoud.match(/^WorkingDirectory=/gm)).toHaveLength(1);
+      expect(lin.inhoud).toContain(`WorkingDirectory=${map}\n`);
+      expect(lin.inhoud).toContain(`ExecStart="/usr/bin/node" "${map.replace(/\$/g, '$$$$')}/src/cli.js" "start" "--lan"\n`);
+    }
+  });
+
+  it('node: het pad zoals de shell het vindt (symlink in PATH), niet het opgeloste Cellar-/nvm-pad', () => {
+    const cellar = join(home, 'Cellar', 'node', '22.9.0', 'bin');
+    const bin = join(home, 'homebrew', 'bin');
+    mkdirSync(cellar, { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(cellar, 'node'), '#!/bin/sh\n', { mode: 0o755 });
+    symlinkSync(join(cellar, 'node'), join(bin, 'node'));
+    const PATH = `relatief/bin:/bestaat/niet:${bin}`;
+    expect(stabielNode({ PATH, execPath: join(cellar, 'node') })).toBe(join(bin, 'node'));
+    expect(stabielNode({ PATH: '/bestaat/niet', execPath: '/x/node' })).toBe('/x/node');
+    const d = dienstVoor({ platform: 'linux', home, hubMap: '/h', PATH });
+    expect(d.node).toBe(join(bin, 'node'));
+    expect(d.inhoud).toContain(`ExecStart="${join(bin, 'node')}"`);
+  });
+
+  it('installeer waarschuwt bij een node in een versiemap en zegt: na een node-update opnieuw installeren', () => {
+    const nvm = installeer({ platform: 'darwin', home, hubMap: HUB, node: '/Users/clay/.nvm/versions/node/v22.9.0/bin/node', uid: 501 }).regels.join('\n');
+    expect(nvm).toMatch(/versiemap/);
+    expect(nvm).toMatch(/node src\/cli\.js installeer opnieuw/);
+    expect(nvm).toMatch(/node src\/cli\.js installeer --weg/);
+    expect(nvm).not.toMatch(/varve-hub installeer/);                  // zonder npm link bestaat `varve-hub` niet
+    const brew = installeer({ platform: 'darwin', home, hubMap: HUB, node: '/opt/homebrew/Cellar/node/22.9.0/bin/node', uid: 501 }).regels.join('\n');
+    expect(brew).toMatch(/versiemap/);
+    expect(installeer({ platform: 'darwin', home, hubMap: HUB, node, uid: 501 }).regels.join('\n')).not.toMatch(/versiemap/);
+  });
+
+  it('systemd: geen eindeloze herstart bij een vaste fout (3 poort bezet, 4 geen token); geen systeemtargets', () => {
+    const d = dienstVoor({ platform: 'linux', home, hubMap: '/h', node: '/usr/bin/node' });
+    expect(d.inhoud).toMatch(/^RestartPreventExitStatus=3 4$/m);
+    expect(d.inhoud).not.toMatch(/^(After|Wants)=.*(network-online|sound)\.target/m);
+    const mac = dienstVoor({ platform: 'darwin', home, hubMap: '/h', node });
+    expect(mac.inhoud).toMatch(/<key>VARVE_HUB_DIENST<\/key>\s*<string>launchd<\/string>/);
+  });
+
   it('andere platforms: een duidelijke fout', () => {
     expect(() => dienstVoor({ platform: 'win32', home, hubMap })).toThrow(/geen dienst voor platform win32/);
   });
@@ -229,7 +353,7 @@ describe('dienst: launchd en systemd --user', () => {
   it('de sjablonen in deploy/ en het installeerscript bestaan; het script gebruikt nooit sudo', () => {
     for (const f of ['nl.varve.hub.plist', 'varve-hub.service', 'installeer.sh']) expect(existsSync(join(HUB, 'deploy', f)), f).toBe(true);
     const sh = readFileSync(join(HUB, 'deploy', 'installeer.sh'), 'utf8');
-    expect(sh).toMatch(/cli\.js" installeer "\$@"/);
+    expect(sh).toMatch(/cli\.js" installeer --node "\$\(command -v node\)" "\$@"/);
     expect(sh.split('\n').filter((r) => !r.trim().startsWith('#') && !/echo/.test(r)).join('\n')).not.toMatch(/\bsudo\b/);
     expect(mode(join(HUB, 'deploy', 'installeer.sh')) & 0o111).not.toBe(0);
   });

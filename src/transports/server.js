@@ -109,6 +109,12 @@ export const TOKEN_COOKIE = 'varve_hub_token';
 /** Close-code voor een /app-verbinding zonder geldig token. */
 export const CLOSE_TOKEN = 4003;
 
+/** Wachttijd voor een /app-verbinding van buiten zonder token: zonder geldige hallo binnen deze tijd → 4003. */
+export const HALLO_MS = 10000;
+
+/** Luistert de server alleen op de eigen machine? @param {string} host */
+export const isLoopbackHost = (host) => host === 'localhost' || host === '::1' || /^(::ffff:)?127\./.test(host);
+
 /** Komt de verbinding van de eigen machine (loopback)? @param {string|undefined} adres */
 export const isLokaalAdres = (adres) => typeof adres === 'string' && (/^(::ffff:)?127\./.test(adres) || adres === '::1');
 
@@ -316,12 +322,18 @@ export function leesVanCockpit(ruw) {
  * @param {{
  *   poort: number, host?: string, kern: KernVoorServer, uiMap: string, srcMap: string,
  *   opVirtueel?: (dev: 'apc40'|'lpd8', bytes: number[]) => void, origins?: string[],
- *   maxAchterstand?: number, pingMs?: number, token?: string|null,
+ *   maxAchterstand?: number, pingMs?: number, token?: string|null, halloMs?: number,
  * }} o `token`: vereist voor elke verbinding van buiten de eigen machine (zie boven); null = geen controle.
+ *   Een `host` die niet loopback is zonder token wordt geweigerd (fout met code 'GEEN_TOKEN'), nog vóór het luisteren.
+ *   `halloMs`: zo lang mag een /app-verbinding van buiten zonder token wachten op een hallo met token.
  * @returns {Promise<{ adres: string, poort: number, tokenVereist: boolean, stop: () => Promise<void> }>}
  */
-export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcMap, opVirtueel, origins = [], maxAchterstand = MAX_ACHTERSTAND, pingMs = 15000, token = null }) {
+export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcMap, opVirtueel, origins = [], maxAchterstand = MAX_ACHTERSTAND, pingMs = 15000, token = null, halloMs = HALLO_MS }) {
   if (token !== null && (typeof token !== 'string' || token.length < 16)) throw new Error('token moet een tekst van minstens 16 tekens zijn');
+  if (!token && !isLoopbackHost(host)) {
+    // Vangnet: nooit zonder token op het netwerk luisteren, ook niet heel even.
+    throw Object.assign(new Error(`niet op ${host} luisteren zonder token (alleen 127.0.0.1/localhost/::1 mag zonder)`), { code: 'GEEN_TOKEN' });
+  }
   /** Heeft dit verzoek (HTTP of upgrade) geen token nodig, of toont het het goede? Dan ook: kwam het uit de URL?
    *  @param {import('node:http').IncomingMessage} req */
   const toegang = (req) => {
@@ -346,7 +358,18 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     if (!t.ok) return eindig(res, 401, 'token nodig: open de cockpit met ?token=… (node src/cli.js token op de hub toont het adres)');
     // Een browser die het token in de URL meegaf onthoudt het, zodat de cockpit-WebSocket en de
     // scripts van de pagina het ook hebben (die kennen de ?token= van de pagina niet).
-    if (t.uitUrl && token) res.setHeader('set-cookie', `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000`);
+    if (t.uitUrl && token) {
+      res.setHeader('set-cookie', `${TOKEN_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000`);
+      // Een browser die een pagina opent: meteen door naar hetzelfde adres zónder ?token=, zodat het token niet in
+      // de adresbalk en de geschiedenis van de tablet blijft staan. Andere clients (curl, scripts) krijgen gewoon antwoord.
+      if (req.method === 'GET' && /text\/html/.test(String(req.headers.accept ?? ''))) {
+        const u = new URL(req.url ?? '/', 'http://hub');
+        u.searchParams.delete('token');
+        res.writeHead(302, { location: u.pathname + u.search, 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' });
+        res.end('token onthouden');
+        return;
+      }
+    }
     if (req.method !== 'GET' && req.method !== 'HEAD') return eindig(res, 404, 'niet gevonden');
     const hoofd = req.method === 'HEAD';
     let pad;
@@ -428,6 +451,17 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     /** Zonder token bij de upgrade (LAN): pas na een hallo met het goede token naar de kern. */
     let bijKern = binnen;
     let geweigerd = false;                                       // token afgewezen: wat nog binnenkomt telt niet
+    /** Van buiten zonder token: sluiten met 4003 (het token gaat nooit mee in de reden). @param {string} reden */
+    const weiger = (reden) => {
+      if (geweigerd) return;
+      geweigerd = true;
+      clearTimeout(halloWacht);
+      v.stuur({ t: 'fout', reden });
+      try { ws.close(CLOSE_TOKEN, 'token nodig'); } catch { ws.terminate(); }
+    };
+    // Zonder token bij de upgrade: alleen even wachten op een hallo met token, niet onbeperkt (sockets, pings).
+    const halloWacht = bijKern ? undefined : setTimeout(() => weiger('token nodig: geen hallo met token op tijd'), halloMs);
+    halloWacht?.unref?.();
     levend.add(ws);
     ws.on('pong', () => levend.add(ws));
     ws.on('error', () => {});
@@ -471,6 +505,11 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     ws.on('message', (data, binair) => {
       if (geweigerd) return;
       levend.add(ws);
+      // Van buiten zonder token mag alleen een hallo (met token) komen; al het andere: meteen dicht.
+      if (!bijKern) {
+        const r0 = binair ? null : leesVanApp(String(data));
+        if (!r0 || !r0.ok || 'onbekend' in r0 || r0.bericht.t !== 'hallo') return weiger('token nodig: stuur eerst hallo met token, of verbind met ?token=…');
+      }
       if (binair) return v.stuur({ t: 'fout', reden: 'alleen tekstberichten (JSON)' });
       const r = leesVanApp(String(data));
       if (!r.ok) return v.stuur({ t: 'fout', reden: r.fout });
@@ -482,11 +521,9 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
         bericht = zonderToken;                                   // het token gaat nooit naar de kern (of een logboek)
         if (!bijKern) {
           if (!tokenKlopt(gegeven, /** @type {string} */ (token))) {
-            v.stuur({ t: 'fout', reden: `token nodig: verbind met ?token=… of stuur token in hallo (${gegeven === undefined ? 'geen token' : 'verkeerd token'})` });
-            geweigerd = true;
-            try { ws.close(CLOSE_TOKEN, 'token nodig'); } catch { ws.terminate(); }
-            return;
+            return weiger(`token nodig: verbind met ?token=… of stuur token in hallo (${gegeven === undefined ? 'geen token' : 'verkeerd token'})`);
           }
+          clearTimeout(halloWacht);
           bijKern = true;
           veilig('kern.verbind', () => kern.verbind(v));
         }
@@ -497,6 +534,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
       veilig('kern.ontvang', () => kern.ontvang(v, b));
     });
     ws.on('close', () => {
+      clearTimeout(halloWacht);
       if (dicht) return;
       dicht = true;
       for (const [app, h] of huidige) if (h.ws === ws) huidige.delete(app);

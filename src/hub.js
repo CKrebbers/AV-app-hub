@@ -16,10 +16,10 @@ import * as LPD8 from './devices/lpd8.js';
  * @param {{
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
- *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void,
- * }} o
+ *   logboek?: import('./core/logboek.js').Logboek|null, log?: (...a: unknown[]) => void, token?: string|null,
+ * }} o `token`: vereist van elke verbinding van buiten de eigen machine (--lan, docs/NETWERK.md)
  */
-export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {} }) {
+export async function startHub({ config, systeem, klok = echteKlok, poort, host, lpd8Profiel = null, drivers = true, fetch: f = globalThis.fetch, logboek = null, log = () => {}, token = null }) {
   const cfg = { ...config, kaarten: { ...laadKaarten(), ...(config.kaarten ?? {}) } };
   const apparaten = maakApparaten({ systeem, klok, config: cfg, logboek, lpd8Profiel });
   // De kern tekent via een poortwachter: zodra stop() begint, komt er van de kern niets meer op de APC.
@@ -55,7 +55,7 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
   };
 
   const server = await startServer({
-    poort: poort ?? cfg.poorten.http, host: host ?? cfg.server?.host ?? '127.0.0.1', origins: cfg.server?.origins ?? [],
+    poort: poort ?? cfg.poorten.http, host: host ?? cfg.server?.host ?? '127.0.0.1', origins: cfg.server?.origins ?? [], token,
     kern, uiMap: join(HUB_MAP, 'ui'), srcMap: join(HUB_MAP, 'src'), opVirtueel,
   });
   const actieveDrivers = drivers ? startDrivers({ kern, klok, systeem, fetch: f, config: cfg, log }) : null;

@@ -11,4 +11,5 @@ if [ "$(id -u)" = "0" ]; then
 fi
 hier=$(cd "$(dirname "$0")/.." && pwd)
 command -v node >/dev/null 2>&1 || { echo "node niet gevonden (Node 22 nodig)." >&2; exit 1; }
-exec node "$hier/src/cli.js" installeer "$@"
+# Het node-pad zoals de shell het vindt (bv. /opt/homebrew/bin/node), niet het opgeloste Cellar-/nvm-pad.
+exec node "$hier/src/cli.js" installeer --node "$(command -v node)" "$@"

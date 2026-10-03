@@ -19,10 +19,6 @@ const HUB = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CLI = join(HUB, 'src', 'cli.js');
 const LAN = lanAdressen()[0];
 
-// Geeft src/hub.js het token door aan de server? (Zo niet, dan weigert `start --lan` netjes; zie open vraag.)
-const proef = await startHub({ config: laadConfig(), systeem: new NepSysteem(), klok: new NepKlok(), poort: 0, host: '127.0.0.1', drivers: false, ...{ token: 'proef-token-0123456789abcdef' } });
-const HUB_GEEFT_TOKEN_DOOR = proef.server.tokenVereist === true;
-await proef.stop();
 
 /** @type {string} */ let home;
 /** @type {import('node:child_process').ChildProcess[]} */ let processen;
@@ -50,8 +46,17 @@ const status = (host, poort, pad) => new Promise((goed, fout) => {
 });
 const tokenBestand = () => join(home, '.varve-hub', 'token');
 
+describe('startHub geeft het token door aan de server', () => {
+  it('met token: de server eist het (ook op 0.0.0.0); zonder token buiten loopback: geweigerd vóór het luisteren', async () => {
+    const hub = await startHub({ config: laadConfig(), systeem: new NepSysteem(), klok: new NepKlok(), poort: 0, host: '0.0.0.0', drivers: false, token: 'proef-token-0123456789abcdef' });
+    try { expect(hub.server.tokenVereist).toBe(true); } finally { await hub.stop(); }
+    await expect(startHub({ config: laadConfig(), systeem: new NepSysteem(), klok: new NepKlok(), poort: 0, host: '0.0.0.0', drivers: false }))
+      .rejects.toMatchObject({ code: 'GEEN_TOKEN' });
+  });
+});
+
 describe('varve-hub start --lan', () => {
-  it.skipIf(!HUB_GEEFT_TOKEN_DOOR || !LAN)('luistert op het netwerk, maakt het token (0600) en eist het van buiten', async () => {
+  it.skipIf(!LAN)('luistert op het netwerk, maakt het token (0600) en eist het van buiten', async () => {
     const poort = await vrijePoort();
     const r = start(['start', '--lan', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
     await wachtOp(() => /varve-hub draait/.test(r.uit), 8000);
@@ -59,7 +64,8 @@ describe('varve-hub start --lan', () => {
     const token = readFileSync(tokenBestand(), 'utf8').trim();
     expect(r.uit).toMatch(/Nieuw token aangemaakt/);
     expect(r.uit).not.toContain(token);                       // geen terminal: het token niet in het logboek
-    expect(r.uit).toMatch(/varve-hub token/);
+    expect(r.uit).toContain(`node src/cli.js token --poort ${poort}`);
+    expect(r.uit).not.toMatch(/varve-hub token/);              // zonder npm link bestaat `varve-hub` niet
     expect(r.uit).toMatch(/mDNS/);
     expect(await status('127.0.0.1', poort, '/')).toBe(200);
     expect(await status(/** @type {string} */ (LAN), poort, '/')).toBe(401);
@@ -69,7 +75,7 @@ describe('varve-hub start --lan', () => {
     expect(r.code).toBe(0);
   });
 
-  it.skipIf(!HUB_GEEFT_TOKEN_DOOR || !LAN)('een --host die niet loopback is krijgt ook een token (geen open hub per ongeluk)', async () => {
+  it.skipIf(!LAN)('een --host die niet loopback is krijgt ook een token (geen open hub per ongeluk)', async () => {
     const poort = await vrijePoort();
     const r = start(['start', '--host', '0.0.0.0', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
     await wachtOp(() => /varve-hub draait/.test(r.uit), 8000);
@@ -77,10 +83,16 @@ describe('varve-hub start --lan', () => {
     expect(await status(/** @type {string} */ (LAN), poort, '/api/beeld')).toBe(401);
   });
 
-  it.skipIf(HUB_GEEFT_TOKEN_DOOR)('vangnet: geeft de hub het token niet door, dan stopt --lan met een uitleg (nooit open op het netwerk)', async () => {
-    const r = await draai(['start', '--lan', '--zonder-midi', '--geen-drivers', '--poort', String(await vrijePoort())]);
-    expect(r.code).toBe(4);
-    expect(r.fout).toMatch(/token niet door/);
+  it('poort bezet: exit 3, en de melding zegt hoe je de hub stopt die als dienst draait', async () => {
+    const poort = await vrijePoort();
+    const bezet = net.createServer().listen(poort, '127.0.0.1');
+    await new Promise((r) => bezet.once('listening', r));
+    try {
+      const r = await draai(['start', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
+      expect(r.code).toBe(3);
+      expect(r.fout).toMatch(/poort \d+ is bezet/);
+      expect(r.fout).toContain('systemctl --user stop varve-hub.service');
+    } finally { bezet.close(); }
   });
 
   it('zonder --lan: alleen lokaal, geen token aangemaakt', async () => {
@@ -102,6 +114,16 @@ describe('varve-hub token', () => {
     const n = await draai(['token', '--nieuw']);
     expect(readFileSync(tokenBestand(), 'utf8').trim()).not.toBe(token);
     expect(n.uit).toMatch(/herstart de hub/);
+  });
+  it('--poort: adressen en flux-regel met die poort; de flux-host is de .local-naam uit dezelfde namenlijst', async () => {
+    const r = await draai(['token', '--poort', '7799']);
+    expect(r.code).toBe(0);
+    expect(r.uit).toMatch(/http:\/\/[^\s]+:7799\/\?token=/);
+    expect(r.uit).not.toMatch(/:7700\//);
+    const flux = /VARVE_HUB=ws:\/\/([^\s:]+):7799\/app\?token=/.exec(r.uit);
+    expect(flux).not.toBeNull();
+    const adres = new RegExp(`http://${String(flux?.[1]).replace(/\./g, '\\.')}:7799/\\?token=`);
+    expect(r.uit).toMatch(adres);                              // dezelfde host als een cockpit-adres
   });
 });
 
@@ -132,6 +154,9 @@ describe('docs/NETWERK.md klopt met de opdrachtregel', () => {
     expect(doc).toContain('npm start -- --lan');
     for (const o of ['token', 'token --nieuw', 'installeer', 'installeer --weg', 'installeer --lokaal']) expect(doc).toContain(o);
     expect(doc).not.toMatch(/^\s*varve-hub /m);                // zonder npm link bestaat `varve-hub` niet
+    for (const w of ['nss-mdns', 'tailscale serve', 'RestartPreventExitStatus', 'installeer` opnieuw', 'token --poort']) expect(doc, w).toContain(w);
+    expect(readFileSync(join(HUB, 'PROTOCOL.md'), 'utf8')).toMatch(/4003/);
+    expect(JSON.parse(readFileSync(join(HUB, 'config.json'), 'utf8')).server.lan_namen).toEqual([]);
     const hulp = await draai(['help']);
     for (const w of ['--lan', 'installeer', 'token']) expect(hulp.uit).toContain(w);
   });
