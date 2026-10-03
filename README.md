@@ -1,4 +1,4 @@
-# varve-hub
+# AV-app-hub (`varve-hub`)
 
 Eén hub voor de **APC40 mkII** en de **LPD8**, zodat al je Varve-projecten (Varve DJ, av-kern, formula-lab, av-scene-kit, uurwerk, waterschaal, …) met die twee controllers te bespelen zijn — zonder dat apps om de controller vechten.
 
@@ -9,7 +9,7 @@ Eén hub voor de **APC40 mkII** en de **LPD8**, zodat al je Varve-projecten (Var
 Nodig: Node 22 (`brew install node`).
 
 ```bash
-cd varve-hub
+cd AV-app-hub
 npm install            # haalt ook @julusian/midi (RtMidi) binnen
 node src/cli.js doctor # wat ziet de hub? controllers, poorten, draaiende apps
 ```

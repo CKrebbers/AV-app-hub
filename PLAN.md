@@ -51,7 +51,7 @@ Samenwerken gaat alleen goed als jouw hardware-avonden weinig moeite kosten en C
 | # | Vraag | Voorstel | Waarom |
 |---|---|---|---|
 | B1 | LPD8 mk1 of mk2? | **Beide ondersteunen**; `doctor` detecteert het model (SysEx-ID `0x75`/`0x4C`). Geen pad-LEDs in het ontwerp. | Kost weinig, en we weten het zeker na F0. |
-| B2 | Waar komt de code? | **Nieuw privé-repo `CKrebbers/varve-hub`** — jij maakt het leeg aan op GitHub, Claude koppelt het en pusht. Deze map (`3dbuildgame/varve-hub`) verhuist mee. | `3dbuildgame` past niet; de hub verdient een eigen CLAUDE.md, CI en issues. |
+| B2 | Waar komt de code? | **Eigen privé-repo `CKrebbers/AV-app-hub`** (gedaan 3 okt). De code heet intern nog `varve-hub` (CLI, package). | `3dbuildgame` past niet; de hub verdient een eigen CLAUDE.md, CI en issues. |
 | B3 | Hubtoets | **Bank (103)**, instelbaar in `config.json`. Master (80) als reserve. | Ongebruikt in Varve DJ en av-kern; heeft geen LED-functie die we missen. |
 | B4 | Eerste set | **`dj`-light eerst** (Varve DJ + formula-lab + av-scene-kit/TD), **`meditatie` na 25 okt** | av-kern heeft voorrang tot de publicatie van 25 okt; daar raken we niets aan (zie §6). |
 | B5 | Taal/stack | **Node 22, ESM, gewoon JS + JSDoc (`// @ts-check`), vitest, geen build.** Afhankelijkheden: `ws`, `@julusian/midi` (optioneel). | Zelfde stijl als Varve DJ en formula-lab; draait direct met `node`. |
@@ -216,7 +216,7 @@ Eén PR = één ding. Adapter-PR's in andere repo's zijn klein en altijd achter 
 ## 10. Volgende stappen (deze week)
 
 1. **Clay:** beslissingen B1–B6 bevestigen of aanpassen (één regel per stuk is genoeg).
-2. **Clay:** leeg privé-repo `CKrebbers/varve-hub` aanmaken.
+2. ~~**Clay:** leeg privé-repo aanmaken~~ → `CKrebbers/AV-app-hub` ✓
 3. **Claude:** repo koppelen, F0 bouwen (skelet → apparaten → poorten → LED-wachtrij → doctor/proef), PR openen.
 4. **Claude:** losse PR in av-kern voor de ◄/►-bug (klein, jij plant de merge).
 5. **Clay:** hardware-avond 1 (`proef f0-hardware`), bestand pushen.
