@@ -98,10 +98,37 @@ describe.skipIf(!heeftBrowser)('oefenruimte in de browser', () => {
     await page.goto(`${hub.adres}/oefen`);
     await page.locator('#knop-volgende').waitFor({ state: 'visible' });
     await page.click('#voortgang li:nth-child(5) button');
-    expect(await page.textContent('#les-nr')).toBe('Les 5 van 13');
+    expect(await page.textContent('#les-nr')).toBe('Les 5 van 14');
     await page.reload();
-    await expect.poll(() => page.textContent('#les-nr')).toBe('Les 5 van 13');
+    await expect.poll(() => page.textContent('#les-nr')).toBe('Les 5 van 14');
     expect(await page.$$eval('#voortgang button.gehaald', (e) => e.length)).toBe(1); // les 1 (welkom)
+  });
+
+  it('het glij-teken: een zet van de hub op de Galm (slew_s 3) toont doel en resttijd, en verdwijnt als hij er is (les 14)', async () => {
+    await page.goto(`${hub.adres}/oefen`);
+    await page.locator('#knop-volgende').waitFor({ state: 'visible' });
+    await page.click('#voortgang li:nth-child(14) button');
+    expect(await page.textContent('#les-nr')).toBe('Les 14 van 14');
+    expect(await page.textContent('#les-titel')).toMatch(/^Glijden/);
+    const galm = '#app-oefen-zee [data-p="galm"]';
+    expect(await page.isVisible(`${galm} .doel`)).toBe(false);
+    expect(await page.textContent(`${galm} .naar`)).toBe('');
+    const apcY = async () => (await page.locator('#apc').boundingBox())?.y;
+    const y0 = await apcY();
+    hub.kern.cockpit({ t: 'zet', app: 'oefen-zee', id: 'galm', v: 0.9 });   // een zet van de hub zelf, zoals een snapshot
+    await page.locator(`${galm}.glijdt .doel`).waitFor({ state: 'visible' });
+    expect(await page.textContent(`${galm} .naar`)).toMatch(/^→ 90% · [0-3],\d s$/);
+    expect(await page.getAttribute(galm, 'data-doel')).toBe('0.9');
+    // de andere parameters glijden niet
+    expect(await page.$$eval('.oefen-app .p.glijdt', (e) => e.map((x) => /** @type {HTMLElement} */ (x).dataset.p))).toEqual(['galm']);
+    await expect.poll(() => page.textContent('#opdracht')).toMatch(/Laat los en wacht/);
+    expect(await apcY()).toBe(y0);   // het teken laat de controllers niet verspringen
+    await page.locator(`${galm}.glijdt`).waitFor({ state: 'detached', timeout: 6000 });
+    expect(await page.isVisible(`${galm} .doel`)).toBe(false);
+    expect(await page.textContent(`${galm} .w`)).toBe('90%');
+    await page.locator('#geleerd').waitFor({ state: 'visible' });
+    expect(await page.textContent('#geleerd')).toMatch(/Alle lessen gehaald/);
+    expect(fouten).toEqual([]);
   });
 
   it('toont tempo en adem onder het tafereel (les 12)', async () => {

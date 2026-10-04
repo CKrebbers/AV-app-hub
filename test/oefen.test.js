@@ -89,10 +89,10 @@ describe('oefenruimte: lessen en oefen-apps', () => {
     expect(beschrijfControl('pad1-3')).toBe('de pad in kolom 3, onderste rij');
   });
 
-  it('een gesimuleerde leerling haalt elke les, van welkom tot opname', async () => {
+  it('een gesimuleerde leerling haalt elke les, van welkom tot glijden', async () => {
     const { hub, apps, leraar, leerling } = await opzet();
     const ids = LESSEN.map((l) => l.id);
-    expect(ids).toEqual(['welkom', 'focus', 'fader', 'pickup', 'knop', 'pads', 'wisselen', 'lpd8', 'slew', 'snapshot', 'paniek', 'tempo', 'opname']);
+    expect(ids).toEqual(['welkom', 'focus', 'fader', 'pickup', 'knop', 'pads', 'wisselen', 'lpd8', 'slew', 'snapshot', 'paniek', 'tempo', 'opname', 'glijden']);
 
     leraar.gaNaar(0);
     await lesGehaald(leraar);
@@ -182,9 +182,62 @@ describe('oefenruimte: lessen en oefen-apps', () => {
     // opname: alleen lezen
     leraar.volgende();
     leraar.verwerk({ soort: 'knop' });
+    await lesGehaald(leraar);
+    expect(leraar.allesKlaar).toBe(false);
+
+    // glijden: snapshot 4 bestaat (les 10), dus K3 alleen telt niet: K3 weg, dan pad 8 kort → de snapshot laat de
+    // Galm terugglijden (beeld.slews van de echte kern); na slew_s is hij er
+    leraar.volgende();
+    expect(leraar.les.id).toBe('glijden');
+    expect(leraar.toestand().wijs).toEqual(['lpd:k3', 'lpd:p8']);
+    await leerling.knop(3, 1, 0, 0.1);
+    await tot(() => hub.kern.beeld().slews.some((/** @type {any} */ s) => s.app === ZEE && s.id === 'galm'));
+    await wacht(300);
+    expect(leraar.stap?.id).toBe('glijdt');                   // de LPD8 alleen is hier niet genoeg
+    await leerling.pad(8, 40);
+    await tot(() => leraar.stap?.id === 'aangekomen');
+    expect(hub.kern.beeld().slews).toEqual([expect.objectContaining({ app: ZEE, id: 'galm' })]);
+    await lesGehaald(leraar, 5000);
+    expect(hub.kern.beeld().slews).toEqual([]);
+    expect(apps[ZEE].waarden.galm).toBe(hub.kern.beeld().apps.find((/** @type {any} */ a) => a.app === ZEE).waarden.galm);
     expect(leraar.allesKlaar).toBe(true);
     expect(leraar.toestand().gehaald).toHaveLength(LESSEN.length);
-  }, 30000);
+  }, 40000);
+
+  it('glijden-les: telt alleen een slew van de Galm van de Zee, en is klaar als die weg is uit het beeld', () => {
+    const l = new Leraar({ nu: () => 0 });
+    const apps = [{ app: ZON, naam: 'Zon', slot: 1 }, { app: ZEE, naam: 'Zee', slot: 2 }];
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps, slews: [], nu: 0 } });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'glijden'));
+    expect(l.lesIndex).toBe(LESSEN.length - 1);              // achteraan: de andere lessen houden hun nummer
+    expect(l.toestand().wijs).toEqual(['lpd:k3']);
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps, slews: [{ app: ZON, id: 'gloed', doel: 1, eindMs: 500 }], nu: 0 } });
+    expect(l.stap?.id).toBe('glijdt');
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps, slews: [{ app: ZEE, id: 'galm', doel: 0.9, eindMs: 3000 }], nu: 1000 } });
+    expect(l.stap?.id).toBe('aangekomen');
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps, slews: [{ app: ZEE, id: 'galm', doel: 0.9, eindMs: 3000 }], nu: 2000 } });
+    expect(l.lesKlaar).toBe(false);
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps, slews: [], nu: 3100 } });
+    expect(l.lesKlaar).toBe(true);
+    expect(l.allesKlaar).toBe(true);
+  });
+
+  it('glijden-les met snapshot 4: alleen een glijden na het laden van de snapshot telt (het snapshot-deel van de uitleg)', () => {
+    const l = new Leraar({ nu: () => 0 });
+    const apps = [{ app: ZON, naam: 'Zon', slot: 1 }, { app: ZEE, naam: 'Zee', slot: 2 }];
+    const beeld = (/** @type {any[]} */ slews) => ({ soort: /** @type {const} */ ('beeld'), beeld: { focus: ZON, apps, snapshots: [4], slews, nu: 0 } });
+    const galm = [{ app: ZEE, id: 'galm', doel: 0.2, eindMs: 3000 }];
+    l.verwerk(beeld([]));
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'glijden'));
+    expect(l.toestand().wijs).toEqual(['lpd:k3', 'lpd:p8']);
+    expect(l.toestand().opdracht).toMatch(/pad 8 kort/);
+    l.verwerk({ soort: 'app', app: ZEE, b: { t: 'zet', id: 'galm', v: 0.5, bron: 'lpd8' } });
+    l.verwerk(beeld(galm));                                   // glijden door K3: telt hier niet
+    expect(l.stap?.id).toBe('glijdt');
+    l.verwerk({ soort: 'app', app: ZEE, b: { t: 'zet', id: 'galm', v: 0.45, bron: 'snapshot' } });
+    l.verwerk(beeld(galm));
+    expect(l.stap?.id).toBe('aangekomen');
+  });
 
   it('pickup-les: een fader-zet die nog onderweg was overschrijft de "klik in de app" niet blijvend', () => {
     /** @type {[string, string, number][]} */

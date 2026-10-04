@@ -97,7 +97,7 @@ export class HttpDriver extends DriverBasis {
     // ── teruglezen (onderaan het bestand) ──
     const tc = leesTerugleesConfig(config?.teruglezen);
     for (const m of tc?.meldingen ?? []) this.log('driver', manifest.app, m);
-    const { lezer, fouten } = tc ? maakLezer(driver.lees === undefined ? STANDAARD_LEES[manifest.app] : driver.lees, manifest, driver) : { lezer: null, fouten: [] };
+    const { lezer, fouten } = tc ? maakLezer(leesSpecVan(manifest, driver), manifest, driver) : { lezer: null, fouten: [] };
     if (fouten.length) this.log('driver', manifest.app, 'teruglezen:', fouten.join('; '));
     /** @type {Lezer|null} null = teruglezen uit (geen config, lees:false, of geen geldige regels) */
     this.lezer = lezer;
@@ -498,6 +498,18 @@ export const STANDAARD_LEES = {
 /** @typedef {{ verb: string, veld: string, kop: RegExp|null, tolerantie: number, regels: Map<string, Regel> }} Lezer */
 /** @typedef {{ kop: boolean, vers: boolean, waarden: Record<string, number> }} Patch */
 /** @typedef {{ ac: AbortController|null, timer: any, klaar: () => void }} LeesLopend */
+
+/**
+ * De lees-spec die geldt voor deze app: `driver.lees`, of zonder dat veld STANDAARD_LEES[app] (`lees: false` = uit).
+ * Eén plek voor de driver én de statische controle (valideerStatisch in src/drivers/index.js).
+ * @param {Record<string, any>} manifest @param {Record<string, any>} driver
+ * @returns {unknown}
+ */
+export const leesSpecVan = (manifest, driver) => {
+  if (driver.lees !== undefined) return driver.lees;
+  // Eigen sleutels alleen: een app die "constructor" heet, krijgt niet Object.prototype.constructor als spec.
+  return typeof manifest.app === 'string' && Object.hasOwn(STANDAARD_LEES, manifest.app) ? STANDAARD_LEES[manifest.app] : undefined;
+};
 
 /**
  * Maak een lezer uit een lees-spec: per parameter een regex en het bereik uit driver.verbs. Ongeldige regels vallen weg

@@ -47,13 +47,15 @@ kleinste herstel: §2.3.
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
 | **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:91` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
-Nieuwe driver-soorten komen bij `src/drivers/index.js:26` (`DRIVER_SOORTEN`) en `:33-41` (`maakDriver`), plus
+Nieuwe driver-soorten komen bij `src/drivers/index.js:26` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
-manifest hebben (`src/core/kern.js:734-739`; Stop All: `src/core/kern.js:696`). Geen enkele driver-app heeft die nu
-(`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:196`).
-**LPD8-P1 doet nu dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder.
+manifest hebben (`src/core/kern.js:734-739`; Stop All: `src/core/kern.js:696`). Bij dit onderzoek had geen enkele
+driver-app die (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:196`).
+**LPD8-P1 deed toen dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder. *Sinds
+golf 6 hebben uurwerk, Sediment en td-lab een trigger `paniek` in hun statische manifest; Scene Kit volgt na de
+TD-patch in `koppelingen/av-scene-kit/` (PROTOCOL §14).*
 
 ---
 
@@ -280,7 +282,10 @@ volgt de buitenwereld en de kern stuurt het niet terug naar de tab (PROTOCOL §1
   onrust x [bevroren]` (onrust en bevries), `licht x`, `samenhang x` (alle drie 0 als de regel ontbreekt) en `dicht x`
   in de `stem`-regel (onbekend zonder stemmen). Het bereik komt uit `driver.verbs` (licht −1..1).
 - **Per app overschrijven of uitzetten:** `driver.lees` in `apps/uurwerk.json` vervangt de standaard; `"lees": false`
-  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Voorbeeld zonder
+  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Een fout in het
+  teruglezen (`driver.lees`, of `STANDAARD_LEES` die niet meer bij de params past) = ! in `varve-hub check`
+  (`valideerStatisch` geeft hem als waarschuwing, met dezelfde melding als de driver): de app speelt gewoon, alleen die
+  regel wordt niet teruggelezen. Voorbeeld zonder
   `dicht` (zie open vraag 4; dit blok staat **niet** in het manifest — dat bestand is in golf 6 ook van "paniek"):
 
 <!-- toets: lees -->
@@ -436,7 +441,7 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
      Logic automation op CC 20–27 (track TO_TD, `av-scene-kit/logic/README.md` §3), dan kan de hub niet lager dan
      Logic. En als TO_TD het geselecteerde spoor is, stuurt Logic de CC's van "VARVE-HUB Logic" (Sediment: Shape …
      Resonance = CC 20–27!) door naar L2TD — dan bewegen Sediment-knoppen de TD-knoppen.
-  4. De driver ziet niet of TD luistert (`src/drivers/index.js:147`; `sets/scene-kit.json`, opmerking): de app staat
+  4. De driver ziet niet of TD luistert (`src/drivers/index.js:235`; `sets/scene-kit.json`, opmerking): de app staat
      "actief" zolang de poort open is.
 
 ### 4.3 Beste koppelvorm
@@ -497,7 +502,7 @@ Daarnaast een generatieve Scripter-set op vier Sediment-sporen (`sediment/script
 
 ### 5.2 Huidige hub-stand
 `apps/sediment.json` (MIDI-driver "VARVE-HUB Logic", CC 20–31 en 102–111, kanaal 1), `docs/LOGIC.md`.
-`node tools/genereer-manifesten.mjs --toets` → `sediment.json: actueel (22 params)`. Werkt alleen na de
+`node tools/genereer-manifesten.mjs --toets` → `sediment.json: actueel (23 params)` (22 uit `Params.h` plus sinds golf 6 de paniek). Werkt alleen na de
 Controller Assignments in Logic (Klaar-als in `STATUS.md`, golf 1, nog open). **Sediment staat in geen enkele set**
 (`sets/*.json`; ONDERZOEK.md §11 noemde hem in `meditatie`). Geen paniek. *Gebouwd in golf 6 (PROTOCOL §14), volgens §5.4: `apps/sediment.json` heeft nu 23 params.*
 
@@ -855,6 +860,9 @@ eerst de omgeving te repareren; de muzikale waarde van "macro's → prompt" is o
 ---
 
 ## 9. Voorgestelde volgorde
+
+*Stand na golf 6 (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 staan op
+een tak met een PR in dat repo en wachten op Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
 
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|

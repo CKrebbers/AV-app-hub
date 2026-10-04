@@ -97,7 +97,7 @@ youtube-mixer de worktree-administratie op met `git worktree prune`, en verwijde
 
 De hub draait als geheel (`startHub`: apparaten, kern, server, cockpit) met `NepSysteem`: een nep-APC40 mkII
 en een nep-LPD8 mk2 die zich als mk2 meldt. Het draaiboek stuurt echte MIDI-bytes in die poorten, precies
-wat de hardware zou sturen. Drivers (MIDI, HTTP) staan uit; die horen niet bij deze vijf apps.
+wat de hardware zou sturen. Drivers (MIDI, HTTP, TD) staan uit; die horen niet bij deze vijf apps.
 
 | stap | wat | gecontroleerd |
 |---|---|---|
