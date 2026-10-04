@@ -53,6 +53,7 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 - [ ] *(Optioneel, 2 min, leuk als eerste kennismaking)* `node src/cli.js testpatroon`: een regenboog op de APC en in
   de terminal live wat elke knop stuurt. Ctrl-C zet alles weer uit.
 - [ ] Maak het Terminal-venster breed (de proef toont kleurvoorbeelden van 8 vakjes breed).
+- [ ] **Spiekbrief printen** (wat doet welke knop, één A4 per set): `npm run spiekbrief -- alle`, open `tools/uitvoer/spiekbrief-alle.html` in Chrome en druk ⌘P (`docs/SPIEKBRIEF.md`).
 
 ---
 

@@ -2,6 +2,7 @@
 // De netwerkkant van de hub (PROTOCOL.md §2, §3, §8): één HTTP-server met twee WebSocket-paden.
 //   GET /                 → ui/index.html (cockpit)
 //   GET /oefen            → ui/oefen.html (oefenruimte)
+//   GET /spiekbrief       → lijst van sets; ?set=<naam> (of alle): wat doet welke knop, afdrukbaar (src/spiekbrief/)
 //   GET /ui/<pad>         → statische bestanden uit uiMap
 //   GET /src/devices/*.js, /src/protocol/*.js → gedeelde code voor de cockpit (alleen die twee mappen)
 //   GET /api/beeld        → kern.beeld() als JSON
@@ -22,6 +23,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { leesVanApp, klem01 } from '../protocol/berichten.js';
 import { vindCC } from '../devices/apc40mk2.js';
+import { spiekbriefPagina } from '../spiekbrief/index.js';
 
 /** @typedef {import('../protocol/types.js').Verbinding} Verbinding */
 
@@ -396,6 +398,13 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     try { pad = decodeURIComponent(new URL(req.url ?? '/', 'http://hub').pathname); } catch { return eindig(res, 400, 'ongeldig pad'); }
     if (pad === '/' || pad === '/index.html') return stuurBestand(res, veiligPad(uiMap, 'index.html'), hoofd);
     if (pad === '/oefen' || pad === '/oefen/') return stuurBestand(res, veiligPad(uiMap, 'oefen.html'), hoofd);
+    if (pad === '/spiekbrief' || pad === '/spiekbrief/') {
+      // Gemaakt op de server, zonder script: de kern van deze hub geeft de echte indeling en Track Select-nummers.
+      let r;
+      try { r = spiekbriefPagina(new URL(req.url ?? '/', 'http://hub').searchParams.get('set'), { kern }); } catch (e) { console.error('[server] spiekbrief faalde:', e); return eindig(res, 500, 'spiekbrief niet beschikbaar'); }
+      res.writeHead(r.code, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', ...VEILIG_KOP });
+      return void res.end(hoofd ? undefined : r.html);
+    }
     if (pad.startsWith('/ui/')) return stuurBestand(res, veiligPad(uiMap, pad.slice(4)), hoofd);
     // Alleen wat de pagina's importeren: apparaat- en protocolbestanden, en de (pure) APC-indeling voor de oefenruimte.
     const src = /^\/src\/(devices|protocol)\/([A-Za-z0-9_-]+\.js)$/.exec(pad) ?? (pad === '/src/core/indeling.js' ? [pad, 'core', 'indeling.js'] : null);
