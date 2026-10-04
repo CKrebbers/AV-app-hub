@@ -14,7 +14,7 @@ import { valideerManifest } from '../protocol/manifest.js';
 import { scheidStatisch } from './basis.js';
 import { MidiDriver } from './midi.js';
 import { HttpDriver } from './http.js';
-import { TdDriver, TD_PAR, TD_COMP } from './td.js';
+import { TdDriver, TD_PAR, TD_COMP, TD_CHECK_TIMEOUT_MS } from './td.js';
 
 export { MidiDriver, midiBytes } from './midi.js';
 export { HttpDriver, verbBericht } from './http.js';
@@ -113,7 +113,7 @@ export function valideerStatisch(statisch) {
     }
     for (const id of params.keys()) if (!(id in verbs)) f.push(`param ${id} heeft geen verb in driver.verbs`);
   }
-  if (driver.soort === 'td') f.push(...valideerTd(driver, params));
+  if (driver.soort === 'td') f.push(...valideerTd(driver, params, manifest.hb_s));
   if (f.length || !r.ok) return { ok: false, fouten: f };
   return { ok: true, manifest: r.manifest, driver };
 }
@@ -121,16 +121,23 @@ export function valideerStatisch(statisch) {
 /**
  * De driver van een td-app (src/drivers/td.js). Parameternamen en het COMP-pad komen letterlijk in de Python die
  * de hub naar TD stuurt; daarom alleen namen die door TD_PAR/TD_COMP komen (geen tekst van buiten).
- * @param {Record<string, any>} driver @param {Map<unknown, any>} params
+ * @param {Record<string, any>} driver @param {Map<unknown, any>} params @param {unknown} hbS  hb_s uit het manifest
  * @returns {string[]}
  */
-function valideerTd(driver, params) {
+function valideerTd(driver, params, hbS) {
   /** @type {string[]} */
   const f = [];
   const getal = (/** @type {unknown} */ x, /** @type {number} */ lo, /** @type {number} */ hi) => typeof x === 'number' && Number.isFinite(x) && x >= lo && x <= hi;
-  if (typeof driver.url !== 'string' || !/^https?:\/\//.test(driver.url)) f.push('driver.url moet http(s)://… zijn (alleen de terugval: config.json → apps.<app>.poort wint)');
+  if (driver.url !== undefined) f.push('driver.url hoort niet in het manifest: de poort staat alleen in config.json (apps.<app>.poort)');
   if (typeof driver.comp !== 'string' || !TD_COMP.test(driver.comp)) f.push('driver.comp moet een COMP-pad zijn, bv. "/genesis"');
   if (driver.gezond_s !== undefined && !getal(driver.gezond_s, 0.5, 30)) f.push('driver.gezond_s moet 0.5..30 zijn');
+  else {
+    // De hartslag gaat alleen mee met een geslaagde check: check-periode + time-out moet binnen 'stil' blijven
+    // (de kern: 3 s × hb_s, minstens 3 s), anders wisselt de app steeds tussen actief, stil en weg.
+    const stilS = 3 * Math.max(1, typeof hbS === 'number' ? hbS : 1);
+    const nodig = (driver.gezond_s ?? 2) + TD_CHECK_TIMEOUT_MS / 1000;
+    if (nodig >= stilS) f.push(`driver.gezond_s (${driver.gezond_s ?? 2}) + check-time-out (${TD_CHECK_TIMEOUT_MS / 1000} s) moet onder ${stilS} s blijven (3 × hb_s): verhoog hb_s of verlaag gezond_s`);
+  }
   if (driver.max_hz !== undefined && !getal(driver.max_hz, 1, 30)) f.push('driver.max_hz moet 1..30 zijn');
   const pars = driver.pars && typeof driver.pars === 'object' && !Array.isArray(driver.pars) ? driver.pars : {};
   if (!driver.pars) f.push('driver.pars ontbreekt');

@@ -13,22 +13,28 @@
 //   twee batches tegelijk onderweg (TD's hoofddraad mag niet vollopen). Laatste waarde wint.
 // - Elke toewijzing staat in een eigen try: één hernoemde parameter houdt de rest niet tegen. Wat niet
 //   lukte, meldt de batch terug (`varve-hub: niet gezet: …`); dat logt de driver één keer per parameter.
-// - Gezondheid: elke gezond_s een expressie die de id van de COMP teruggeeft. Gelukt → hartslag naar de
-//   kern. Andere id dan vorige keer = de COMP is herbouwd (`./td run scripts/genesis.py`) → opnieuw
-//   aanmelden, de kern speelt alles opnieuw af (truth:"hub"). Geen COMP, geen JSON of geen antwoord →
-//   geen hartslag (de kern maakt de app 'stil' en daarna 'weg').
+// - Gezondheid: elke gezond_s een expressie die de id van de COMP teruggeeft (alleen een geheel getal telt).
+//   Gelukt → hartslag naar de kern. Geen COMP, geen JSON of geen antwoord → geen hartslag (de kern maakt de
+//   app 'stil' en daarna 'weg').
+// - Opnieuw aanmelden (de kern speelt alles opnieuw af, truth:"hub") na elke storing (een mislukte check of
+//   een verloren batch), ook als de id gelijk bleef: TD kan intussen herstart zijn met dezelfde op-id.
+//   De driver houdt zijn eigen `inst`: na een storing dezelfde (voor de kern een netwerkhapering: de waarden
+//   gaan gewoon opnieuw, zonder slew vanaf de standaard), een nieuwe alleen bij een andere COMP-id
+//   (`./td run scripts/genesis.py` herbouwde hem: TD staat echt op zijn standaard) en bij opnieuw().
 // - Draait TD niet: opnieuw proberen met backoff (gezond_s, ×2, tot TD_BACKOFF_MAX_MS) en elke
 //   verandering van toestand één keer in het log, niet bij elke poging.
-// - Paniek: de waarden uit driver.paniek in één batch, meteen, en als `zet` aan de kern gemeld.
-// - Fouten worden nooit gegooid: een TD die er niet is, mag de hub niet hinderen.
+// - Paniek: de waarden uit driver.paniek in één batch, meteen (ook als de laatste check misging), en als
+//   `zet` aan de kern gemeld.
+// - Een ongeldig COMP-pad of een ongeldige parameternaam gooit bij het maken (maakDriver); daarna gooit
+//   de driver nooit meer: een TD die er niet is, mag de hub niet hinderen.
 //
-// driver = { soort:"td", url:"http://127.0.0.1:9981", comp:"/genesis", gezond_s?:2, max_hz?:10,
+// driver = { soort:"td", comp:"/genesis", gezond_s?:2, max_hz?:10,
 //            pars: { paramId: { par:"Speed", bereik?:[min,max] } | { puls:"Reseed" } },
 //            paniek?: { paramId: 0..1 } }
-// De poort komt uit config.json (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp; de url
-// in het manifest is alleen de terugval.
+// De poort staat alleen in config.json (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp.
+// Geen (geldige) poort → de driver start niet en zegt waarom.
 import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
-import { klem01 } from '../protocol/berichten.js';
+import { klem01, nieuweInst } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
 /** @typedef {{ par?: string, puls?: string, bereik?: [number, number] }} ParSpec */
@@ -39,7 +45,7 @@ import { klem01 } from '../protocol/berichten.js';
 export const TD_PAR = /^[A-Z][A-Za-z0-9]*$/;
 /** Pad van een COMP: `/naam` of `/a/b`, alleen letters, cijfers en _. */
 export const TD_COMP = /^\/[A-Za-z_][A-Za-z0-9_]*(?:\/[A-Za-z_][A-Za-z0-9_]*)*$/;
-/** Hoe lang een gezondheidscheck mag duren. Check-periode (2 s) + time-out blijft onder stil (3 s × hb_s 2). */
+/** Hoe lang een gezondheidscheck mag duren. gezond_s + time-out moet onder stil blijven (3 s × hb_s; valideerStatisch). */
 export const TD_CHECK_TIMEOUT_MS = 1000;
 /** Hoe lang een batch mag duren voor hij als mislukt telt (TD kan een frame of wat haperen). */
 export const TD_EXEC_TIMEOUT_MS = 2000;
@@ -110,27 +116,27 @@ export function tdCheck(comp) {
   return `(lambda c: c.id if c is not None else None)(op('${comp}'))`;
 }
 
-/** URL zonder slash aan het eind. @param {string} u */
-const basisUrl = (u) => String(u).replace(/\/+$/, '');
 const isPoort = (/** @type {unknown} */ p) => Number.isInteger(p) && /** @type {number} */ (p) > 0 && /** @type {number} */ (p) < 65536;
 
 /**
- * Waar de bridge luistert. config.json wint (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp,
- * anders de url uit het manifest. Een ongeldige poort in config.json geeft een melding.
- * @param {string} app @param {Record<string, any>} driver @param {any} config
- * @returns {{ url: string, melding?: string }}
+ * Waar de bridge luistert. Alleen config.json (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp.
+ * Geen geldige poort → url null en een melding (de driver start dan niet; geen stille terugval).
+ * @param {string} app @param {any} config
+ * @returns {{ url: string, melding?: undefined } | { url: null, melding: string }}
  */
-export function tdUrl(app, driver, config) {
+export function tdUrl(app, config) {
   const eigen = config?.apps?.[app]?.poort;
   if (isPoort(eigen)) return { url: `http://127.0.0.1:${eigen}` };
+  if (eigen !== undefined) return { url: null, melding: `config.json → apps.${app}.poort (${JSON.stringify(eigen)}) is geen poort (een getal 1..65535): driver start niet` };
   const bekend = config?.bekende_apps?.[app]?.tcp;
-  const terug = isPoort(bekend) ? `http://127.0.0.1:${bekend}` : basisUrl(driver.url);
-  if (eigen !== undefined) return { url: terug, melding: `config.json → apps.${app}.poort (${JSON.stringify(eigen)}) is geen poort; ${terug} gebruikt` };
-  return { url: terug };
+  if (isPoort(bekend)) return { url: `http://127.0.0.1:${bekend}` };
+  return { url: null, melding: `geen poort in config.json (bekende_apps.${app}.tcp of apps.${app}.poort): driver start niet` };
 }
 
-/** De laatste regel van een traceback (of de tekst zelf), kort. @param {unknown} e */
-const kort = (e) => String(e ?? '').trim().split('\n').filter(Boolean).pop()?.slice(0, 200) ?? '';
+/** Stuurtekens (ook ANSI-escapes) eruit: tekst van de andere kant komt zo in het log. @param {unknown} e */
+const schoon = (e) => String(e ?? '').replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '');
+/** De laatste regel van een traceback (of de tekst zelf), kort en zonder stuurtekens. @param {unknown} e */
+export const kort = (e) => schoon(e).trim().split('\n').map((r) => r.replace(/\t/g, ' ').trim()).filter(Boolean).pop()?.slice(0, 200) ?? '';
 
 export class TdDriver extends DriverBasis {
   /**
@@ -142,10 +148,23 @@ export class TdDriver extends DriverBasis {
     super({ manifest, klok, log });
     this.driver = driver;
     this.fetch = fetch;
-    const { url, melding } = tdUrl(manifest.app, driver, config);
+    // Wat in de Python komt, eerst gecontroleerd (ook buiten valideerStatisch om): hier gooien, niet later in een timer.
+    if (typeof driver.comp !== 'string' || !TD_COMP.test(driver.comp)) throw new Error(`${manifest.app}: ongeldig COMP-pad: ${String(driver.comp)}`);
+    /** @type {Set<string>} alle TD-namen uit driver.pars (alleen die mogen terugkomen in 'niet gezet') */
+    this.tdNamen = new Set();
+    for (const [id, spec] of Object.entries(driver.pars ?? {})) {
+      const naam = /** @type {any} */ (spec)?.par ?? /** @type {any} */ (spec)?.puls;
+      if (typeof naam !== 'string' || !TD_PAR.test(naam)) throw new Error(`${manifest.app}: driver.pars.${id}: ongeldige TD-parameter`);
+      this.tdNamen.add(naam);
+    }
+    const { url, melding } = tdUrl(manifest.app, config);
+    /** @type {string|null} null = geen poort in config.json: start() doet niets */
     this.url = url;
+    this.poortMelding = melding ?? null;
     if (melding) this.log('driver', manifest.app, melding);
-    this.comp = String(driver.comp);
+    this.comp = driver.comp;
+    /** @type {string|null} de inst waarmee de driver zich aanmeldt (null = nog nooit aangemeld) */
+    this.inst = null;
     this.gezondMs = (driver.gezond_s ?? 2) * 1000;
     this.minAfstandMs = 1000 / (driver.max_hz ?? 10);
     /** @type {Map<string, any>} */
@@ -242,13 +261,14 @@ export class TdDriver extends DriverBasis {
     this.flushTimer = this.klok.zet(() => { this.flushTimer = null; this.#flush(); }, Math.max(0, this.laatstOp + this.minAfstandMs - this.klok.nu()));
   }
 
-  #flush() {
+  /** @param {boolean} [altijd] ook sturen als de laatste check misging (paniek: liever één verzoek te veel dan geen zwart) */
+  #flush(altijd = false) {
     if (this.gestopt || (!this.wachtend.size && !this.pulsen.size)) return;
     const zetten = [...this.wachtend.values()], pulsen = [...this.pulsen];
     this.wachtend.clear();
     this.pulsen.clear();
     // TD of de COMP is er niet: niet sturen (geen stapel verzoeken); bij herstel speelt de kern alles opnieuw af.
-    if (this.bereikbaar === false) { this.gemist = true; return; }
+    if (this.bereikbaar === false && !altijd) { this.gemist = true; return; }
     this.laatstOp = this.klok.nu();
     this.#stuurBatch(tdBatch(this.comp, zetten, pulsen), zetten.map((z) => z.par).concat(pulsen));
   }
@@ -269,7 +289,8 @@ export class TdDriver extends DriverBasis {
       const deels = u.transport ? null : NIET_GEZET.exec(u.fout);
       if (deels) {
         // De rest van de batch is gezet; opnieuw afspelen helpt niet voor een parameter die niet bestaat.
-        const nieuw = deels[1].split(',').filter((n) => n && !this.kapot.has(n));
+        // alleen namen die de driver zelf stuurt (TD_PAR en driver.pars): `kapot` blijft begrensd, het log schoon
+        const nieuw = deels[1].split(',').filter((n) => TD_PAR.test(n) && this.tdNamen.has(n) && !this.kapot.has(n));
         for (const n of nieuw) this.kapot.add(n);
         if (nieuw.length) this.log('driver', this.manifest.app, `${this.comp}: parameter ${nieuw.join(', ')} niet te zetten (hernoemd of weg? kijk apps/${this.manifest.app}.json → driver.pars na)`);
       } else {
@@ -317,7 +338,7 @@ export class TdDriver extends DriverBasis {
     const puls = this.driver.pars?.paniek?.puls;
     if (typeof puls === 'string' && TD_PAR.test(puls)) this.pulsen.add(puls);
     if (this.flushTimer !== null) { this.klok.wis(this.flushTimer); this.flushTimer = null; }
-    this.#flush();
+    this.#flush(true);
     if (!gemeld.length) return;
     // De app veranderde "zelf": zo volgen waarden, ringen en pickup. Uitgesteld: we zitten midden in een bericht van de kern.
     const h = this.klok.zet(() => {
@@ -356,43 +377,67 @@ export class TdDriver extends DriverBasis {
     if (ronde !== this.ronde) return; // intussen gestopt (en misschien opnieuw gestart): deze uitslag telt niet
     this.checkBezig = false;
     const id = u.ok ? u.result : null;
-    if (!u.ok || id === null || id === undefined) {
+    // Alleen een geheel getal is een COMP-id; iets anders (een object, tekst) komt niet van deze check.
+    if (!u.ok || !Number.isInteger(id)) {
       this.missers++;
       this.bereikbaar = false;
-      this.#meld(u.ok ? 'geen-comp' : 'weg', u.ok ? '' : u.fout);
+      if (!u.ok) this.#meld('weg', u.fout);
+      else if (id === null || id === undefined) this.#meld('geen-comp');
+      else this.#meld('weg', 'antwoord is geen COMP-id; draait er iets anders op deze poort?');
       return;
     }
     this.missers = 0;
-    const vorig = this.compId;
+    const vorig = this.compId, was = this.bereikbaar;
     this.bereikbaar = true;
     this.compId = id;
     this.#meld('gezond');
     const herbouwd = vorig !== null && id !== vorig;
     if (herbouwd) this.log('driver', this.manifest.app, `${this.comp} is herbouwd: de hub speelt alles opnieuw af`);
-    if (herbouwd || this.gemist) {
-      // terug na een storing of een rebuild: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt
+    if (herbouwd || was === false || this.gemist) {
+      // Terug na een storing of een rebuild: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt.
+      // Ook bij dezelfde id na een storing: TD kan intussen herstart zijn (de .toe opnieuw geopend). Een nieuwe inst
+      // alleen na een rebuild; anders ziet de kern een hapering en stuurt hij de waarden zonder slew vanaf de standaard.
       this.gemist = false;
-      this.aanmelden();
+      this.aanmelden(herbouwd);
     }
     this.hartslag();
     this.#plan(); // wat tijdens de storing wachtte (een paniek, een zet) gaat nu
   }
 
-  /** Laat de kern alles opnieuw afspelen (bijv. na een herstart van TD). */
-  opnieuw() { if (this.kern) this.aanmelden(); }
+  /**
+   * Meld de app aan bij de kern (hallo + manifest). De driver houdt zijn eigen inst: dezelfde = voor de kern een
+   * netwerkhapering (waarden opnieuw, zonder slew); een nieuwe = TD staat weer op zijn standaard (PROTOCOL §10).
+   * @param {boolean} [nieuw] een nieuwe inst (na een rebuild of een herstart van TD)
+   */
+  aanmelden(nieuw = false) {
+    if (!this.kern) return;
+    if (nieuw || this.inst === null) this.inst = nieuweInst();
+    this.kern.ontvang(this.verbinding, { t: 'hallo', app: this.manifest.app, inst: this.inst, v: 1 });
+    this.kern.ontvang(this.verbinding, { t: 'manifest', manifest: this.manifest });
+  }
+
+  /** Laat de kern alles opnieuw afspelen, vanaf de standaard (bijv. na een herstart van TD). */
+  opnieuw() { if (this.kern) this.aanmelden(true); }
 
   /** Check, en daarna de volgende inplannen (met backoff als het misging). */
   #rondeCheck() {
     const ronde = this.ronde;
-    this.controleer().then(() => {
+    const verder = () => {
       if (ronde !== this.ronde || this.gestopt) return;
       this.checkTimer = this.klok.zet(() => { this.checkTimer = null; this.#rondeCheck(); }, this.wachtMs);
+    };
+    this.controleer().then(verder, (e) => {
+      // hoort niet te gebeuren (controleer faalt nooit), maar een unhandled rejection zou de hub stoppen
+      if (ronde === this.ronde) this.checkBezig = false;
+      this.log('driver', this.manifest.app, `check mislukt: ${kort(e?.message ?? e)}`);
+      verder();
     });
   }
 
   /** @param {import('./basis.js').KernVoorDriver} kern */
   start(kern) {
     if (!this.gestopt) return; // loopt al: geen tweede timerketen
+    if (this.url === null) { this.log('driver', this.manifest.app, `niet gestart: ${this.poortMelding} (docs/TDLAB.md)`); return; }
     this.gestopt = false;
     this.ronde++;
     this.missers = 0;
@@ -420,7 +465,7 @@ export class TdDriver extends DriverBasis {
 }
 
 /** Kort en bruikbaar: fetch van Node zegt alleen "fetch failed"; de echte reden (ECONNREFUSED) zit in cause. @param {any} e */
-function foutTekst(e) { return String(e?.cause?.code ?? e?.code ?? e?.message ?? e); }
+function foutTekst(e) { return kort(e?.cause?.code ?? e?.code ?? e?.message ?? e); }
 
 /** ` (reden)` of niets. @param {string} w */
 function metReden(w) { return w ? ` (${w})` : ''; }

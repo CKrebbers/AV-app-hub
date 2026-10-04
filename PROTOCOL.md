@@ -18,7 +18,7 @@
 | cockpit | WebSocket, JSON | `ws://<hub>:7700/cockpit` (van buiten met `--lan`: `?token=…` of cookie `varve_hub_token`, anders 401 bij de upgrade) |
 | passieve apps (Scene Kit-TD en Logic via MIDI, uurwerk via HTTP) | **driver** in de hub + statisch manifest in `apps/<app>.json` | MIDI: virtuele poort (`config.json` → `apps.<app>.midipoort`); HTTP: `config.json` → `apps.<app>.poort` |
 | td-lab (TouchDesigner) | **driver** `td` in de hub (`src/drivers/td.js`) over de bestaande exec-bridge van td-lab: `POST /exec` met Python-tekst, antwoord altijd HTTP 200 met JSON `{ok, stdout, result, error}` (`ok:false` = de Python faalde). Statisch manifest `apps/td-lab.json`. Staat standaard uit: `config.json` → `apps.td-lab.autostart: true` (docs/TDLAB.md) | `http://127.0.0.1:<poort>/exec`, poort = `config.json` → `apps.td-lab.poort`, anders `bekende_apps.td-lab.tcp` (9981) |
-| OSC | **bestaat niet.** De hub heeft geen OSC-transport en geen luisteraar; `poorten.osc` (7701) gebruikt alleen `varve-hub doctor` om te kijken of de poort vrij is. De oude regel "OSC-apps: hub luistert op 7701" klopte nooit. Een OSC-koppeling vraagt eerst een nieuw transport. | — |
+| OSC | **bestaat niet.** De hub heeft geen OSC-transport en geen luisteraar; `poorten.osc` (7701) gebruikt alleen `varve-hub doctor` om te kijken of de poort vrij is. Een OSC-koppeling vraagt eerst een nieuw transport. | — |
 
 Driver-soorten (`driver.soort` in `apps/<app>.json`, `src/drivers/index.js`): `midi`, `http`, `td`. Een driver meldt zich bij de kern als een gewone app (`hallo` + `manifest`, hartslag zolang de app gezond is, `truth:"hub"`).
 

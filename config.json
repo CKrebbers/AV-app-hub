@@ -98,7 +98,7 @@
       "koppeling": "td",
       "autostart": false,
       "repo": "td-lab",
-      "_doc": "driver src/drivers/td.js over de exec-bridge van td-lab (POST /exec op de Web Server DAT in /td_bridge), statisch manifest apps/td-lab.json. Staat uit tot Clay hem aanzet: autostart true (de bridge voert Python uit in TD). Poort: 'poort' hier wint; zonder 'poort' de tcp-poort uit bekende_apps.td-lab (9981, dezelfde als de TD-MCP van av-scene-kit: draaien ze samen, geef td-lab hier een andere). Zie docs/TDLAB.md"
+      "_doc": "driver src/drivers/td.js over de exec-bridge van td-lab (POST /exec op de Web Server DAT in /td_bridge), statisch manifest apps/td-lab.json. Staat uit tot Clay hem aanzet: autostart true (de bridge voert Python uit in TD). Poort: alleen in config.json (het manifest heeft geen url): bekende_apps.td-lab.tcp (9981; daar kijkt ook doctor), of 'poort' hier als die moet afwijken (wint; let op: een set wacht dan ook op die poort). 9981 is dezelfde als de TD-MCP van av-scene-kit: draaien ze samen, verander bekende_apps.td-lab.tcp. Zie docs/TDLAB.md"
     },
     "sediment": {
       "naam": "Sediment",

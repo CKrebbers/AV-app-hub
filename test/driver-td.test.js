@@ -12,9 +12,11 @@ import { NepKlok } from '../src/core/klok.js';
 import { valideerManifest } from '../src/protocol/manifest.js';
 import { leesVanApp, leesNaarApp } from '../src/protocol/berichten.js';
 import { maakDriver, valideerStatisch, startDrivers, laadStatisch, APPS_MAP, DRIVER_SOORTEN, TdDriver, tdBatch, tdCheck, tdToewijzing, tdUrl } from '../src/drivers/index.js';
-import { TD_CHECK_TIMEOUT_MS, TD_EXEC_TIMEOUT_MS, TD_BACKOFF_MAX_MS } from '../src/drivers/td.js';
+import { TD_CHECK_TIMEOUT_MS, TD_EXEC_TIMEOUT_MS, TD_BACKOFF_MAX_MS, kort } from '../src/drivers/td.js';
 import { laadConfig } from '../src/config.js';
+import { Kern } from '../src/core/kern.js';
 import { wachtOp } from './nepkern.js';
+import { CONFIG as KERN_CONFIG, nepOppervlak } from './kern-hulp.js';
 
 const leesApp = (/** @type {string} */ n) => JSON.parse(readFileSync(join(APPS_MAP, n), 'utf8'));
 const TD = leesApp('td-lab.json');
@@ -198,21 +200,28 @@ describe('TD-driver: Python en adres (puur)', () => {
     expect(tdCheck('/genesis')).toBe("(lambda c: c.id if c is not None else None)(op('/genesis'))");
   });
 
-  it('poort: config.json apps.<app>.poort wint, dan bekende_apps.<app>.tcp, dan de url uit het manifest', () => {
-    const driver = { url: 'http://127.0.0.1:9981/' };
-    expect(tdUrl('td-lab', driver, { apps: { 'td-lab': { poort: 9982 } }, bekende_apps: { 'td-lab': { tcp: 9981 } } })).toEqual({ url: 'http://127.0.0.1:9982' });
-    expect(tdUrl('td-lab', driver, { bekende_apps: { 'td-lab': { tcp: 9983 } } })).toEqual({ url: 'http://127.0.0.1:9983' });
-    expect(tdUrl('td-lab', driver, undefined)).toEqual({ url: 'http://127.0.0.1:9981' });
-    const r = tdUrl('td-lab', driver, { apps: { 'td-lab': { poort: '9982' } }, bekende_apps: { 'td-lab': { tcp: 9981 } } });
-    expect(r.url).toBe('http://127.0.0.1:9981');
-    expect(r.melding).toMatch(/apps\.td-lab\.poort .* is geen poort/);
+  it('poort: alleen config.json — apps.<app>.poort, dan bekende_apps.<app>.tcp; anders geen url (geen stille terugval)', () => {
+    expect(tdUrl('td-lab', { apps: { 'td-lab': { poort: 9982 } }, bekende_apps: { 'td-lab': { tcp: 9981 } } })).toEqual({ url: 'http://127.0.0.1:9982' });
+    expect(tdUrl('td-lab', { bekende_apps: { 'td-lab': { tcp: 9983 } } })).toEqual({ url: 'http://127.0.0.1:9983' });
+    expect(tdUrl('td-lab', undefined)).toEqual({ url: null, melding: expect.stringMatching(/geen poort in config\.json \(bekende_apps\.td-lab\.tcp of apps\.td-lab\.poort\): driver start niet/) });
+    const r = tdUrl('td-lab', { apps: { 'td-lab': { poort: '9982' } }, bekende_apps: { 'td-lab': { tcp: 9981 } } });
+    expect(r.url).toBe(null); // niet stil toch 9981
+    expect(r.melding).toMatch(/apps\.td-lab\.poort \("9982"\) is geen poort .*driver start niet/);
   });
 
   it('de echte config.json: koppeling td, de driver staat uit tot Clay hem aanzet, en de poort komt uit config.json', () => {
     const cfg = laadConfig();
     expect(cfg.apps['td-lab'].koppeling).toBe('td');
     expect(cfg.apps['td-lab'].autostart).toBe(false);
-    expect(tdUrl('td-lab', TD.driver, cfg).url).toBe(`http://127.0.0.1:${cfg.apps['td-lab'].poort ?? cfg.bekende_apps['td-lab'].tcp}`);
+    // één plek: bekende_apps.td-lab.tcp (daar kijkt ook doctor); apps.td-lab.poort alleen als hij moet afwijken
+    expect(cfg.apps['td-lab'].poort).toBeUndefined();
+    expect(tdUrl('td-lab', cfg).url).toBe(`http://127.0.0.1:${cfg.bekende_apps['td-lab'].tcp}`);
+    expect(TD.driver.url).toBeUndefined(); // de poort staat niet ook nog in het manifest
+  });
+
+  it('kort(): laatste regel, zonder stuurtekens of ANSI uit de andere kant', () => {
+    expect(kort('Traceback\n  File "x"\nNameError: \u001b[31mrood\u001b[0m\u0007 en\tzo')).toBe('NameError: rood en zo');
+    expect(kort('a'.repeat(500))).toHaveLength(200);
   });
 });
 
@@ -292,8 +301,9 @@ describe('apps/td-lab.json en valideerStatisch voor soort td', () => {
     const voorstel = [...doc.matchAll(/```json\n([\s\S]*?)\n```/g)].map((m) => JSON.parse(m[1])).find((x) => x.app === 'td-lab');
     expect(voorstel).toBeDefined();
     const { _bron, ...driver } = TD.driver;
+    const { url: _url, ...voorstelDriver } = voorstel.driver; // de url uit het voorstel is config.json → apps.td-lab.poort geworden
     expect(TD.params).toEqual(voorstel.params);
-    expect(driver).toEqual(voorstel.driver);
+    expect(driver).toEqual(voorstelDriver);
     expect(TD.naam).toBe(voorstel.naam);
   });
 
@@ -317,11 +327,38 @@ describe('apps/td-lab.json en valideerStatisch voor soort td', () => {
     expect(fouten({ ...TD, params: TD.params.filter((/** @type {any} */ p) => p.id !== 'paniek') }).join('\n')).toMatch(/driver\.paniek zonder trigger "paniek"/);
     const { paniek: _p, ...zonderPaniek } = d;
     expect(fouten({ ...TD, driver: zonderPaniek })).toEqual(['param paniek heeft geen TD-parameter in driver.pars']);
+    expect(fouten({ ...TD, driver: { ...d, url: 'http://127.0.0.1:9981' } }).join('\n')).toMatch(/driver\.url hoort niet in het manifest/);
   });
 
-  it('maakDriver maakt een TdDriver', () => {
-    const d = maakDriver(TD, { klok: new NepKlok(), fetch: async () => ({ ok: true }) });
+  it('gezond_s past bij hb_s: de hartslag gaat alleen mee met een geslaagde check, dus check + time-out < stil (3 × hb_s)', () => {
+    const fouten = (/** @type {any} */ s) => { const r = valideerStatisch(s); return r.ok ? [] : r.fouten; };
+    const d = TD.driver;
+    expect(fouten({ ...TD, driver: { ...d, gezond_s: 30 } }).join('\n')).toMatch(/gezond_s \(30\) \+ check-time-out \(1 s\) moet onder 6 s blijven/);
+    expect(fouten({ ...TD, hb_s: 1, driver: { ...d, gezond_s: 10 } }).join('\n')).toMatch(/moet onder 3 s blijven/);
+    expect(fouten({ ...TD, hb_s: 1, driver: { ...d, gezond_s: 2 } }).join('\n')).toMatch(/moet onder 3 s blijven/); // 2 + 1 = 3: te krap
+    expect(fouten({ ...TD, driver: { ...d, gezond_s: 4.5 } })).toEqual([]); // hb_s 2: 4.5 + 1 < 6
+    expect(fouten({ ...TD, hb_s: 10, driver: { ...d, gezond_s: 20 } })).toEqual([]);
+  });
+
+  it('maakDriver maakt een TdDriver; een ongeldig COMP-pad of een ongeldige naam gooit meteen (niet later in een timer)', () => {
+    const d = maakDriver(TD, { klok: new NepKlok(), fetch: async () => ({ ok: true }), config: { apps: { 'td-lab': { poort: 9981 } } } });
     expect(d.driver).toBeInstanceOf(TdDriver);
+    expect(() => maakDriver({ ...TD, driver: { ...TD.driver, comp: "/genesis'); import os; ('" } }, { klok: new NepKlok() })).toThrow(/ongeldig COMP-pad/);
+    expect(() => maakDriver({ ...TD, driver: { ...TD.driver, pars: { ...TD.driver.pars, speed: { par: 'x()' } } } }, { klok: new NepKlok() })).toThrow(/driver\.pars\.speed: ongeldige TD-parameter/);
+  });
+
+  it('zonder poort in config.json: niet gestart, één melding, niets naar de kern of het netwerk', () => {
+    const klok = new NepKlok(), kern = new NepKern();
+    /** @type {string[]} */
+    const log = [];
+    let fetches = 0;
+    const d = maakDriver(TD, { klok, fetch: async () => { fetches++; return { ok: true }; }, config: { apps: { 'td-lab': { poort: '9982' } } }, log: (...a) => log.push(a.join(' ')) });
+    drivers.push(d);
+    d.start(kern);
+    klok.loop(60000);
+    expect(fetches).toBe(0);
+    expect(kern.ontvangen).toEqual([]);
+    expect(log.join('\n')).toMatch(/niet gestart: config\.json → apps\.td-lab\.poort \("9982"\) is geen poort/);
   });
 });
 
@@ -401,6 +438,8 @@ describe('TD-driver tegen een nep-bridge', () => {
     klok.loop(2000);
     await checkKlaar(td);
     expect(kern.tel('hallo')).toBe(2);
+    const insts = kern.ontvangen.filter(([, x]) => x.t === 'hallo').map(([, x]) => x.inst);
+    expect(insts[1]).toBe(insts[0]); // zelfde inst: voor de kern een hapering (geen sprong naar de standaard)
     klok.loop(0);
     await wachtOp(() => b.batches.some((x) => x.zetten.Bright === 1.5));
     expect(td.gemist).toBe(false);
@@ -437,6 +476,8 @@ describe('TD-driver tegen een nep-bridge', () => {
     klok.loop(2000);
     await checkKlaar(td);
     expect(kern.tel('hallo')).toBe(2);
+    const insts = kern.ontvangen.filter(([, x]) => x.t === 'hallo').map(([, x]) => x.inst);
+    expect(insts[1]).not.toBe(insts[0]); // herbouwd: TD staat echt op zijn standaard → nieuwe inst
     expect(log.some((l) => /\/genesis is herbouwd/.test(l))).toBe(true);
     klok.loop(100);
     await wachtOp(() => b.comp?.pars.Speed === 0.35 && b.comp?.pars.Auto === false);
@@ -451,6 +492,7 @@ describe('TD-driver tegen een nep-bridge', () => {
     klok.loop(0);
     for (let i = 0; i < 4; i++) await volgendeCheck(klok, td);
     expect(kern.tel('hb')).toBe(0);
+    expect(td.verstuurd).toEqual([]); // wat de driver probeerde (de nep-klok kan een verzoek afbreken voor het aankomt)
     expect(b.batchVerzoeken()).toHaveLength(0);
     expect(log.filter((l) => /\/genesis bestaat niet/.test(l))).toHaveLength(1);
     // gebouwd: hartslag, en wat gemist werd komt alsnog (replay)
@@ -498,7 +540,10 @@ describe('TD-driver tegen een nep-bridge', () => {
     klok.loop(2000);
     await wachtOp(() => b.checks() === 2);
     await checkKlaar(td);
-    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
+    // na een mislukte check altijd opnieuw aanmelden (TD kan intussen herstart zijn), met dezelfde inst
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    const insts = kern.ontvangen.filter(([, x]) => x.t === 'hallo').map(([, x]) => x.inst);
+    expect(insts[1]).toBe(insts[0]);
   });
 
   it('TD draait niet: geen fout, geen spam in het log, geen hartslag — en zodra de bridge er is, verbonden', async () => {
@@ -584,9 +629,73 @@ describe('TD-driver tegen een nep-bridge', () => {
     expect(() => v.stuur({ t: 'zet', id: 'speed', v: 0 })).not.toThrow();
   });
 
+  it('storing zonder zet, daarna dezelfde id (TD herstart met de opgeslagen .toe) → toch opnieuw aanmelden, zelfde inst', async () => {
+    const b = await nepBridge();
+    const { klok, kern, v, td } = opzet({ poort: b.poort });
+    await checkKlaar(td);
+    kern.stuur(v, { t: 'zet', id: 'speed', v: 0.25 });
+    klok.loop(0);
+    await wachtOp(() => b.comp?.pars.Speed === 0.35);
+    await batchKlaar(td);
+    b.modus = 'kapot'; // TD dicht…
+    for (let i = 0; i < 3; i++) await volgendeCheck(klok, td);
+    expect(td.gemist).toBe(false); // er ging geen batch verloren
+    if (b.comp) b.comp.pars = GENESIS(); // …en weer open met de opgeslagen .toe: dezelfde id, maar de oude standen
+    b.modus = 'goed';
+    await volgendeCheck(klok, td);
+    expect(kern.tel('hallo')).toBe(2);
+    const insts = kern.ontvangen.filter(([, x]) => x.t === 'hallo').map(([, x]) => x.inst);
+    expect(insts[1]).toBe(insts[0]);
+    klok.loop(0);
+    await wachtOp(() => b.comp?.pars.Speed === 0.35);
+  });
+
+  it('een antwoord dat geen COMP-id is (iets anders op de poort): niet gezond, en geen aanmelding bij elke check', async () => {
+    const b = await nepBridge();
+    const { klok, kern, td, log } = opzet({ poort: b.poort });
+    await checkKlaar(td);
+    // iets anders op de poort dat {ok:true, result:{…}} geeft
+    b.server.removeAllListeners('request');
+    b.server.on('request', (_req, res) => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ ok: true, result: { tools: [] } })); });
+    for (let i = 0; i < 4; i++) await volgendeCheck(klok, td);
+    expect(kern.tel('hallo')).toBe(1);
+    expect(kern.tel('hb')).toBe(1);
+    expect(log.some((l) => /herbouwd/.test(l))).toBe(false);
+    expect(log.filter((l) => /geen COMP-id/.test(l))).toHaveLength(1);
+  });
+
+  it('niet gezet: alleen namen die de driver zelf stuurt komen in het log (begrensd)', async () => {
+    const b = await nepBridge();
+    const { klok, kern, v, td, log } = opzet({ poort: b.poort });
+    await checkKlaar(td);
+    b.server.removeAllListeners('request');
+    b.server.on('request', (req, res) => {
+      req.resume();
+      req.on('end', () => { res.writeHead(200); res.end(JSON.stringify({ ok: false, result: null, error: `RuntimeError: varve-hub: niet gezet: Glow,${'X'.repeat(160)},Onbekend,glow` })); });
+    });
+    kern.stuur(v, { t: 'zet', id: 'glow', v: 0.5 });
+    klok.loop(0);
+    await wachtOp(() => td.kapot.size > 0);
+    expect([...td.kapot]).toEqual(['Glow']);
+    expect(log.filter((l) => /niet te zetten/.test(l))).toEqual([`driver td-lab /genesis: parameter Glow niet te zetten (hernoemd of weg? kijk apps/td-lab.json → driver.pars na)`]);
+  });
+
+  it('paniek als de laatste check misging: toch meteen versturen (niet wachten op de volgende check)', async () => {
+    const b = await nepBridge();
+    b.modus = 'kapot';
+    const { klok, kern, v, td } = opzet({ poort: b.poort });
+    await checkKlaar(td);
+    expect(td.bereikbaar).toBe(false);
+    b.modus = 'goed'; // TD is er weer, de driver weet het nog niet
+    kern.stuur(v, { t: 'trig', id: 'paniek', aan: true });
+    await wachtOp(() => b.batches.length === 1);
+    expect(b.batches[0].zetten).toMatchObject({ Bright: 0, Glow: 0, Bg: 0 });
+    expect(klok.nu()).toBe(0);
+  });
+
   it('gooit nooit, ook niet als fetch synchroon gooit', async () => {
     const klok = new NepKlok(), kern = new NepKern();
-    const d = maakDriver(TD, { klok, fetch: () => { throw new Error('kapot'); } });
+    const d = maakDriver(TD, { klok, fetch: () => { throw new Error('kapot'); }, config: { apps: { 'td-lab': { poort: 9981 } } } });
     drivers.push(d);
     expect(() => d.start(kern)).not.toThrow();
     expect(() => kern.stuur(d.verbinding, { t: 'zet', id: 'speed', v: 1 })).not.toThrow();
@@ -618,5 +727,53 @@ describe('startDrivers met td-lab', () => {
     expect(td).toBeInstanceOf(TdDriver);
     await checkKlaar(td);
     expect(kern.ontvangen.filter(([app]) => app === 'td-lab').map(([, x]) => x.t)).toEqual(['hallo', 'manifest', 'hb']);
+  });
+});
+
+describe('TD-driver met de echte kern', () => {
+  it('paniek, daarna één hangende batch (TD hapert): Bright blijft 0 — geen sprong naar de standaard met slew terug', async () => {
+    const klok = new NepKlok();
+    const kern = new Kern({ klok, config: KERN_CONFIG, oppervlak: nepOppervlak() });
+    /** @type {Record<string, string>} */
+    const pars = {};
+    /** @type {string[]} Bright-waarden die TD kreeg na de paniek */
+    const bright = [];
+    let naPaniek = false, hang = false, hallos = 0;
+    /** @type {import('../src/drivers/td.js').TdDriver|null} */
+    let tdRef = null;
+    const fetch = (/** @type {string} */ _url, /** @type {any} */ init) => {
+      const code = String(init.body);
+      if (code.startsWith('(lambda')) return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, result: 101 }) });
+      if (hang) return new Promise((_res, rej) => { init.signal?.addEventListener('abort', () => rej(new Error('aborted'))); });
+      for (const m of code.matchAll(/_hub_par\('(\w+)'\)\.val = ([^\n]+)/g)) { pars[m[1]] = m[2]; if (m[1] === 'Bright' && naPaniek) bright.push(m[2]); }
+      return Promise.resolve({ ok: true, status: 200, text: async () => JSON.stringify({ ok: true, result: null }) });
+    };
+    const d = maakDriver(TD, { klok, fetch, config: { apps: { 'td-lab': { poort: 9981 } } } });
+    tdRef = /** @type {any} */ (d.driver);
+    const ontvang = kern.ontvang.bind(kern);
+    kern.ontvang = (/** @type {any} */ v, /** @type {any} */ b) => { if (b?.t === 'hallo') hallos++; return ontvang(v, b); };
+    const loop = async (/** @type {number} */ ms) => { for (let i = 0; i < ms / 50; i++) { klok.loop(50); await rust(); await rust(); } };
+    try {
+      d.start(kern);
+      await loop(3000);
+      expect(tdRef?.bereikbaar).toBe(true);
+      naPaniek = true;
+      kern.cockpit({ t: 'zet', app: 'td-lab', id: 'paniek', v: 1 });
+      await loop(1000);
+      expect(pars.Bright).toBe('0');
+      hang = true; // TD hapert (de .toe opslaan, een ./td run op een andere COMP)
+      kern.cockpit({ t: 'zet', app: 'td-lab', id: 'speed', v: 0.2 });
+      await loop(2500);
+      expect(tdRef?.gemist || hallos > 1).toBe(true); // de batch ging verloren
+      hang = false;
+      await loop(8000);
+      expect(hallos).toBeGreaterThan(1); // opnieuw aangemeld (replay)
+      expect(bright.length).toBeGreaterThan(1); // de replay stuurde Bright opnieuw…
+      expect(bright.filter((x) => Number(x) > 0)).toEqual([]); // …maar nooit boven 0
+      expect(pars.Speed).toBe('0.28'); // het gemiste komt alsnog
+    } finally {
+      d.stop();
+      kern.stop();
+    }
   });
 });

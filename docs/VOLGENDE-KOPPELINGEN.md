@@ -40,7 +40,7 @@ kleinste herstel: §2.3.
 | **manifest-app** via WS `/app` | app kan een WebSocket openen en zijn waarden melden | `hallo` + `manifest` + `staat`, `zet`/`trig` uitvoeren | PROTOCOL §3–§4, `src/transports/server.js` |
 | **driver** in de hub | app kan zich niet aanmelden (TD, Logic, HTTP-API) | niets; de hub spreekt de taal van de app | PROTOCOL §2, `src/drivers/`, `apps/<app>.json` |
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
-| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:91` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. Let op: `PROTOCOL.md:19` belooft nog wel "hub luistert op 7701" (bijwerken bij §6.5). |
+| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:91` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
 Nieuwe driver-soorten komen bij `src/drivers/index.js:26` (`DRIVER_SOORTEN`) en `:33-41` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
@@ -488,8 +488,13 @@ Bedienbaar in `/genesis` (custom parameters, parentshortcut `Genesis`, `scripts/
 - pagina **Readout** (`:113-117`): Wlife/Wact/Flash, geschreven door de regisseur (`director.py:186,223-225`).
 
 ### 6.2 Huidige hub-stand
-`config.json` heeft `apps.td-lab` met `"koppeling": "osc"` (`config.json:95-100`) en `bekende_apps.td-lab` tcp 9981
-(`:34`), maar **er is geen `apps/td-lab.json` en geen OSC in de hub** (§1). td-lab doet dus nergens mee.
+**Golf 6: gebouwd** — `src/drivers/td.js` (driver-soort `td`), `apps/td-lab.json`, `docs/TDLAB.md`,
+`test/driver-td.test.js`. `config.json:98` zegt nu `"koppeling": "td"`; de poort is `bekende_apps.td-lab` tcp 9981
+(`config.json:34`), met `apps.td-lab.poort` als afwijking. De driver staat uit tot Clay `apps.td-lab.autostart` op
+true zet. Afwijkend van het voorstel in §6.3: geen `url` in het manifest (de poort staat alleen in `config.json`).
+
+*Stand vóór golf 6 (historisch):* `apps.td-lab` had `"koppeling": "osc"`, er was geen `apps/td-lab.json` en geen OSC
+in de hub (§1); td-lab deed nergens mee.
 
 ### 6.3 Beste koppelvorm: driver in de hub, over de bestaande bridge
 **Nieuwe driver-soort `td`** die `/exec` aanroept. Waarom:
@@ -529,7 +534,7 @@ Bedienbaar in `/genesis` (custom parameters, parentshortcut `Genesis`, `scripts/
   `valideerStatisch` (geen tekst van buiten in de Python). Fouten nooit gooien (zoals `http.js`).
 - **Paniek**: de waarden uit `driver.paniek` in één exec, en als `zet` aan de kern gemeld (zoals `#meldPreset`), zodat
   ringen en pickup kloppen.
-- **Tests** (`test/drivers-td.test.js`, NepKlok + nep-fetch): batch per tik · id-wissel → replay · geen comp → geen
+- **Tests** (`test/driver-td.test.js`, NepKlok + nep-bridge): batch per tik · id-wissel → replay · geen comp → geen
   hartslag · puls · paniek meldt `zet` · `stop()` ruimt alle timers op · **exec 200 met `ok:false` → `gemist` en replay
   na de volgende gezonde check** · **geen antwoord (onafgevangen callback-fout) → time-out = niet gezond** · poort uit
   `config.json` wint van de `url`.
@@ -602,9 +607,9 @@ verandert niets aan scripts of .toe, en overleeft een rebuild (id-check).
   (niets of een lege 200) is op de Mac na te gaan; de driver moet beide als "niet gezond" lezen (time-out, of geen
   geldige JSON). Een Python-fout binnen een exec (hernoemde par, `/genesis` net afgebroken tijdens een rebuild) geeft
   wél een antwoord: 200 met `ok:false` (zie het ontwerp).
-- **Het contract zegt nog iets anders:** `PROTOCOL.md:19` belooft "OSC-apps: hub luistert op 7701", en `config.json:98`
-  zegt voor td-lab `"koppeling": "osc"`. Bij deze stap dus ook `PROTOCOL.md` §2 bijwerken (de OSC-rij als "niet
-  gebouwd" markeren of schrappen, driver-soort `td` toevoegen) en `config.json` → `apps.td-lab.koppeling` naar `td`.
+- **Het contract (golf 6: bijgewerkt).** `PROTOCOL.md` §2 beloofde "OSC-apps: hub luistert op 7701" en `config.json`
+  zei voor td-lab `"koppeling": "osc"`. Nu staat driver-soort `td` in §2 (`PROTOCOL.md:20`), zegt de OSC-rij "bestaat
+  niet" (`PROTOCOL.md:21`) en zegt `config.json:98` `"koppeling": "td"`.
 
 ### 6.6 Open vragen voor Clay
 1. Welke COMP bespeel je: `/genesis` (aangenomen), of ook `/world` / `/screensaver`?

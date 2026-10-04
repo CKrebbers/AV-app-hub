@@ -30,7 +30,6 @@
   ],
   "driver": {
     "soort": "td",
-    "url": "http://127.0.0.1:9981",
     "comp": "/genesis",
     "gezond_s": 2,
     "max_hz": 10,

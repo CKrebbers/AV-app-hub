@@ -166,9 +166,10 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'tools/genereer-manifesten.mjs', regel: 110, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 358, bevat: 'alle 22 parameters op eigen CC' },
     { pad: 'test/drivers.test.js', regel: 715, bevat: 'actueel t.o.v. de bronnen' },
-    { pad: 'PROTOCOL.md', regel: 19, bevat: 'hub luistert op 7701' },
+    // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
+    { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
+    { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
     { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
-    // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 beschrijven nog de stand van golf 5 ("osc")
     { pad: 'config.json', regel: 98, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
