@@ -165,7 +165,7 @@ const opdrachten = {
       const t = leesOfMaakToken();
       token = t.token;
       if (t.nieuw) console.log(`Nieuw token aangemaakt in ${t.pad} (alleen leesbaar voor jou).`);
-      if (t.hersteld) console.log(`Rechten van ${t.pad} waren te ruim; hersteld naar 0600.`);
+      if (t.hersteld) console.log(`Rechten van ${t.pad} waren te ruim (anderen konden het token lezen); hersteld naar 0600. Maak voor de zekerheid een nieuw token: node src/cli.js token --nieuw`);
       namen = lanNamen({ extra: config.server?.lan_namen ?? [] });
       hubConfig = { ...config, server: { ...config.server, origins: [...(config.server?.origins ?? []), ...lanOrigins(namen, poort)] } };
     }
