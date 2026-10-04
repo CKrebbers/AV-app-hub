@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
-import { openLoopbestand, etimeMs, SPELING_MS } from '../src/opslag.js';
+import { openLoopbestand, etimeMs, SPELING_MS, opstartMoment } from '../src/opslag.js';
 import { bestaandProces, naarLogbestand, vorigLog, startSet } from '../src/sets/starter.js';
 import { kernToegang } from '../src/sets/toegang.js';
 import { NepKlok } from '../src/core/klok.js';
@@ -51,7 +51,11 @@ describe('loopbestand met procesnummers die niet meer van toen zijn (echte proce
       const vreemd = vreemdProces();
       await wacht(100);
       const oud = geval === 'van vóór de laatste opstart';
-      const toen = oud ? '2025-10-01T20:00:00.000Z' : new Date(Date.now() - 10 * 60_000).toISOString();
+      // 'Zelfde opstart' moet ná de opstart van deze computer liggen: een verse CI-runner draait soms pas een paar
+      // minuten. Halverwege de uptime (hooguit 10 min terug), ruim voorbij SPELING_MS vóór het vreemde proces.
+      const terug = Math.min(10 * 60_000, (Date.now() - opstartMoment()) / 2);
+      expect(terug, 'de computer draait te kort voor deze proef').toBeGreaterThan(3 * SPELING_MS);
+      const toen = oud ? '2025-10-01T20:00:00.000Z' : new Date(Date.now() - terug).toISOString();
       // Bij 'oud' is zelfs het nummer van de hub van toen nu van het vreemde proces: geen "er draait nog een hub".
       writeFileSync(`${s.staat}.loopt`, JSON.stringify({
         v: 1, pid: oud ? vreemd : await dodePid(), begon: toen, set: 'Herstartproef',
