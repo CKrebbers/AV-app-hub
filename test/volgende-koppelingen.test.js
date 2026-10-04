@@ -24,12 +24,18 @@ function jsonBlokken() {
   return uit;
 }
 
-/** Een aanvulling (`params+`, `driver.map+`, `driver.presets+`) toepassen op een manifest. @param {any} basis @param {any} a */
+/**
+ * Een aanvulling (`params+`, `driver.map+`, `driver.presets+`) toepassen op een manifest. Wat er al in staat
+ * (zelfde param-id, zelfde preset-noot: het voorstel is intussen gebouwd, golf 6) wordt niet nog eens toegevoegd.
+ * @param {any} basis @param {any} a
+ */
 function pasAanvullingToe(basis, a) {
   const m = structuredClone(basis);
-  m.params = [...m.params, ...(a['params+'] ?? [])];
+  const ids = new Set(m.params.map((/** @type {any} */ p) => p.id));
+  m.params = [...m.params, ...(a['params+'] ?? []).filter((/** @type {any} */ p) => !ids.has(p.id))];
   m.driver.map = { ...m.driver.map, ...(a['driver.map+'] ?? {}) };
-  if (a['driver.presets+']) m.driver.presets = [...(m.driver.presets ?? []), ...a['driver.presets+']];
+  const noten = new Set((m.driver.presets ?? []).map((/** @type {any} */ p) => p.noot));
+  if (a['driver.presets+']) m.driver.presets = [...(m.driver.presets ?? []), ...a['driver.presets+'].filter((/** @type {any} */ p) => !noten.has(p.noot))];
   return m;
 }
 
@@ -98,15 +104,17 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   });
 
   it('het uurwerk-voorstel is precies het huidige apps/uurwerk.json plus master_terug en paniek', () => {
+    // Sinds golf 6 staan master_terug en paniek in apps/uurwerk.json zelf: het voorstel moet nu precies het bestand
+    // zijn, ook in naam, groep en volgorde van die twee (een afwijking valt dan op).
     const nu = JSON.parse(readFileSync(hubPad('apps/uurwerk.json'), 'utf8'));
     const voorstel = jsonBlokken().map((b) => JSON.parse(b.bron)).find((x) => x.app === 'uurwerk');
     expect(voorstel).toBeDefined();
     // geen ongemerkte wijzigingen (slew_s, max_hz): lagen in uurwerk ontstaan per seconde, dat los je niet in de hub op
-    expect(voorstel.params.slice(0, nu.params.length)).toEqual(nu.params);
-    expect(voorstel.params.slice(nu.params.length).map((/** @type {any} */ p) => p.id)).toEqual(['master_terug', 'paniek']);
+    expect(voorstel.params).toEqual(nu.params);
+    expect(voorstel.params.slice(-2).map((/** @type {any} */ p) => p.id)).toEqual(['master_terug', 'paniek']);
     const { verbs: _v, _bron: _b, ...rest } = voorstel.driver, { verbs: _n, _bron: _bn, ...restNu } = nu.driver;
     expect(rest).toEqual(restNu);
-    for (const [id, v] of Object.entries(nu.driver.verbs)) expect(voorstel.driver.verbs[id], id).toEqual(v);
+    expect(voorstel.driver.verbs).toEqual(nu.driver.verbs);
     expect(voorstel.params.find((/** @type {any} */ p) => p.id === 'paniek')?.soort).toBe('trigger');
   });
 
@@ -153,22 +161,24 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/midi.js', regel: 138, bevat: '#uit(a)' },
     { pad: 'src/drivers/midi.js', regel: 185, bevat: '#meldPreset' },
     { pad: 'src/drivers/midi.js', regel: 209, bevat: 'globaal' },
-    { pad: 'src/drivers/http.js', regel: 24, bevat: 'POST_TIMEOUT_MS = 2000' },
-    { pad: 'src/drivers/http.js', regel: 62, bevat: 'huisregel 6' },
-    { pad: 'src/drivers/http.js', regel: 102, bevat: 'r.ok === false' },
-    { pad: 'src/drivers/http.js', regel: 119, bevat: '#zet(' },
-    { pad: 'src/drivers/http.js', regel: 148, bevat: 'alleen bij indrukken' },
-    { pad: 'src/drivers/http.js', regel: 156, bevat: 'globaal' },
-    { pad: 'src/drivers/http.js', regel: 182, bevat: 'tabs:' },
+    { pad: 'src/drivers/http.js', regel: 25, bevat: 'POST_TIMEOUT_MS = 2000' },
+    { pad: 'src/drivers/http.js', regel: 75, bevat: 'huisregel 6' },
+    { pad: 'src/drivers/http.js', regel: 141, bevat: 'r.ok === false' },
+    { pad: 'src/drivers/http.js', regel: 158, bevat: '#zet(' },
+    { pad: 'src/drivers/http.js', regel: 188, bevat: 'alleen bij indrukken' },
+    { pad: 'src/drivers/http.js', regel: 196, bevat: 'globaal' },
+    { pad: 'src/drivers/http.js', regel: 226, bevat: 'tabs === 0' },
     { pad: 'src/drivers/index.js', regel: 26, bevat: 'DRIVER_SOORTEN' },
     { pad: 'src/doctor.js', regel: 91, bevat: "'osc'" },
     { pad: 'src/transports/server.js', regel: 86, bevat: 'originToegestaan' },
-    { pad: 'tools/genereer-manifesten.mjs', regel: 110, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
-    { pad: 'test/drivers.test.js', regel: 358, bevat: 'alle 22 parameters op eigen CC' },
-    { pad: 'test/drivers.test.js', regel: 715, bevat: 'actueel t.o.v. de bronnen' },
-    { pad: 'PROTOCOL.md', regel: 19, bevat: 'hub luistert op 7701' },
+    { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
+    { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
+    { pad: 'test/drivers.test.js', regel: 753, bevat: 'actueel t.o.v. de bronnen' },
+    // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
+    { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
+    { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
     { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 98, bevat: '"koppeling": "osc"' },
+    { pad: 'config.json', regel: 98, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.
@@ -315,6 +325,14 @@ const claims = [
   { repo: 'uurwerk', bestand: 'taal.js', regel: 287, bevat: 'patch.macros.master' },
   { repo: 'uurwerk', bestand: 'taal.js', regel: 316, bevat: 'setInterval(() => this.poll(), 1000)' },
   { repo: 'uurwerk', bestand: 'taal.js', regel: 214, bevat: "toFixed(2)" },
+  // golf 6: de uurwerk-paniek blijft niet staan (§3.4): wat de master terugzet op 0,8
+  { repo: 'uurwerk', bestand: 'mod.js', regel: 761, bevat: "R().Taal.applyText(p.tekst, 'tuinman')" },
+  { repo: 'uurwerk', bestand: 'mod.js', regel: 412, bevat: 'R().Taal.applyText(m.tekst' },
+  { repo: 'uurwerk', bestand: 'uur.js', regel: 89, bevat: "Rk.Taal.applyText(opts.tekst || u.tekst, 'uur')" },
+  { repo: 'uurwerk', bestand: 'nacht.js', regel: 75, bevat: 'Rk.Taal.applyText(tekstVoor' },
+  { repo: 'uurwerk', bestand: 'taal.js', regel: 339, bevat: "applyText(l.voor, 'terug')" },
+  // golf 6: All Notes Off laat Sediments noten los met hun eigen Release (§5.4)
+  { repo: 'sediment', bestand: 'src/dsp/Voice.cpp', regel: 108, bevat: 'if (allowTailOff)' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 321, bevat: 'Hoogste waarde wint' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 837, bevat: 'if name not in seen' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 517, bevat: "'dim'" },

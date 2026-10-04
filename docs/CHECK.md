@@ -118,7 +118,7 @@ voor anderen = ! (`chmod 600` en voor de zekerheid een nieuw token met `node src
 - Een app die al verbonden is met de draaiende hub: één ✓, verder niets (de starter laat hem met rust). Dezelfde
   regel als de starter: de app-id moet exact kloppen (alleen bij `per_monitor`, zoals flux, telt `flux-<monitor>`),
   en heeft de app een poort, dan moet die ook open zijn.
-- Een app waar de hub via een eigen driver mee praat (`koppeling` `midi`, `osc` of `http` in `config.json`, zoals
+- Een app waar de hub via een eigen driver mee praat (`koppeling` `midi`, `http` of `td` in `config.json`, zoals
   Scene Kit, Sediment, TD-lab en Uurwerk) staat 'actief' zodra de driver er is, ook als TouchDesigner, Logic of de
   brug dicht is. Daar dus nooit die ene ✓: de gewone punten gaan door (map, poort, en voor Scene Kit de !).
 - Een app zonder startcommando (`handmatig`, zoals Scene Kit): ! met wat je zelf moet doen.

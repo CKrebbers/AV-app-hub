@@ -10,7 +10,8 @@ Manifest en mapping: `apps/sediment.json` (gegenereerd uit `sediment/src/Params.
 
 ## Welke CC's
 
-Alleen CC's die de MIDI-specificatie "ongedefinieerd" noemt: **20–31** en **102–111**. Zo blijven
+Alleen CC's die de MIDI-specificatie "ongedefinieerd" noemt: **20–31** en **102–111** (plus CC 123 All Notes Off
+voor de paniek, zie onder). Zo blijven
 **CC 1** (modwiel = filter in Sediment), **7** (volume), **10** (pan), **64** (sustain) en de LSB's 32–63
 van je keyboard vrij. Alles op **kanaal 1**.
 
@@ -38,6 +39,19 @@ van je keyboard vrij. Alles op **kanaal 1**.
 | 109 | Shimmer | Ruimte | 0 – 100 % | fader | |
 | 110 | Tone | Ruimte | 0 – 100 % | fader | |
 | 111 | Output | Uit | −30 – +6 dB | fader | |
+| 123 | *(geen: All Notes Off)* | veilig | — | Stop All | P1 (1 s) |
+
+**Paniek** (LPD8-P1 1 s vasthouden, of Stop All met Sediment in focus) stuurt **CC 123 = All Notes Off** op
+kanaal 1, en bij loslaten nog eens (waarde 0; All Notes Off kijkt niet naar de waarde). Daar hoort **geen**
+Controller Assignment bij: Logic geeft hem door aan het instrument van het spoor dat de MIDI krijgt (het
+geselecteerde spoor). CC 123 **laat alle noten los**: ze vallen weg met Sediments eigen Release (standaard 7 s, tot
+30 s; de presets 8–14 s), plus de staarten van galm en echo. Het is dus "alle toetsen los", geen harde stop. De
+Scripter-set speelt daarna gewoon verder, en de master gaat niet omlaag (Output 0 = −30 dB, niet stil). Nog niet op
+de Mac geprobeerd: zet bij het eerste gebruik Release kort (bv. 0,1 s), houd een akkoord vast en houd P1 vast. Valt
+het akkoord meteen weg, dan werkt het; blijft het klinken, dan filtert Logic CC 123 (zie Problemen). CC 123 is bewust
+de enige verboden CC die de hub stuurt (`PANIEK_CC` in `tools/genereer-manifesten.mjs`). **Open vraag:** wil je echt
+stilte, dan hoort Output (CC 111) naar 0 erbij als tweede stap; één trigger stuurt maar één bericht, dus dat vraagt
+een keuze (bv. een tweede trigger, of de paniek in de hub voor Sediment uitbreiden).
 
 "Midden" = de waarde die op CC 64 valt: Sediment gebruikt een logaritmische schaal (`setSkewForCentre`), en
 Logic zet CC 0–127 lineair op die genormaliseerde 0..1. De hub rekent ook in die genormaliseerde 0..1, dus
@@ -95,6 +109,7 @@ de standaardwaarden in het manifest kloppen met wat Logic toont.
 | Shape … Resonance bewegen mee met de TD-knoppen | De toewijzing heeft Input *All*, of VARVE-HUB TD staat aan als invoer. Stap 2 en 6. |
 | Leer-modus pakt niets als ik een APC-fader beweeg | Pickup: de hub stuurt pas als de fader de huidige waarde kruist. Leer via de cockpit, of beweeg de fader over zijn hele bereik. |
 | Sediment-knoppen (Shape … Resonance) bewegen de TD-knoppen | Het spoor TO_TD (External Instrument naar L2TD, uit av-scene-kit) is geselecteerd: dan stuurt Logic de CC's 20–27 van VARVE-HUB Logic door naar TD, en daar telt per knop de hoogste waarde (av-scene-kit `td/td_build_hub.py`). Selecteer het Sediment-spoor, of zet TO_TD op een andere invoer. Zie `docs/VOLGENDE-KOPPELINGEN.md` §4. |
+| P1 vasthouden doet niets in Sediment | Eerst: met een lange Release (standaard 7 s) klinken de noten na een paniek gewoon uit; proef met Release op 0,1 s. Doet het dan nog niets: CC 123 komt alleen bij het geselecteerde spoor aan (of Logic filtert hem). Selecteer het Sediment-spoor en probeer opnieuw; met de Scripter-set op vier sporen krijgt alleen het geselecteerde spoor de paniek. |
 | Werkt alleen als het spoor geselecteerd is | In de expertweergave staat *Selected Track*; kies het Sediment-spoor. |
 | Hub herstart, Logic reageert niet meer | De virtuele poort was even weg. Meestal pakt Logic hem vanzelf weer op; anders stap 2 opnieuw. Na een herstart stuurt de hub de waarden die hij onthield (`~/.varve-hub/staat.json`) weer naar Sediment. Zonder geheugen (eerste keer, bestand weg, `--zonder-geheugen`) stuurt hij niets: dan houdt Sediment zijn eigen stand, maar gaat de hub (cockpit, ringen, pickup) uit van de standaardwaarden uit het manifest. Laad een snapshot, of beweeg de fader over de standaardwaarde heen: dan staan ze weer gelijk. |
 

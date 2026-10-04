@@ -97,8 +97,21 @@ Klaar als (op jouw Mac):
 
 Open vragen voor Clay (uit golf 5):
 - De paniek-naloop geldt ook voor Stop All van de app met focus — goed zo?
-- Paniek per app voor TD, Sediment en uurwerk: voorstellen in `docs/VOLGENDE-KOPPELINGEN.md` §3–§5.
+- ~~Paniek per app voor TD, Sediment en uurwerk~~ → gebouwd in golf 6 (zie hieronder); wat paniek per app betekent, mag je nog bijstellen.
 - varve-radio: het "lek" is geen MIDI maar het overnemen van de zender via Supabase-broadcast; een klein herstel staat klaar in §2.3 (eigen deploy, jouw OK nodig).
+
+## Golf 6 — de driver-apps en de volgende koppelingen ✓ (gebouwd en getest zonder hardware)
+5 onderdelen (bouwer + 2 reviewers + verwerker); de hub-delen samengevoegd en opnieuw getest.
+- [x] **Paniek voor de driver-apps** — uurwerk volume 0 (`pas_toe +master 0.00`, terug met de trigger `master_terug`), Sediment CC 123 (alle noten uit), Scene Kit noot 42 → master dicht (TD-patch in `koppelingen/av-scene-kit/`, wacht op REGIE; daarna `node tools/genereer-manifesten.mjs`)
+- [x] **uurwerk leest terug** — verandert er iets in de uurwerk-tab, dan volgt de hub (cockpit, pickup); `teruglezen` in `config.json`
+- [x] **td-lab als driver** — `src/drivers/td.js` over de exec-bridge van td-lab, standaard uit (`apps.td-lab.autostart`); zie `docs/TDLAB.md`
+- [ ] **varve-radio: zender-lek dicht** — op de tak `claude/zender-lek` (PR in varve-radio), wacht op jouw OK, deploy en meting
+- [ ] **Varve Eye als app op de Mac** — op de tak `claude/varve-hub-koppeling` (PR in anbernic-cam), wacht op jouw OK
+
+Klaar als (op jouw Mac):
+- [ ] LPD8-P1 vasthouden: uurwerk wordt stil, Sediment stopt alle noten, (na de TD-patch) de TD-master gaat dicht
+- [ ] iets veranderen in de uurwerk-tab → de cockpit volgt binnen een paar seconden
+- [ ] td-lab: de testtabel in `docs/TDLAB.md`
 
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen

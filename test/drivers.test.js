@@ -8,7 +8,7 @@ import { valideerManifest } from '../src/protocol/manifest.js';
 import { leesVanApp, leesNaarApp } from '../src/protocol/berichten.js';
 import { maakDriver, valideerStatisch, laadStatisch, startDrivers, midiBytes, verbBericht, APPS_MAP } from '../src/drivers/index.js';
 import { CHECK_TIMEOUT_MS, POST_TIMEOUT_MS } from '../src/drivers/http.js';
-import { genereer, opmaak, leesParamsH, leesPresets, naarGenormaliseerd, sedimentManifest, sceneKitManifest, VERBODEN_CC } from '../tools/genereer-manifesten.mjs';
+import { genereer, opmaak, leesParamsH, leesPresets, naarGenormaliseerd, sedimentManifest, sceneKitManifest, VERBODEN_CC, PANIEK_CC } from '../tools/genereer-manifesten.mjs';
 import { laadConfig } from '../src/config.js';
 
 /** Kleine nep-kern volgens het contract (src/core/kern.js): verbind / ontvang / verbreek. */
@@ -310,10 +310,36 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     kern.stuur(v, { t: 'scene', i: 3 });
     klok.loop(0);
     expect(kern.ontvangen.filter(([, b]) => b.t === 'zet').slice(-8).map(([, b]) => b.v)).toEqual(Object.values(s.driver.presets[3].waarden));
-    // TD staat nu op de presetwaarde: dezelfde waarde van de APC hoeft niet nog eens
+    // TD zette de presetwaarde zelf: de dubbelfilter vergeet die param (golf 6, na een TD-paniek moet een fader
+    // die precies op de presetwaarde 0 landt TD die 0 ook laten zien). De eerste waarde van de APC gaat dus over
+    // de draad, ook als hij gelijk is aan de preset (TD pakt hem dan op: gelijk aan de basis); een tweede niet.
     const voor = poort.verstuurd.length;
-    kern.stuur(v, { t: 'zet', id: 'glitch', v: s.driver.presets[3].waarden.glitch, bron: 'apc40' });
-    expect(poort.verstuurd).toHaveLength(voor);
+    const glitch = s.driver.presets[3].waarden.glitch;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: glitch, bron: 'apc40' });
+    expect(poort.verstuurd.slice(voor)).toEqual([[0xb0, s.driver.map.glitch.cc, Math.round(glitch * 127)]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: glitch, bron: 'apc40' });
+    expect(poort.verstuurd).toHaveLength(voor + 1);
+  });
+
+  it('na een preset: dezelfde waarde als vóór de preset krijgt eerst een stapje ernaast (een CHOP ziet alleen veranderingen)', () => {
+    // TD's MIDI In CHOP staat nog op de laatste CC van de hub; de preset zette de knop in TD zelf. Stuurt de hub daarna
+    // precies die bytes opnieuw (snapshot, cockpit), dan ziet TD geen verandering en mist hij de waarde (golf 6).
+    const { klok, kern, poort, v } = opzet();
+    const cc = leesApp('av-scene-kit.json').driver.map.glitch.cc;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'cockpit' });
+    kern.stuur(v, { t: 'trig', id: 'preset2', aan: true });
+    klok.loop(0);
+    const voor = poort.verstuurd.length;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'snapshot' });
+    expect(poort.verstuurd.slice(voor)).toEqual([[0xb0, cc, 63], [0xb0, cc, 64]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'snapshot' }); // snapshot gaat altijd, maar zonder stapje
+    expect(poort.verstuurd.slice(voor + 2)).toEqual([[0xb0, cc, 64]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 0, bron: 'cockpit' });
+    kern.stuur(v, { t: 'trig', id: 'preset1', aan: true });
+    klok.loop(0);
+    const n = poort.verstuurd.length;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 0, bron: 'cockpit' }); // bij 0 is het stapje 1
+    expect(poort.verstuurd.slice(n)).toEqual([[0xb0, cc, 1], [0xb0, cc, 0]]);
   });
 
   it('start() twee keer: één timerketen, stop() ruimt alles op en de poort blijft dicht', () => {
@@ -355,12 +381,22 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     ]);
   });
 
-  it('sediment: alle 22 parameters op eigen CC, geen botsing met CC 1/7/10/64', () => {
+  // Golf 6: Sediment kreeg een paniek-trigger op CC 123 (All Notes Off). Dat is een bewuste uitzondering op
+  // VERBODEN_CC (PANIEK_CC in tools/genereer-manifesten.mjs, docs/VOLGENDE-KOPPELINGEN.md §5.4): CC 123 is een
+  // kanaalmodus-bericht en mag nooit een parameter zijn, maar is precies wat een paniek moet doen. Deze test
+  // telt dus alleen de waarde-parameters (22, geen verboden CC) en controleert apart dat paniek de enige
+  // trigger is en de enige op een verboden CC.
+  it('sediment: alle 22 parameters op eigen CC, geen botsing met CC 1/7/10/64; alleen paniek op CC 123', () => {
     const s = leesApp('sediment.json');
-    const ccs = Object.values(s.driver.map).map((d) => d.cc);
+    const waarden = s.params.filter((p) => p.soort === 'waarde').map((p) => p.id);
+    const ccs = waarden.map((id) => s.driver.map[id].cc);
     expect(ccs).toHaveLength(22);
     expect(new Set(ccs).size).toBe(22);
     for (const cc of ccs) expect(VERBODEN_CC).not.toContain(cc);
+    expect(s.params.filter((p) => p.soort !== 'waarde').map((p) => [p.id, p.soort])).toEqual([['paniek', 'trigger']]);
+    expect(s.driver.map.paniek).toEqual({ cc: PANIEK_CC });
+    expect(PANIEK_CC).toBe(123);
+    expect(Object.entries(s.driver.map).filter(([, d]) => VERBODEN_CC.includes(d.cc)).map(([id]) => id)).toEqual(['paniek']);
     const klok = new NepKlok(), systeem = new NepSysteem(), kern = new NepKern();
     const d = maakDriver(s, { systeem, klok });
     d.start(kern);
@@ -579,16 +615,18 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(kern.soorten().filter((t) => t === 'hallo')).toHaveLength(1); // de brug had hem wel: geen replay
   });
 
-  it('onbereikbaar: geen POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af', async () => {
+  it('onbereikbaar: geen waarde-POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af; een trigger gaat toch', async () => {
+    // Een trigger speelt de kern bij herstel niet opnieuw af: zonder deze uitzondering viel een paniek (of een
+    // ander werkwoord) stil weg als de laatste check net over CHECK_TIMEOUT_MS liep (golf 6).
     const { klok, kern, fetch, v } = opzet({ gezond: false });
     await rust();
     kern.stuur(v, { t: 'zet', id: 'samenhang', v: 0.4 });
     kern.stuur(v, { t: 'trig', id: 'bewaar', aan: true });
     await rust();
-    expect(fetch.verbs()).toEqual([]);
+    expect(fetch.verbs().map((b) => b.verb)).toEqual(['bewaar']);
     fetch.gezond = true;
     klok.loop(2000); await rust();
-    expect(fetch.verbs().map((b) => b.args.waarde)).toEqual([0.4]);
+    expect(fetch.verbs().slice(1).map((b) => b.args.waarde)).toEqual([0.4]);
   });
 
   it('NaN: geen verb (en verbBericht klemt NaN naar de ondergrens)', async () => {
@@ -689,7 +727,7 @@ describe('genereer-manifesten', () => {
     expect(naarGenormaliseerd(1000, 30, 18000, 1000)).toBeCloseTo(0.5, 6); // centre ligt op 0.5
     expect(naarGenormaliseerd(0.18, 0, 1, -1)).toBeCloseTo(0.18);
     const m = sedimentManifest(specs, { naam: 'Sediment', kleur: '#ffffff', midipoort: 'P' });
-    expect(m.params.map((p) => p.id)).toEqual(['cutoff', 'echo_mix']);
+    expect(m.params.map((p) => p.id)).toEqual(['cutoff', 'echo_mix', 'paniek']); // paniek komt altijd mee, buiten SEDIMENT_CC
     expect(valideerStatisch(m).ok).toBe(true);
   });
 
@@ -719,12 +757,17 @@ describe('genereer-manifesten', () => {
       expect(readFileSync(join(APPS_MAP, naam), 'utf8')).toBe(opmaak(m));
     }
     const kit = uit['av-scene-kit.json'];
-    expect(Object.values(kit.driver.map).map((d) => d.cc ?? d.noot)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41]);
+    // Met de TD-patch (koppelingen/av-scene-kit) staat midi.pads.paniek = 42 in de kit; daarvoor niet.
+    const paniek = JSON.parse(readFileSync('/home/user/av-scene-kit/config.json', 'utf8')).midi.pads.paniek;
+    const extra = paniek === undefined ? [] : [paniek];
+    expect(Object.values(kit.driver.map).map((d) => d.cc ?? d.noot)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41, ...extra]);
     expect(kit.driver.kanaal).toBe(0);
     expect(kit.params.find((p) => p.id === 'record').soort).toBe('trigger');
-    expect(kit.driver.presets.map((p) => p.noot)).toEqual([36, 37, 38, 39]);
+    expect(kit.driver.presets.map((p) => p.noot)).toEqual([36, 37, 38, 39, ...extra]);
     expect(kit.driver.presets[0].waarden).toEqual(Object.fromEntries(kit.params.filter((p) => p.soort === 'waarde').map((p) => [p.id, p.standaard])));
     expect(Object.fromEntries(kit.params.filter((p) => p.rol).map((p) => [p.id, p.rol]))).toMatchObject({ hue: 'macro.kleur', orbit: 'macro.beweging', emission: 'macro.intensiteit' });
-    expect(uit['sediment.json'].params).toHaveLength(22);
+    // 22 parameters uit Params.h plus de paniek-trigger op CC 123 (golf 6, zie de sediment-test hierboven)
+    expect(uit['sediment.json'].params.filter((p) => p.soort === 'waarde')).toHaveLength(22);
+    expect(uit['sediment.json'].params.at(-1)).toMatchObject({ id: 'paniek', soort: 'trigger' });
   });
 });

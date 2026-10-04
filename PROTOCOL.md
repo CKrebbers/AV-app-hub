@@ -16,8 +16,11 @@
 |---|---|---|
 | browser- en Node-apps | WebSocket, JSON, één bericht per frame | `ws://<hub>:7700/app` (van buiten de hub-machine met `--lan`: `?token=…` of `token` in `hallo`, §13) |
 | cockpit | WebSocket, JSON | `ws://<hub>:7700/cockpit` (van buiten met `--lan`: `?token=…` of cookie `varve_hub_token`, anders 401 bij de upgrade) |
-| OSC-apps (TD, Python) | OSC/UDP | hub luistert op 7701; app noemt zijn eigen poort in `hallo` |
-| passieve apps (TD via MIDI, uurwerk via HTTP, Logic) | **driver** in de hub + statisch manifest in `apps/<app>.json` | — |
+| passieve apps (Scene Kit-TD en Logic via MIDI, uurwerk via HTTP) | **driver** in de hub + statisch manifest in `apps/<app>.json` | MIDI: virtuele poort (`config.json` → `apps.<app>.midipoort`); HTTP: `config.json` → `apps.<app>.poort` |
+| td-lab (TouchDesigner) | **driver** `td` in de hub (`src/drivers/td.js`) over de bestaande exec-bridge van td-lab: `POST /exec` met Python-tekst, antwoord altijd HTTP 200 met JSON `{ok, stdout, result, error}` (`ok:false` = de Python faalde). Statisch manifest `apps/td-lab.json`. Staat standaard uit: `config.json` → `apps.td-lab.autostart: true` (docs/TDLAB.md) | `http://127.0.0.1:<poort>/exec`, poort = `config.json` → `apps.td-lab.poort`, anders `bekende_apps.td-lab.tcp` (9981) |
+| OSC | **bestaat niet.** De hub heeft geen OSC-transport en geen luisteraar; `poorten.osc` (7701) gebruikt alleen `varve-hub doctor` om te kijken of de poort vrij is. Een OSC-koppeling vraagt eerst een nieuw transport. | — |
+
+Driver-soorten (`driver.soort` in `apps/<app>.json`, `src/drivers/index.js`): `midi`, `http`, `td`. Een driver meldt zich bij de kern als een gewone app (`hallo` + `manifest`, hartslag zolang de app gezond is, `truth:"hub"`).
 
 ## 3. Berichten app ↔ hub (`/app`)
 
@@ -250,3 +253,8 @@ Uit de generale repetitie (`docs/REPETITIE.md`). Getoetst in `test/kern-golf5.te
 
 **Globale adem volgt de adem-app**
 - Verandert de eerste app met een parameter met rol `klok.adem_periode` die waarde (zelf, of via cockpit/snapshot), dan gaat `globaal['klok.adem_periode']` mee, zonder sprong in de adem-fase. Zo ademen alle apps en de cockpit in de periode van de app die je hoort (bv. Waterschaal na een scène). De LPD8 (K7) zet globaal zoals altijd; een tweede app met dezelfde rol bepaalt de klok niet.
+
+**Paniek bij de driver-apps** (golf 6, `test/paniek-drivers.test.js`): ook een driver-app heeft een trigger `paniek` in zijn statische manifest, zodat P1 en Stop All hem bereiken; wat dat betekent, beslist het manifest. **uurwerk**: `pas_toe` `+master 0.00` met `meet_seconden: -1` (alleen bij indrukken; terug met `master_terug`). `pas_toe` start de engine als die nog niet liep (daarna stil). De paniek blijft niet staan: uurwerk zet de master terug op 0,8 bij elke patchtekst zonder regel `master` (de terugdraai-stap van de tuinman tot 30 s na zijn ingreep, een uur, een moment, een set; `docs/VOLGENDE-KOPPELINGEN.md` §3.4); dat is een wens voor het uurwerk-repo. Een trigger gaat ook als de brug bij de laatste gezondheidscheck onbereikbaar leek (de kern speelt triggers bij herstel niet opnieuw af; de driver logt het). **Sediment**: CC 123 All Notes Off (bij indrukken en loslaten; de enige verboden CC die de hub stuurt, `PANIEK_CC`). Dat laat alle noten los: ze vallen weg met Sediments eigen Release (standaard 7 s, tot 30 s) plus de staarten van galm en echo; geen harde stop. **Scene Kit (TD)**: noot `midi.pads.paniek` (42, alleen als `av-scene-kit/config.json` die sleutel heeft) met `driver.presets` → `master_dim` 0. TD zet de master op 0 en neemt de eerstvolgende CC 27 meteen over (welke waarde ook, geen kruising), of een preset; zo volgt TD wat de hub daarna bewust stuurt (K2 zoals hierboven voor manifest-apps, de cockpit, een snapshot, de APC-fader, die eerst door 0 moet). Zette de app een waarde zelf (preset of paniek) en zou de hub daarna precies de bytes sturen die TD al had, dan stuurt de MIDI-driver eerst een stapje ernaast, want een MIDI In CHOP ziet alleen veranderingen.
+
+**uurwerk leest terug (golf 6)**
+- De HTTP-driver van uurwerk leest de tab regelmatig terug (`config.json` → `teruglezen`); een echt verschil komt in de kern als zet van de app (bron `app`, §11 en hierboven), nooit terug naar de tab. Wat de hub net zelf stuurde (2 s) en afrondingsverschillen tellen niet.

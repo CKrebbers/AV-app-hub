@@ -20,7 +20,9 @@
     {"id":"uur_beweging","naam":"Uur: Beweging","soort":"trigger","hint":"pad","groep":"uur"},
     {"id":"uur_stop","naam":"Uur stoppen","soort":"trigger","hint":"pad","groep":"uur"},
     {"id":"uur_meer","naam":"Meer aanwezig","soort":"trigger","hint":"pad","groep":"uur"},
-    {"id":"uur_minder","naam":"Minder aanwezig","soort":"trigger","hint":"pad","groep":"uur"}
+    {"id":"uur_minder","naam":"Minder aanwezig","soort":"trigger","hint":"pad","groep":"uur"},
+    {"id":"master_terug","naam":"Volume terug (0,8)","soort":"trigger","hint":"pad","groep":"veilig"},
+    {"id":"paniek","naam":"Paniek: volume 0","soort":"trigger","hint":"pad","groep":"veilig"}
   ],
   "driver": {
     "soort": "http",
@@ -40,8 +42,10 @@
       "uur_beweging": {"verb":"uur","args":{"actie":"start","naam":"Beweging"}},
       "uur_stop": {"verb":"uur","args":{"actie":"stop"}},
       "uur_meer": {"verb":"uur","args":{"actie":"meer"}},
-      "uur_minder": {"verb":"uur","args":{"actie":"minder"}}
+      "uur_minder": {"verb":"uur","args":{"actie":"minder"}},
+      "master_terug": {"verb":"pas_toe","args":{"diff":"+master 0.80","meet_seconden":-1}},
+      "paniek": {"verb":"pas_toe","args":{"diff":"+master 0.00","meet_seconden":-1}}
     },
-    "_bron": "handgeschreven ← uurwerk/bridge/server.js (TOOLS) + brug.js; licht loopt -1..1, de rest 0..1"
+    "_bron": "handgeschreven ← uurwerk/bridge/server.js (TOOLS) + brug.js; licht loopt -1..1, de rest 0..1; paniek/master_terug = pas_toe op de master-regel met meet_seconden -1 (niet wachten, docs/VOLGENDE-KOPPELINGEN.md §3.4)"
   }
 }

@@ -29,7 +29,8 @@
     {"id":"space_mix","naam":"Space Mix","soort":"waarde","standaard":0.42,"hint":"fader","groep":"ruimte","rol":"macro.ruimte","eenheid":"%","min":0,"max":100},
     {"id":"shimmer","naam":"Shimmer","soort":"waarde","standaard":0.15,"hint":"fader","groep":"ruimte","eenheid":"%","min":0,"max":100},
     {"id":"tone","naam":"Tone","soort":"waarde","standaard":0.45,"hint":"fader","groep":"ruimte","eenheid":"%","min":0,"max":100},
-    {"id":"output","naam":"Output","soort":"waarde","standaard":0.8333,"hint":"fader","groep":"uit","eenheid":"dB","min":-30,"max":6}
+    {"id":"output","naam":"Output","soort":"waarde","standaard":0.8333,"hint":"fader","groep":"uit","eenheid":"dB","min":-30,"max":6},
+    {"id":"paniek","naam":"Paniek: alle noten uit","soort":"trigger","hint":"pad","groep":"veilig"}
   ],
   "driver": {
     "soort": "midi",
@@ -57,8 +58,9 @@
       "space_mix": {"cc":108},
       "shimmer": {"cc":109},
       "tone": {"cc":110},
-      "output": {"cc":111}
+      "output": {"cc":111},
+      "paniek": {"cc":123}
     },
-    "_bron": "tools/genereer-manifesten.mjs ← sediment/src/Params.h; koppelen in Logic: docs/LOGIC.md"
+    "_bron": "tools/genereer-manifesten.mjs ← sediment/src/Params.h; paniek = CC 123 (PANIEK_CC); koppelen in Logic: docs/LOGIC.md"
   }
 }

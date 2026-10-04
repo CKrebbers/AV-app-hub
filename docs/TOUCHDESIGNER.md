@@ -1,7 +1,7 @@
 # TouchDesigner koppelen aan varve-hub (av-scene-kit)
 
 De TD-hub van av-scene-kit (`/project1/hub`, gebouwd door `td/td_build_hub.py`) luistert naar MIDI-**device 1**
-op kanaal 1: CC 20–27 voor de acht knoppen en noten 36–41 voor de pads. De echte APC40 kan dat niet voeden —
+op kanaal 1: CC 20–27 voor de acht knoppen en noten 36–41 voor de pads (42 = paniek, met de TD-patch). De echte APC40 kan dat niet voeden —
 CC 24–27 zijn op de APC ring-*uitgangen* en komen nooit binnen (ONDERZOEK.md §3 punt 7). Daarom opent de hub een
 **virtuele MIDI-poort "VARVE-HUB TD"** en speelt daarop precies wat TD verwacht. In TD verandert er niets
 behalve welk apparaat device 1 is.
@@ -50,6 +50,7 @@ alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt
 | noot 39 | `ch1n39` | `preset4` / scène 4 | preset 4 · stil | | pad |
 | noot 40 | `ch1n40` | `record` | opname aan/uit (toggle) | | pad |
 | noot 41 | `ch1n41` | `takelog` | take-log aan/uit (toggle) | | pad |
+| noot 42 | `ch1n42` | `paniek` | master dicht (alleen met de TD-patch, zie hieronder) | P1 (1 s) | Stop All |
 
 - **Pads** zijn triggers: indrukken = note-on 127, loslaten = note-off. TD reageert op de note-on
   (`onOffToOn` in de `pads`-DAT). Opname en take-log **togglen** in TD zelf; de hub weet dus niet of de opname
@@ -62,6 +63,20 @@ alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt
   kent die presetwaarden (`driver.presets` in `apps/av-scene-kit.json`, uit `PRESETS` in `td_build_hub.py`)
   en neemt ze bij elke preset-noot over. Ringen en cockpit tonen dus de presetstand, en de pickup van de hub
   wacht net als TD tot de fader de presetwaarde kruist.
+- **Paniek** (LPD8-P1 1 s vasthouden, of Stop All met Scene Kit in focus): de hub stuurt noot 42 en TD zet de
+  master (knob8, opacity van `dim`) op 0, los van waar de fader staat; de hub weet dat (`master_dim` → 0, net als
+  bij een preset). P1 loslaten verandert niets. **Terug:** een preset-pad, of elke nieuwe master-waarde die de hub
+  daarna stuurt: TD neemt de eerste CC 27 na de paniek meteen over, zonder kruising. Dat is een LPD8-tik op K2
+  (`macro.helderheid`, de eerste tik zet weer alle apps met die rol, PROTOCOL §14), een zet in de cockpit, een
+  snapshot (P5–P8), of de APC-fader van `master_dim`: die wacht in de hub eerst tot hij door 0 gaat (de hub-pickup
+  staat op 0), en volgt dan. Hub en TD tonen zo steeds dezelfde master. Zou de hub precies de waarde sturen die TD
+  vóór de paniek al had (bv. een snapshot terug), dan stuurt de driver eerst een stapje ernaast: een MIDI In CHOP
+  ziet alleen veranderingen.
+  Werkt pas als `midi.pads.paniek = 42` in `av-scene-kit/config.json` staat en de tak in `td_build_hub.py` zit: de
+  patch in `koppelingen/av-scene-kit/` (REGIE past hem toe). Daarna in de hub:
+  `node tools/genereer-manifesten.mjs --scene-kit ~/src/av-scene-kit --sediment <pad naar sediment>` (zonder
+  `--scene-kit` zoekt hij in `/home/user/av-scene-kit`). Zonder die sleutel stuurt de hub noot 42 niet. Terugdraaien:
+  `koppelingen/av-scene-kit/LEESMIJ.md`.
 - **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. De hub onthoudt ze daarom zelf, ook
   over een herstart van de hub heen: ze staan in `~/.varve-hub/staat.json` (samen met de snapshots). Herstart de
   hub terwijl TD blijft draaien, dan stuurt de hub zodra de driver zich aanmeldt de onthouden waarden naar TD;
