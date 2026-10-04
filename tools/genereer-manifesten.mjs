@@ -93,8 +93,10 @@ export function sceneKitManifest(kit, app, presets = []) {
     noot: pads[`preset${i + 1}`],
     waarden: Object.fromEntries(knopIds.map((id, k) => [id, p.knoppen[k]]).filter(([id, v]) => id !== null && Number.isFinite(v))),
   })).filter((p) => p.noot !== undefined);
-  // De paniek-noot zet in TD de master op 0: de driver meldt dat aan de kern (zoals een preset), zodat de
-  // hub-pickup van master_dim ook op 0 wacht.
+  // De paniek-noot zet in TD de master op 0: de driver meldt dat aan de kern (zoals een preset), zodat de hub
+  // weet dat de master dicht is. Alleen de APC-pickup van master_dim wacht dan op 0; de LPD8-knop K2 houdt (§14)
+  // zijn doel van vóór de paniek. TD neemt na een paniek de eerste nieuwe CC van de master meteen over (de patch
+  // in koppelingen/av-scene-kit), dus wat de hub daarna stuurt (K2, cockpit, snapshot, fader) volgt TD ook.
   if (paniekNoot !== undefined && masterId !== null) presetWaarden.push({ noot: paniekNoot, waarden: { [masterId]: 0 } });
   return {
     v: 1, app: 'av-scene-kit', naam: app.naam, ...(app.kleur ? { kleur: app.kleur } : {}), truth: 'hub', hb_s: 1, lease: false,
@@ -122,7 +124,8 @@ export const VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123, 124, 12
  * De ene bewuste uitzondering op VERBODEN_CC: CC 123 (All Notes Off) is een kanaalmodus-bericht, nooit een
  * parameter, maar wel precies wat een paniek moet doen. Alleen de trigger `paniek` krijgt hem
  * (docs/VOLGENDE-KOPPELINGEN.md §5.4, docs/LOGIC.md). De driver stuurt bij indrukken CC 123 = 127 en bij
- * loslaten CC 123 = 0; All Notes Off kijkt niet naar de waarde, dus beide zetten alle noten uit.
+ * loslaten CC 123 = 0; All Notes Off kijkt niet naar de waarde, dus beide laten alle noten los. Sediment
+ * (juce::Synthesiser) laat ze dan uitklinken met hun eigen Release (standaard 7 s, tot 30 s): geen harde stop.
  */
 export const PANIEK_CC = 123;
 
@@ -240,15 +243,27 @@ export function opmaak(m) {
   return regels.join('\n') + '\n';
 }
 
+/** Een bronbestand dat er niet is: een leesbare melding (welk repo, welke vlag), geen stacktrace. */
+export class BronOntbreekt extends Error {}
+
+/**
+ * Lees een bronbestand; ontbreekt het, dan een BronOntbreekt die zegt met welke vlag je het juiste pad geeft.
+ * @param {string} pad @param {string} repo @param {string} map @param {string} vlag
+ */
+function leesBron(pad, repo, map, vlag) {
+  if (!existsSync(pad)) throw new BronOntbreekt(`${repo} niet gevonden op ${map} (${pad} bestaat niet): geef ${vlag} <pad naar ${repo}>`);
+  return readFileSync(pad, 'utf8');
+}
+
 /**
  * Bouw beide manifesten uit de bronmappen.
  * @param {{ sceneKit?: string, sediment?: string, config?: any }} o
  */
 export function genereer({ sceneKit = '/home/user/av-scene-kit', sediment = '/home/user/sediment', config = laadConfig() } = {}) {
-  const kit = JSON.parse(readFileSync(join(sceneKit, 'config.json'), 'utf8'));
+  const kit = JSON.parse(leesBron(join(sceneKit, 'config.json'), 'av-scene-kit', sceneKit, '--scene-kit'));
   const hubPy = join(sceneKit, 'td', 'td_build_hub.py');
   const presets = existsSync(hubPy) ? leesPresets(readFileSync(hubPy, 'utf8')) : [];
-  const specs = leesParamsH(readFileSync(join(sediment, 'src', 'Params.h'), 'utf8'));
+  const specs = leesParamsH(leesBron(join(sediment, 'src', 'Params.h'), 'sediment', sediment, '--sediment'));
   if (!specs.length) throw new Error(`geen parameters gevonden in ${join(sediment, 'src', 'Params.h')}`);
   const app = (/** @type {string} */ id, /** @type {string} */ naam) => ({ naam, ...(config?.apps?.[id] ?? {}) });
   return {
@@ -262,7 +277,15 @@ function main(argv) {
   const arg = (/** @type {string} */ naam, /** @type {string} */ std) => { const i = argv.indexOf(naam); return i >= 0 && argv[i + 1] ? argv[i + 1] : std; };
   const uit = resolve(arg('--uit', join(HUB_MAP, 'apps')));
   const toets = argv.includes('--toets');
-  const bestanden = genereer({ sceneKit: arg('--scene-kit', '/home/user/av-scene-kit'), sediment: arg('--sediment', '/home/user/sediment') });
+  let bestanden;
+  try {
+    bestanden = genereer({ sceneKit: arg('--scene-kit', '/home/user/av-scene-kit'), sediment: arg('--sediment', '/home/user/sediment') });
+  } catch (e) {
+    if (!(e instanceof BronOntbreekt)) throw e;
+    console.error(e.message);
+    process.exitCode = 2;
+    return;
+  }
   let fout = false;
   for (const [naam, m] of Object.entries(bestanden)) {
     const r = valideerStatisch(m);
@@ -271,7 +294,7 @@ function main(argv) {
     const tekst = opmaak(m);
     if (toets) {
       const nu = existsSync(pad) ? readFileSync(pad, 'utf8') : '';
-      if (nu !== tekst) { console.error(`${naam}: verouderd — draai node tools/genereer-manifesten.mjs`); fout = true; } else console.log(`${naam}: actueel (${m.params.length} params)`);
+      if (nu !== tekst) { console.error(`${naam}: verouderd — draai node tools/genereer-manifesten.mjs (met --scene-kit en --sediment als de bronnen elders staan)`); fout = true; } else console.log(`${naam}: actueel (${m.params.length} params)`);
     } else { writeFileSync(pad, tekst); console.log(`${pad}: ${m.params.length} params`); }
   }
   process.exitCode = fout ? 1 : 0;

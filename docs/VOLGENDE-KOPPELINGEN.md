@@ -236,7 +236,7 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
 2. **Elke hub-beweging wordt een laag.** `Lagen.poll` (`taal.js:319-333`, elke seconde: `taal.js:316`) legt een verschil vast,
    bewaart er 400 en zet er 200 in localStorage. Een fader die je twee minuten beweegt, duwt Clay's eigen lagen
    (en "terug") eruit. Dat raakt invariant I5 (`uurwerk/docs/BLAUWDRUK.md:36`).
-3. **Geen paniek** (geen trigger `paniek` in het manifest).
+3. **Geen paniek** (geen trigger `paniek` in het manifest). *Gebouwd in golf 6 (PROTOCOL §14, "Paniek bij de driver-apps"), volgens §3.4.*
 
 ### 3.3 Beste koppelvorm
 **Driver houden** (nul code in uurwerk; de brug "vertaalt nooit", `uurwerk/docs/BLAUWDRUK.md:150`). Twee aanvullingen:
@@ -314,6 +314,15 @@ bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/driv
 `master_terug` of door in de tab het volume te draaien. De laag krijgt auteur `varve-hub`. Liep de engine nog niet,
 dan start paniek hem (stil, want master 0; `brug.js:51`).
 
+**De paniek blijft niet staan** (golf 6, uit de review): uurwerk zet de master terug op 0,8 bij elke patchtekst zonder
+regel `master` (`applyText`, `uurwerk/taal.js:287`). Zulke teksten komen van de terugdraai-stap van de tuinman
+(`uurwerk/mod.js:761`: 30 s na zijn ingreep past hij de tekst van vóór die ingreep opnieuw toe, ook met *bevries* aan,
+want die regel staat vóór de enabled/frozen-check), van een uur-start (`uur.js:89`), het laden van een moment
+(`mod.js:412`), `set.js:41`/`:47`, `nacht.js:75` en "terug" (`taal.js:339`). Een paniek binnen 30 s na een ingreep van de
+tuinman, terwijl er een wens staat, kan uurwerk dus vanzelf weer op 0,8 zetten. **Wens voor het uurwerk-repo** (niet
+in de hub): `pas_toe` met master 0 wist ook de lopende terugdraai-proef van de tuinman, of er komt een echt werkwoord
+`paniek` dat de master vasthoudt tot `master_terug`.
+
 ### 3.5 Regels van uurwerk
 Geen build, geen dependencies (`uurwerk/README.md:4`). I1 alles is tekst, I5 elke verandering is een laag, I6 nooit pijn
 (`uurwerk/docs/BLAUWDRUK.md:32-37`). De rollen in `uurwerk/docs/ROLLEN.md` ("één verandering per beurt") gelden voor agenten; de hub
@@ -351,7 +360,8 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
 - `node tools/genereer-manifesten.mjs --toets` → `av-scene-kit.json: actueel (14 params)`: CC 20–27 en noten 36–41
   kloppen met `av-scene-kit/config.json` (`midi.knob_cc`, `midi.pads`), de vier presets met `td_build_hub.py:167-172`.
 - **Bevindingen:**
-  1. **Geen paniek.** De TD-hub kent geen paniek-noot; `master_dim` (CC 27) gaat naar de opacity van `dim`
+  1. **Geen paniek.** *Gebouwd in golf 6 (PROTOCOL §14; TD-kant als patch in `koppelingen/av-scene-kit/`), volgens §4.4.*
+     De TD-hub kent geen paniek-noot; `master_dim` (CC 27) gaat naar de opacity van `dim`
      (`td_build_hub.py:517`, `:518`). Een CC 27 = 0 vanuit de hub is **geen betrouwbare paniek**: na een preset houdt TD
      elke knop vast tot de binnenkomende waarde de presetwaarde **kruist** (`:847`). Stond de hub-waarde al onder de
      preset (bv. 0,9 bij preset 1,0), dan kruist een sprong naar 0 niet en blijft het beeld aan.
@@ -376,6 +386,11 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
 - De hub weet het via `driver.presets`: noot 42 zet `master_dim` op 0 (`#meldPreset`, `src/drivers/midi.js:185`), dus
   ook de hub-pickup wacht tot de fader 0 kruist. `tools/genereer-manifesten.mjs` moet dan voor een pad `paniek` een
   preset-regel `{noot:42, waarden:{master_dim:0}}` maken (de kern herkent de trigger aan zijn id `paniek`).
+- *Gebouwd in golf 6, met één afwijking (uit de review):* "terug pas als de fader 0 kruist" liet hub en TD uit de pas
+  lopen. Een K2-tik (§14 houdt het doel van K2 vast), een zet in de cockpit of een snapshot stuurt dan een CC 27 die TD
+  negeert, terwijl de hub die waarde toont en onthoudt. Daarom neemt TD na een paniek de **eerste nieuwe CC 27 meteen
+  over** (en een preset), en stuurt de MIDI-driver een stapje ernaast als de hub precies de bytes van vóór de paniek
+  zou sturen. Alleen de APC-pickup van de hub wacht op 0. Zie `koppelingen/av-scene-kit/LEESMIJ.md` (open vraag 4).
 
 Aanvulling op `apps/av-scene-kit.json` (`+` = toevoegen aan wat er staat). Dat bestand is gegenereerd: de aanvulling
 hoort in `sceneKitManifest()` van `tools/genereer-manifesten.mjs`, niet met de hand.
@@ -419,7 +434,7 @@ Daarnaast een generatieve Scripter-set op vier Sediment-sporen (`sediment/script
 `apps/sediment.json` (MIDI-driver "VARVE-HUB Logic", CC 20–31 en 102–111, kanaal 1), `docs/LOGIC.md`.
 `node tools/genereer-manifesten.mjs --toets` → `sediment.json: actueel (22 params)`. Werkt alleen na de
 Controller Assignments in Logic (Klaar-als in `STATUS.md`, golf 1, nog open). **Sediment staat in geen enkele set**
-(`sets/*.json`; ONDERZOEK.md §11 noemde hem in `meditatie`). Geen paniek.
+(`sets/*.json`; ONDERZOEK.md §11 noemde hem in `meditatie`). Geen paniek. *Gebouwd in golf 6 (PROTOCOL §14), volgens §5.4: `apps/sediment.json` heeft nu 23 params.*
 
 ### 5.3 Beste koppelvorm
 **MIDI-driver houden.** Later (los van Logic): een vaste CC→parameter-tabel in `processBlock` (ONDERZOEK.md §7, F6);
@@ -430,16 +445,19 @@ dan zijn de Controller Assignments niet meer nodig. Nu niet: Sediment is nog noo
 `{"id":"paniek","naam":"Paniek: alle noten uit","soort":"trigger","hint":"pad"}` met `driver.map.paniek = {"cc": 123}`
 (All Notes Off). De MIDI-driver kan dat al en `valideerStatisch` accepteert het, **maar `apps/sediment.json` is
 gegenereerd** (`_bron`: `tools/genereer-manifesten.mjs` ← `Params.h`) en de generator verbiedt CC 123 bewust
-(`VERBODEN_CC`, `tools/genereer-manifesten.mjs:110`). Een paniek die je met de hand toevoegt, verdwijnt bij de volgende
+(`VERBODEN_CC`, `tools/genereer-manifesten.mjs:122`). Een paniek die je met de hand toevoegt, verdwijnt bij de volgende
 generatie en laat drie dingen falen: `node tools/genereer-manifesten.mjs --toets`, de test "actueel t.o.v. de bronnen"
-(`test/drivers.test.js:715-719`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:358-363`: precies
+(`test/drivers.test.js:753-758`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:389-397`: precies
 22 CC's, geen in `VERBODEN_CC`). Dus:
 - `sedimentManifest()` maakt de paniek-trigger zelf, buiten `SEDIMENT_CC`, als uitzondering naast `VERBODEN_CC` met
   de reden erbij: CC 123 is een kanaalmodus-bericht, hier alleen als bedoelde paniek, nooit als parameter.
-- De test bij `test/drivers.test.js:358-363` telt dan alleen de **waarde**-parameters (22, geen verboden CC) en
+- De test bij `test/drivers.test.js:389-397` telt dan alleen de **waarde**-parameters (22, geen verboden CC) en
   controleert apart dat de enige trigger `paniek` op CC 123 staat; de "actueel"-test gaat vanzelf mee.
 
-Gedrag: JUCE's `Synthesiser` verwerkt All Notes Off; de staarten van echo en galm lopen uit. De Scripter-set speelt
+Gedrag: JUCE's `Synthesiser` verwerkt All Notes Off als `allNotesOff(kanaal, allowTailOff = true)`: de noten worden
+**losgelaten** en vallen weg met Sediments eigen Release (`SedimentVoice::stopNote` → `Stage::Release`,
+`sediment/src/dsp/Voice.cpp:108-110`; standaard 7 s, tot 30 s, `Params.h:51`), plus de staarten van echo en galm. Geen
+harde stop: in de praktijk "alle toetsen los". De Scripter-set speelt
 daarna gewoon verder: echte stilte vraagt `output` → 0 (= −30 dB, niet stil). Bij het **loslaten** stuurt de driver
 nog een CC 123 met waarde 0 (`#uit` in `src/drivers/midi.js:138-144`; All Notes Off kijkt niet naar de waarde, dus
 nogmaals noten uit). En Logic routeert binnenkomende CC's alleen naar het **geselecteerde** spoor (of naar wat de
@@ -459,7 +477,7 @@ houdt een geladen plug-in vast; bouwen alleen met Logic dicht.
 
 ### 5.6 Werk en risico's
 Paniek **S-M**: geen manifest-regel maar een generator-wijziging (`sedimentManifest()` + uitzondering op
-`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:358-363`, `:715-719`); idem voor av-scene-kit
+`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:389-397`, `:753-758`); idem voor av-scene-kit
 (`sceneKitManifest()`, §4.4). Logic-setup ±15 min (Clay). Risico's: Logic luistert standaard naar alle ingangen (staat in
 `docs/LOGIC.md`, stap 2); de doorvoer naar TD via TO_TD (§4.2 punt 3) staat er nog **niet** in.
 
@@ -771,7 +789,7 @@ eerst de omgeving te repareren; de muzikale waarde van "macro's → prompt" is o
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|
 | 1 | **varve-radio: lek dichten** (§2.3) | live voor iedereen, los van de hub, kleinste herstel, geen DDL | Claude bouwt + suite, Clay deployt en meet | varve-radio |
-| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:358-363`/`:715-719`; TD-tak in av-scene-kit | hub + av-scene-kit |
+| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:389-397`/`:753-758`; TD-tak in av-scene-kit | hub + av-scene-kit |
 | 3 | **uurwerk teruglezen** (§3.3), met tolerantie; lagen samenvoegen alleen als Clay het wil | de hub en de tab lopen nu uit elkaar; de lagenvloed raakt Clay's eigen geschiedenis (en vraagt uurwerk-code) | hub; uurwerk voor de lagen | `src/drivers/http.js`; `uurwerk/taal.js` |
 | 4 | **td-lab driver** (§6.3) + `PROTOCOL.md` §2 en `config.json` → `apps.td-lab` bijwerken | nul code in td-lab, een heel nieuw instrument erbij; wel eerst de 9981-vraag | hub | `src/drivers/td.js`, `PROTOCOL.md`, `config.json` |
 | 5 | **Varve Eye als app** op de Mac (§7.3 fase A) | stdlib-client bestaat al (flux); geen netwerkvragen | Claude in anbernic-cam, Clay proeft | anbernic-cam |

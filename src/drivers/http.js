@@ -83,11 +83,21 @@ export class HttpDriver extends DriverBasis {
     this.verstuurd = [];
   }
 
-  /** @param {{ verb: string, args: Record<string, unknown>, auteur: string }} bericht */
-  #post(bericht) {
+  /**
+   * @param {{ verb: string, args: Record<string, unknown>, auteur: string }} bericht
+   * @param {{ moment?: boolean }} [o]  moment: een trigger (werkwoord bij indrukken)
+   */
+  #post(bericht, { moment = false } = {}) {
     if (this.gestopt) return;
-    // Onbereikbaar: niet sturen (geen stapel open verzoeken); bij herstel speelt de kern alles opnieuw af.
-    if (this.bereikbaar === false) { this.gemist = true; return; }
+    // Onbereikbaar: een waarde niet sturen (geen stapel open verzoeken); bij herstel speelt de kern alle waarden
+    // opnieuw af. Een trigger speelt de kern niet opnieuw af: die gaat toch (één POST met time-out; triggers
+    // komen op mensentempo). De check kan net over CHECK_TIMEOUT_MS gelopen zijn terwijl de tab gewoon speelt,
+    // en een paniek die stil wegvalt is erger dan een POST die mislukt (die wordt gelogd).
+    if (this.bereikbaar === false) {
+      this.gemist = true;
+      if (!moment) return;
+      this.log('driver', this.manifest.app, `brug leek onbereikbaar; trigger ${bericht.verb} toch verstuurd`);
+    }
     bewaarBegrensd(this.verstuurd, bericht);
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
     let verlopen = false;
@@ -146,7 +156,7 @@ export class HttpDriver extends DriverBasis {
     const spec = this.driver.verbs?.[id];
     const p = this.params.get(id);
     if (!spec || !p || !aan) return; // werkwoorden zijn momenten: alleen bij indrukken
-    this.#post(verbBericht(spec, p.soort, true));
+    this.#post(verbBericht(spec, p.soort, true), { moment: true });
   }
 
   /** @param {NaarApp} b */

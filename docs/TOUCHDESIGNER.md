@@ -64,12 +64,19 @@ alleen als de CC-waarde verandert; een snapshot of een herhaling (replay) stuurt
   en neemt ze bij elke preset-noot over. Ringen en cockpit tonen dus de presetstand, en de pickup van de hub
   wacht net als TD tot de fader de presetwaarde kruist.
 - **Paniek** (LPD8-P1 1 s vasthouden, of Stop All met Scene Kit in focus): de hub stuurt noot 42 en TD zet de
-  master (knob8, opacity van `dim`) op 0 en houdt hem daar, los van waar de fader staat; de hub weet dat
-  (`master_dim` → 0, net als bij een preset). **Terug:** een preset-pad, of de master-fader naar 0 en weer op; een
-  LPD8-tik op K2 alleen helpt dus niet (TD wacht op 0). Werkt pas als `midi.pads.paniek = 42` in
-  `av-scene-kit/config.json` staat en de tak in `td_build_hub.py` zit: de patch in `koppelingen/av-scene-kit/`
-  (REGIE past hem toe), daarna `node tools/genereer-manifesten.mjs` in de hub. Zonder die sleutel stuurt de hub
-  noot 42 niet.
+  master (knob8, opacity van `dim`) op 0, los van waar de fader staat; de hub weet dat (`master_dim` → 0, net als
+  bij een preset). P1 loslaten verandert niets. **Terug:** een preset-pad, of elke nieuwe master-waarde die de hub
+  daarna stuurt: TD neemt de eerste CC 27 na de paniek meteen over, zonder kruising. Dat is een LPD8-tik op K2
+  (`macro.helderheid`, de eerste tik zet weer alle apps met die rol, PROTOCOL §14), een zet in de cockpit, een
+  snapshot (P5–P8), of de APC-fader van `master_dim`: die wacht in de hub eerst tot hij door 0 gaat (de hub-pickup
+  staat op 0), en volgt dan. Hub en TD tonen zo steeds dezelfde master. Zou de hub precies de waarde sturen die TD
+  vóór de paniek al had (bv. een snapshot terug), dan stuurt de driver eerst een stapje ernaast: een MIDI In CHOP
+  ziet alleen veranderingen.
+  Werkt pas als `midi.pads.paniek = 42` in `av-scene-kit/config.json` staat en de tak in `td_build_hub.py` zit: de
+  patch in `koppelingen/av-scene-kit/` (REGIE past hem toe). Daarna in de hub:
+  `node tools/genereer-manifesten.mjs --scene-kit ~/src/av-scene-kit --sediment <pad naar sediment>` (zonder
+  `--scene-kit` zoekt hij in `/home/user/av-scene-kit`). Zonder die sleutel stuurt de hub noot 42 niet. Terugdraaien:
+  `koppelingen/av-scene-kit/LEESMIJ.md`.
 - **Hub onthoudt** (`truth:"hub"`): TD kan zijn waarden niet terugmelden. De hub onthoudt ze daarom zelf, ook
   over een herstart van de hub heen: ze staan in `~/.varve-hub/staat.json` (samen met de snapshots). Herstart de
   hub terwijl TD blijft draaien, dan stuurt de hub zodra de driver zich aanmeldt de onthouden waarden naar TD;

@@ -104,17 +104,17 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   });
 
   it('het uurwerk-voorstel is precies het huidige apps/uurwerk.json plus master_terug en paniek', () => {
-    // Sinds golf 6 staan master_terug en paniek in apps/uurwerk.json zelf: vergelijk met het bestand zonder die twee.
-    const metPaniek = JSON.parse(readFileSync(hubPad('apps/uurwerk.json'), 'utf8'));
-    const nu = { ...metPaniek, params: metPaniek.params.filter((/** @type {any} */ p) => !['master_terug', 'paniek'].includes(p.id)) };
+    // Sinds golf 6 staan master_terug en paniek in apps/uurwerk.json zelf: het voorstel moet nu precies het bestand
+    // zijn, ook in naam, groep en volgorde van die twee (een afwijking valt dan op).
+    const nu = JSON.parse(readFileSync(hubPad('apps/uurwerk.json'), 'utf8'));
     const voorstel = jsonBlokken().map((b) => JSON.parse(b.bron)).find((x) => x.app === 'uurwerk');
     expect(voorstel).toBeDefined();
     // geen ongemerkte wijzigingen (slew_s, max_hz): lagen in uurwerk ontstaan per seconde, dat los je niet in de hub op
-    expect(voorstel.params.slice(0, nu.params.length)).toEqual(nu.params);
-    expect(voorstel.params.slice(nu.params.length).map((/** @type {any} */ p) => p.id)).toEqual(['master_terug', 'paniek']);
+    expect(voorstel.params).toEqual(nu.params);
+    expect(voorstel.params.slice(-2).map((/** @type {any} */ p) => p.id)).toEqual(['master_terug', 'paniek']);
     const { verbs: _v, _bron: _b, ...rest } = voorstel.driver, { verbs: _n, _bron: _bn, ...restNu } = nu.driver;
     expect(rest).toEqual(restNu);
-    for (const [id, v] of Object.entries(nu.driver.verbs)) expect(voorstel.driver.verbs[id], id).toEqual(v);
+    expect(voorstel.driver.verbs).toEqual(nu.driver.verbs);
     expect(voorstel.params.find((/** @type {any} */ p) => p.id === 'paniek')?.soort).toBe('trigger');
   });
 
@@ -171,9 +171,9 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/index.js', regel: 26, bevat: 'DRIVER_SOORTEN' },
     { pad: 'src/doctor.js', regel: 91, bevat: "'osc'" },
     { pad: 'src/transports/server.js', regel: 86, bevat: 'originToegestaan' },
-    { pad: 'tools/genereer-manifesten.mjs', regel: 110, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
-    { pad: 'test/drivers.test.js', regel: 358, bevat: 'alle 22 parameters op eigen CC' },
-    { pad: 'test/drivers.test.js', regel: 715, bevat: 'actueel t.o.v. de bronnen' },
+    { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
+    { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
+    { pad: 'test/drivers.test.js', regel: 753, bevat: 'actueel t.o.v. de bronnen' },
     { pad: 'PROTOCOL.md', regel: 19, bevat: 'hub luistert op 7701' },
     { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
     { pad: 'config.json', regel: 98, bevat: '"koppeling": "osc"' },
@@ -323,6 +323,14 @@ const claims = [
   { repo: 'uurwerk', bestand: 'taal.js', regel: 287, bevat: 'patch.macros.master' },
   { repo: 'uurwerk', bestand: 'taal.js', regel: 316, bevat: 'setInterval(() => this.poll(), 1000)' },
   { repo: 'uurwerk', bestand: 'taal.js', regel: 214, bevat: "toFixed(2)" },
+  // golf 6: de uurwerk-paniek blijft niet staan (§3.4): wat de master terugzet op 0,8
+  { repo: 'uurwerk', bestand: 'mod.js', regel: 761, bevat: "R().Taal.applyText(p.tekst, 'tuinman')" },
+  { repo: 'uurwerk', bestand: 'mod.js', regel: 412, bevat: 'R().Taal.applyText(m.tekst' },
+  { repo: 'uurwerk', bestand: 'uur.js', regel: 89, bevat: "Rk.Taal.applyText(opts.tekst || u.tekst, 'uur')" },
+  { repo: 'uurwerk', bestand: 'nacht.js', regel: 75, bevat: 'Rk.Taal.applyText(tekstVoor' },
+  { repo: 'uurwerk', bestand: 'taal.js', regel: 339, bevat: "applyText(l.voor, 'terug')" },
+  // golf 6: All Notes Off laat Sediments noten los met hun eigen Release (§5.4)
+  { repo: 'sediment', bestand: 'src/dsp/Voice.cpp', regel: 108, bevat: 'if (allowTailOff)' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 321, bevat: 'Hoogste waarde wint' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 837, bevat: 'if name not in seen' },
   { repo: 'av-scene-kit', bestand: 'td/td_build_hub.py', regel: 517, bevat: "'dim'" },

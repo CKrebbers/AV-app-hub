@@ -310,10 +310,36 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     kern.stuur(v, { t: 'scene', i: 3 });
     klok.loop(0);
     expect(kern.ontvangen.filter(([, b]) => b.t === 'zet').slice(-8).map(([, b]) => b.v)).toEqual(Object.values(s.driver.presets[3].waarden));
-    // TD staat nu op de presetwaarde: dezelfde waarde van de APC hoeft niet nog eens
+    // TD zette de presetwaarde zelf: de dubbelfilter vergeet die param (golf 6, na een TD-paniek moet een fader
+    // die precies op de presetwaarde 0 landt TD die 0 ook laten zien). De eerste waarde van de APC gaat dus over
+    // de draad, ook als hij gelijk is aan de preset (TD pakt hem dan op: gelijk aan de basis); een tweede niet.
     const voor = poort.verstuurd.length;
-    kern.stuur(v, { t: 'zet', id: 'glitch', v: s.driver.presets[3].waarden.glitch, bron: 'apc40' });
-    expect(poort.verstuurd).toHaveLength(voor);
+    const glitch = s.driver.presets[3].waarden.glitch;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: glitch, bron: 'apc40' });
+    expect(poort.verstuurd.slice(voor)).toEqual([[0xb0, s.driver.map.glitch.cc, Math.round(glitch * 127)]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: glitch, bron: 'apc40' });
+    expect(poort.verstuurd).toHaveLength(voor + 1);
+  });
+
+  it('na een preset: dezelfde waarde als vóór de preset krijgt eerst een stapje ernaast (een CHOP ziet alleen veranderingen)', () => {
+    // TD's MIDI In CHOP staat nog op de laatste CC van de hub; de preset zette de knop in TD zelf. Stuurt de hub daarna
+    // precies die bytes opnieuw (snapshot, cockpit), dan ziet TD geen verandering en mist hij de waarde (golf 6).
+    const { klok, kern, poort, v } = opzet();
+    const cc = leesApp('av-scene-kit.json').driver.map.glitch.cc;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'cockpit' });
+    kern.stuur(v, { t: 'trig', id: 'preset2', aan: true });
+    klok.loop(0);
+    const voor = poort.verstuurd.length;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'snapshot' });
+    expect(poort.verstuurd.slice(voor)).toEqual([[0xb0, cc, 63], [0xb0, cc, 64]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 64 / 127, bron: 'snapshot' }); // snapshot gaat altijd, maar zonder stapje
+    expect(poort.verstuurd.slice(voor + 2)).toEqual([[0xb0, cc, 64]]);
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 0, bron: 'cockpit' });
+    kern.stuur(v, { t: 'trig', id: 'preset1', aan: true });
+    klok.loop(0);
+    const n = poort.verstuurd.length;
+    kern.stuur(v, { t: 'zet', id: 'glitch', v: 0, bron: 'cockpit' }); // bij 0 is het stapje 1
+    expect(poort.verstuurd.slice(n)).toEqual([[0xb0, cc, 1], [0xb0, cc, 0]]);
   });
 
   it('start() twee keer: één timerketen, stop() ruimt alles op en de poort blijft dicht', () => {
@@ -589,16 +615,18 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(kern.soorten().filter((t) => t === 'hallo')).toHaveLength(1); // de brug had hem wel: geen replay
   });
 
-  it('onbereikbaar: geen POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af', async () => {
+  it('onbereikbaar: geen waarde-POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af; een trigger gaat toch', async () => {
+    // Een trigger speelt de kern bij herstel niet opnieuw af: zonder deze uitzondering viel een paniek (of een
+    // ander werkwoord) stil weg als de laatste check net over CHECK_TIMEOUT_MS liep (golf 6).
     const { klok, kern, fetch, v } = opzet({ gezond: false });
     await rust();
     kern.stuur(v, { t: 'zet', id: 'samenhang', v: 0.4 });
     kern.stuur(v, { t: 'trig', id: 'bewaar', aan: true });
     await rust();
-    expect(fetch.verbs()).toEqual([]);
+    expect(fetch.verbs().map((b) => b.verb)).toEqual(['bewaar']);
     fetch.gezond = true;
     klok.loop(2000); await rust();
-    expect(fetch.verbs().map((b) => b.args.waarde)).toEqual([0.4]);
+    expect(fetch.verbs().slice(1).map((b) => b.args.waarde)).toEqual([0.4]);
   });
 
   it('NaN: geen verb (en verbBericht klemt NaN naar de ondergrens)', async () => {

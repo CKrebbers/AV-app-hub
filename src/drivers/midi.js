@@ -60,6 +60,10 @@ export class MidiDriver extends DriverBasis {
     this.poort = null;
     /** @type {Map<string, string>} laatst écht verstuurde bytes per waarde-param (dubbele niet opnieuw) */
     this.laatste = new Map();
+    /** @type {Map<string, string>} laatst écht verstuurde bytes per CC-adres: daar staat dat kanaal nu in de app */
+    this.opDraad = new Map();
+    /** @type {Set<string>} waarde-params die de app zelf zette (preset-noot) sinds de hub ze voor het laatst stuurde */
+    this.zelfGezet = new Set();
     /** @type {Map<string, string>} triggers die nu ingedrukt zijn → hun MIDI-adres */
     this.ingedrukt = new Map();
     /** @type {Map<string, number[]>} MIDI-adressen die nu 'aan' staan → hun note-off */
@@ -101,6 +105,8 @@ export class MidiDriver extends DriverBasis {
   /** Een nieuwe hallo = voor de kern een herstart: daarna moet alles opnieuw over de draad. */
   aanmelden() {
     this.laatste.clear();
+    this.opDraad.clear();
+    this.zelfGezet.clear();
     super.aanmelden();
   }
 
@@ -117,7 +123,19 @@ export class MidiDriver extends DriverBasis {
     if (!b) return;
     const sleutel = b.join(',');
     if (!ALTIJD_STUREN.has(/** @type {string} */ (bron)) && this.laatste.get(id) === sleutel) return;
-    if (this.#stuur(b)) this.laatste.set(id, sleutel);
+    // De app zette deze param zelf (preset, TD-paniek) en het CC-kanaal staat in de app nog op precies deze bytes
+    // (de laatste die de hub stuurde): een MIDI In CHOP ziet dan geen verandering en TD zou de waarde missen.
+    // Eerst een stapje ernaast, dan de waarde zelf: zo ziet de app hem altijd (golf 6, snapshot na een TD-paniek).
+    const kanaalAdres = typeof doel.cc === 'number' ? adres(doel, this.kanaal) : null;
+    if (kanaalAdres && this.zelfGezet.has(id) && this.opDraad.get(kanaalAdres) === sleutel) {
+      const stapje = [b[0], b[1], b[2] > 0 ? b[2] - 1 : 1];
+      if (this.#stuur(stapje)) this.opDraad.set(kanaalAdres, stapje.join(','));
+    }
+    if (this.#stuur(b)) {
+      this.laatste.set(id, sleutel);
+      this.zelfGezet.delete(id);
+      if (kanaalAdres) this.opDraad.set(kanaalAdres, sleutel);
+    }
   }
 
   /** Zet een MIDI-adres aan. Staat het al aan, eerst uit: de app moet een echte overgang uit → aan zien. @param {MidiDoel} doel @returns {string|null} */
@@ -180,6 +198,9 @@ export class MidiDriver extends DriverBasis {
    * De app zet bij deze noot zelf waarden (TD: een preset zet alle acht knoppen). Meld dat aan de kern
    * als 'zet' (de app veranderde zelf), zodat waarden, ringen en pickup de app volgen. Uitgesteld via
    * de klok: we zitten nu midden in een bericht van de kern.
+   * De dubbelfilter vergeet die params: de app zette ze zelf, dus de eerstvolgende echte waarde uit de hub
+   * gaat altijd over de draad, ook als die toevallig gelijk is aan de presetwaarde (na een TD-paniek: de
+   * APC-fader die in één sprong op 0 komt, moet TD die 0 ook laten zien). Zie ook het stapje in #zet.
    * @param {MidiDoel} doel
    */
   #meldPreset(doel) {
@@ -192,8 +213,8 @@ export class MidiDriver extends DriverBasis {
       for (const [id, v] of Object.entries(preset.waarden)) {
         const p = this.params.get(id), d = this.driver.map?.[id];
         if (!p || !d || !Number.isFinite(v)) continue;
-        const b = midiBytes(d, p.soort, v, this.kanaal);
-        if (b) this.laatste.set(id, b.join(','));
+        this.laatste.delete(id);
+        this.zelfGezet.add(id);
         this.kern.ontvang(this.verbinding, { t: 'zet', id, v: klem01(v) });
       }
     }, 0);
@@ -240,5 +261,7 @@ export class MidiDriver extends DriverBasis {
     try { this.poort?.sluit(); } catch { /* al dicht */ }
     this.poort = null;
     this.laatste.clear();
+    this.opDraad.clear();
+    this.zelfGezet.clear();
   }
 }
