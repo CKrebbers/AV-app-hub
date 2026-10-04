@@ -32,6 +32,8 @@ const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
 export function leesOfMaakToken({ home = os.homedir(), maak = nieuwToken, opnieuw = false } = {}) {
   const pad = tokenPad(home);
   mkdirSync(dirname(pad), { recursive: true, mode: 0o700 });
+  // mode werkt alleen bij een nieuwe map; bestond ~/.varve-hub al (bv. van het geheugen), dan alsnog dichtzetten.
+  if (process.platform !== 'win32') { try { chmodSync(dirname(pad), 0o700); } catch { /* niet van ons: laten */ } }
   if (opnieuw || !existsSync(pad)) {
     const token = maak();
     if (!GELDIG.test(token)) throw new Error('nieuw token is ongeldig');

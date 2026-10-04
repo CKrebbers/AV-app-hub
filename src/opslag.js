@@ -90,10 +90,10 @@ function ruimTmpOp(pad, fs) {
  * @param {string} pad @param {unknown} data @param {Bestanden} [fs]
  */
 export function schrijfGeheugen(pad, data, fs = nodeFs) {
-  fs.mkdirSync(dirname(pad), { recursive: true });
+  fs.mkdirSync(dirname(pad), { recursive: true, mode: 0o700 });
   const tmp = `${pad}.${process.pid}.tmp`;
   try {
-    const fd = fs.openSync(tmp, 'w');
+    const fd = fs.openSync(tmp, 'w', 0o600);   // snapshots en waarden: alleen voor jou
     try {
       fs.writeFileSync(fd, JSON.stringify(data, null, 1) + '\n');
       fs.fsyncSync(fd);

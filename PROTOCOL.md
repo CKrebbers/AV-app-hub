@@ -221,8 +221,11 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - **Token met `--lan`.** Luistert de hub op het netwerk, dan moet elke verbinding van buiten de eigen machine (niet `127.0.0.1`/`::1`) het token tonen. Lokaal blijft alles zonder token werken.
   - `/app`: `?token=…` in de URL, of `token` in `hallo` (`{t:"hallo", app, inst, v:1, token}`). Het token gaat nooit naar de kern of een logboek.
   - `/cockpit` en HTTP: `?token=…` in de URL of het cookie `varve_hub_token` (dat de hub zet na een `?token=`). Zonder geldig token: HTTP **401**, ook bij de upgrade van `/cockpit`.
-- **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 10 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs).
+- **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 3 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs). Hooguit 16 tegelijk wachtend (4 per adres); daarboven gaat een nieuwe meteen dicht. `/app` accepteert ook het cookie (voor pagina's van de hub zelf, zoals `/oefen`).
 - **Een app die 4003 krijgt** herverbindt met de gewone backoff (0,5 → 5 s); opnieuw proberen helpt pas als het token klopt, dus een app mag ook bewust langzamer gaan of de gebruiker melden dat het token ontbreekt.
+- **Grenzen (golf 5, beveiligingsreview):** hooguit 128 verbindingen tegelijk (daarboven HTTP 503 bij de upgrade); snapshotnummers vanuit de cockpit 1..99; `inst` in `hallo` hooguit 64 tekens.
+- **Origin voor `/cockpit` (golf 5):** alleen same-origin (de pagina's van de hub zelf) of wat in `server.origins` staat; niet meer elke `localhost`-poort. `/app` mag lokaal vanaf `http(s)://localhost` en `127.0.0.1` op elke poort (browser-apps op hun eigen dev-server).
+- **Elk HTTP-antwoord** heeft `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` en `Referrer-Policy: no-referrer`. Meerdere `varve_hub_token`-cookies: één geldig is genoeg.
 - **Zonder token luistert de hub nooit buiten loopback:** een `host` die niet `127.0.0.1`/`localhost`/`::1` is zonder token wordt geweigerd vóór het luisteren (`start` stopt met exit 4).
 
 ## 14. Beslissingen (golf 5)
