@@ -118,7 +118,8 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
   for (const e of ['verbonden', 'weg']) { apparaten.apc.bij(e, meldApc); apparaten.lpd8.bij(e, meldLpd8); }
   apparaten.lpd8.bij('model', meldLpd8);
   apparaten.lpd8.bij('weg', () => kern.apparaatWeg('lpd8'));
-  // Mislukt sturen of openen: één regel per storing (de sessie meldt niet per bericht); de hotplug opent opnieuw.
+  // Mislukt sturen of openen: één regel per storing (de sessie meldt niet per bericht of per poging); het opnieuw
+  // openen en initialiseren doet de aansluiting zelf (src/core/aansluiting.js, PROTOCOL §16).
   for (const [sessie, label] of /** @type {const} */ ([[apparaten.apc, 'APC'], [apparaten.lpd8, 'LPD8']])) {
     sessie.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => {
       log(soort === 'sturen' ? `${label}: sturen mislukt — kabel los? de hub probeert opnieuw`

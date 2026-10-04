@@ -21,9 +21,10 @@ class Sessie extends Zender {
     this.logboek = o.logboek ?? null;
     /** @type {Poort|null} */
     this.poort = null;
-    /** Er is een storing gemeld (sturen of openen mislukte) en sindsdien is er nog niets gelukt: één melding per
-     *  storing, niet per bericht of per poging. Weer goed zodra er iets verstuurd is. */
-    this.stuurFout = false;
+    /** Welke storingen al gemeld zijn (één melding per storing, niet per bericht of per poging). 'sturen' is voorbij
+     *  zodra er weer iets verstuurd is, 'openen' zodra de poort weer open is: los van elkaar, zodat de ene de
+     *  melding van de andere niet onderdrukt. */
+    this.gemeld = { sturen: false, openen: false };
     this.rij = new Wachtrij({
       klok: o.klok, perBurst: o.led?.per_burst ?? 16, burstMs: o.led?.burst_ms ?? 4,
       stuur: (b) => {
@@ -33,10 +34,13 @@ class Sessie extends Zender {
         // Het apparaat is (even) losgetrokken of de poort is stuk: de poort gooit. Dat mag de hub niet laten vallen
         // (dit draait in een timer: een uitzondering hier stopte het hele proces). De poort meteen opnieuw openen en
         // het apparaat opnieuw initialiseren (golf 8): ook als de kabel al terug is vóór de hotplug-ronde het zag.
-        try { p.stuur(b); this.stuurFout = false; } catch (e) {
+        try { p.stuur(b); } catch (e) {
           this.aansluiting.herstel(p);
           this.#storing(/** @type {Error} */ (e), 'sturen');
+          return;
         }
+        this.gemeld.sturen = false;
+        this.aansluiting.gelukt();
       },
     });
     this.aansluiting = new Aansluiting({
@@ -44,12 +48,15 @@ class Sessie extends Zender {
       bijVerbonden: (p) => this.#verbonden(p),
       bijWeg: (naam) => { this.poort = null; this.rij.wis(); this.logboek?.regel('melding', { dev: this.dev, wat: 'weg', naam }); this.meld('weg', naam); },
       bijFout: (e) => this.#storing(e, 'openen'),
+      // Sturen bleef mislukken na een keer opnieuw openen: de poort blijft open (de ingang werkt misschien nog), het
+      // apparaat wordt alleen opnieuw geïnitialiseerd.
+      bijOpnieuw: (p) => { if (this.poort === p) this.bijAansluiten(); },
     });
   }
   /** Meldt 'fout' (e, soort: 'sturen' | 'openen'), één keer per storing. @param {Error} e @param {'sturen'|'openen'} soort */
   #storing(e, soort) {
-    if (this.stuurFout) return;
-    this.stuurFout = true;
+    if (this.gemeld[soort]) return;
+    this.gemeld[soort] = true;
     this.logboek?.regel('melding', { dev: this.dev, wat: 'fout', soort, fout: e.message });
     this.meld('fout', e, soort);
   }
@@ -62,6 +69,7 @@ class Sessie extends Zender {
   /** @param {Poort} p */
   #verbonden(p) {
     this.poort = p;
+    this.gemeld.openen = false;
     this.logboek?.regel('melding', { dev: this.dev, wat: 'verbonden', naam: p.naam });
     p.bijBericht((b) => {
       this.logboek?.midi('in', this.dev, b);

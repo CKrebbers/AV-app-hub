@@ -56,8 +56,10 @@ export async function laadRtMidi() {
  * `sendMessage` gooit op macOS niet: MIDISend faalt hooguit, en dat is een RtMidiError::WARNING, die alleen op stderr
  * komt (de binding zet geen error-callback); ALSA idem. De lijst werkt wel bij (getPortCount pompt de run-loop), en
  * daar verdwijnt het apparaat (te bevestigen op de hardware-avond); een poortindex geldt alleen op het moment van
- * openen (open() zoekt hem op naam). Er is dus geen `levend()`: met RtMidi ziet alleen de hotplug-ronde dat het
- * apparaat weg is geweest (zie aansluiting.js); een kabel die korter los is dan `hotplug_ms` blijft daar onzichtbaar.
+ * openen (open() zoekt hem op naam). Er is dus geen `levend()`: met RtMidi ziet alleen de poortlijst dat het
+ * apparaat weg is geweest. Daarom kijkt aansluiting.js elke LIJST_MS (250 ms) in de lijst, los van het openen (elke
+ * `hotplug_ms`); een kabel die korter los is dan dat, blijft onzichtbaar (de APC blijft dan donker in modus 0x40).
+ * Of het apparaat bij kort uittrekken echt uit de lijst verdwijnt, en hoe lang, meten we op de hardware-avond.
  * @param {string} naam @param {any} inn @param {any} uit @returns {Poort}
  */
 function maakPoort(naam, inn, uit) {
