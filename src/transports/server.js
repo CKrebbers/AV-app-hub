@@ -608,24 +608,42 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   ];
   // Triggers die cockpits ingedrukt houden (`zet` met v > 0 op een parameter met soort "trigger", §10): per
   // [app, id] (als JSON) de cockpit-sockets die hem vasthouden. Valt een cockpit weg (sluiten, fout, geen pong),
-  // dan laat de hub zijn triggers los met `zet v:0`, zoals zijn virtuele toetsen; houdt een andere cockpit dezelfde
-  // trigger nog vast, dan niet (die speler houdt hem bewust vast; laat hij los of valt hij ook weg, dan gaat hij uit).
-  /** @type {Map<string, Set<WebSocket>>} */
+  // dan laat de hub zijn triggers los met `zet v:0`, zoals zijn virtuele toetsen. Niet als iemand hem nog vasthoudt:
+  // een andere cockpit (die laat hem los, of de hub als ook die wegvalt), of de hardware (Stop All, LPD8 P1 of een
+  // APC-pad: de kern laat hem los bij het loslaten daarvan). Een nette `v:0` van welke cockpit ook zet hem in de
+  // app uit (kern.cockpit telt geen bronnen, open punt 2); dan houdt niemand hem nog vast en volgt bij wegvallen niets.
+  /** @type {Map<string, { app: string, id: string, houders: Set<WebSocket> }>} */
   const triggerHouders = new Map();
+  /** De kern van src/core/kern.js, met de staat die hier gelezen wordt (een andere kern mist die: dan via beeld()). */
+  const k = /** @type {{ apps?: Map<string, any>, paniekActief?: unknown, appPaniekTot?: Map<string, number> }} */ (/** @type {unknown} */ (kern));
   /**
-   * Welke van deze (app, id) zijn volgens het manifest dat de kern nu kent een trigger (kern.beeld(), §8)?
-   * Een app die de kern niet (meer) kent, of een id die (na een nieuw manifest) geen trigger meer is, telt niet.
-   * @param {[string, string][]} lijst @returns {boolean[]}
+   * Is (app, id) volgens het manifest dat de kern nu kent een trigger? Een app die de kern niet (meer) kent, of een
+   * id die (na een nieuw manifest) geen trigger meer is, telt niet. Bij elke cockpit-zet (ook elke fader): goedkoop
+   * via kern.apps, niet via een kopie van het hele beeld.
+   * @param {string} app @param {string} id
    */
-  const zijnTriggers = (lijst) => {
-    /** @type {any} */
-    let b;
-    try { b = kern.beeld(); } catch (e) { console.error('[server] kern.beeld() faalde:', e); return lijst.map(() => false); }
-    const apps = Array.isArray(b?.apps) ? b.apps : [];
-    return lijst.map(([app, id]) => {
-      const a = apps.find((/** @type {any} */ x) => x?.app === app);
-      return Array.isArray(a?.params) && a.params.some((/** @type {any} */ p) => p?.id === id && p.soort === 'trigger');
-    });
+  const isTrigger = (app, id) => {
+    try {
+      /** @type {any} */
+      const params = k.apps instanceof Map
+        ? k.apps.get(app)?.manifest?.params
+        : /** @type {any} */ (kern.beeld())?.apps?.find?.((/** @type {any} */ x) => x?.app === app)?.params;
+      return Array.isArray(params) && params.some((/** @type {any} */ p) => p?.id === id && p.soort === 'trigger');
+    } catch (e) { console.error('[server] trigger opzoeken faalde:', e); return false; }
+  };
+  /**
+   * Houdt de hardware deze trigger nu vast? LPD8 P1 (de globale paniek op elke trigger "paniek"), Stop All op de
+   * APC (de paniek-trigger van die app, tot loslaten) of een APC-pad op de trigger (a.vast). Dan stuurt de kern bij
+   * het loslaten daarvan zelf aan:false; een cockpit die wegvalt, mag de paniek niet eerder beëindigen (§14).
+   * @param {string} app @param {string} id
+   */
+  const hardwareHoudtVast = (app, id) => {
+    try {
+      const a = k.apps instanceof Map ? k.apps.get(app) : undefined;
+      if (id === 'paniek' && k.paniekActief === true) return true;
+      if (a?.indeling?.paniek === id && k.appPaniekTot?.get(app) === Infinity) return true;
+      return a?.vast instanceof Map && [...a.vast.values()].includes(id);
+    } catch { return false; }
   };
   wssCockpit.on('connection', (ws) => {
     levend.add(ws);
@@ -636,9 +654,6 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     /** Toetsen die deze cockpit virtueel ingedrukt houdt (noten én de voetschakelaar, CC64 op de APC):
      *  bij wegvallen loslaten, anders blijft een knop "hangen" (§10). Faders en knoppen zijn geen toetsen. */
     const ingedrukt = new Map();
-    /** Triggers die deze cockpit ingedrukt houdt: JSON van [app, id] → [app, id] (zie triggerHouders).
-     *  @type {Map<string, [string, string]>} */
-    const triggers = new Map();
     ws.on('message', (data, binair) => {
       levend.add(ws);
       if (binair) return stuur({ t: 'fout', reden: 'alleen tekstberichten (JSON)' });
@@ -661,42 +676,29 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
         const b = r.kern;
         if (b.t === 'zet') {
           const sleutel = JSON.stringify([b.app, b.id]);
-          if (b.v > 0) {
-            if (!triggers.has(sleutel) && zijnTriggers([[b.app, b.id]])[0]) {
-              triggers.set(sleutel, [b.app, b.id]);
-              let h = triggerHouders.get(sleutel);
-              if (!h) triggerHouders.set(sleutel, h = new Set());
-              h.add(ws);
-            }
-          } else if (triggers.delete(sleutel)) laatGaan(sleutel);
+          const t = triggerHouders.get(sleutel);
+          if (b.v <= 0) triggerHouders.delete(sleutel);            // de app hoort aan:false; niemand houdt hem nog vast
+          else if (t?.houders.has(ws)) { /* hield hem al vast */ }
+          else if (t) t.houders.add(ws);
+          else if (isTrigger(b.app, b.id)) triggerHouders.set(sleutel, { app: b.app, id: b.id, houders: new Set([ws]) });
         }
         veilig('kern.cockpit', () => kern.cockpit(b));
       }
     });
-    /** Deze cockpit houdt de trigger niet meer vast; true als niemand hem nog vasthoudt. @param {string} sleutel */
-    const laatGaan = (sleutel) => {
-      const h = triggerHouders.get(sleutel);
-      h?.delete(ws);
-      if (h?.size) return false;
-      triggerHouders.delete(sleutel);
-      return true;
-    };
     ws.on('close', () => {
       uitzender.verwijder(ws);
       for (const { dev, bytes } of ingedrukt.values()) veilig('opVirtueel (loslaten)', () => opVirtueel?.(dev, bytes));
       ingedrukt.clear();
-      // Ingedrukte triggers loslaten, behalve wat een andere cockpit nog vasthoudt. Alleen als het volgens het
-      // manifest van nu nog een trigger is: na een nieuw manifest waarin die id een waarde werd, zou `zet v:0` die
-      // waarde op 0 zetten; een vergeten app of verdwenen id negeert de kern toch. Is de app weg (maar nog bekend),
-      // dan gaat het loslaten naar de kern, die het zonder verbinding laat vallen (net als bij de APC).
-      /** @type {[string, string][]} */
-      const los = [];
-      for (const [sleutel, appId] of triggers) if (laatGaan(sleutel)) los.push(appId);
-      triggers.clear();
-      if (!los.length) return;
-      const nogTrigger = zijnTriggers(los);
-      for (const [i, [app, id]] of los.entries()) {
-        if (nogTrigger[i]) veilig('kern.cockpit (trigger loslaten)', () => kern.cockpit({ t: 'zet', app, id, v: 0 }));
+      // Ingedrukte triggers loslaten, behalve wat een andere cockpit of de hardware nog vasthoudt. Alleen als het
+      // volgens het manifest van nu nog een trigger is: na een nieuw manifest waarin die id een waarde werd, zou
+      // `zet v:0` die waarde op 0 zetten; een vergeten app of verdwenen id negeert de kern toch. Is de app weg (maar
+      // nog bekend), dan gaat het loslaten naar de kern, die het zonder verbinding laat vallen (net als bij de APC).
+      for (const [sleutel, { app, id, houders }] of triggerHouders) {
+        if (!houders.delete(ws) || houders.size) continue;
+        triggerHouders.delete(sleutel);
+        if (isTrigger(app, id) && !hardwareHoudtVast(app, id)) {
+          veilig('kern.cockpit (trigger loslaten)', () => kern.cockpit({ t: 'zet', app, id, v: 0 }));
+        }
       }
     });
   });

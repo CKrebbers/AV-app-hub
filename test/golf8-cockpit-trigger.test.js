@@ -9,7 +9,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import { startServer } from '../src/transports/server.js';
-import { opzet, meldAan, stuurApp, nepVerbinding, FL, MS } from './kern-hulp.js';
+import { opzet, meldAan, stuurApp, nepVerbinding, druk, los, lpdDruk, lpdLos, FL, MS } from './kern-hulp.js';
+import { PANIEK_MS } from '../src/core/kern.js';
 import { wachtOp } from './nepkern.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
@@ -125,7 +126,7 @@ describe('golf 8: een cockpit die wegvalt laat zijn triggers los', () => {
     expect(trigs(fl, 'paniek')).toEqual([true, true, false]);
   });
 
-  it('twee cockpits: de ene laat netjes los, de andere valt weg → de trigger staat uit', async () => {
+  it('twee cockpits houden vast, de ene laat netjes los (→ uit), de andere valt weg → niet nog eens los', async () => {
     const fl = meldAan(o.kern, FL);
     const a = await cockpit(), b = await cockpit();
     a.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
@@ -133,10 +134,94 @@ describe('golf 8: een cockpit die wegvalt laat zijn triggers los', () => {
     b.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
     b.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 0 });
     await wachtOp(() => trigs(fl, 'take').length === 3);
+    expect(trigs(fl, 'take')).toEqual([true, true, false]);     // een nette v:0 gaat direct door, ook als a nog vasthoudt
     a.weg();
-    await wachtOp(() => trigs(fl, 'take').length === 4);
-    expect(trigs(fl, 'take').at(-1)).toBe(false);
+    await even(100);
+    expect(trigs(fl, 'take')).toEqual([true, true, false]);     // de trigger staat al uit: geen tweede aan:false
+    // a's oude druk telt niet meer: een nieuwe cockpit die indrukt en wegvalt, laat wel weer los.
+    const c = await cockpit();
+    c.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
+    c.weg();
+    await wachtOp(() => trigs(fl, 'take').length === 5);
+    expect(trigs(fl, 'take')).toEqual([true, true, false, true, false]);
   });
+
+  it('tablet verbindt opnieuw (oude socket half-open houdt vast), laat op de nieuwe los; de oude valt weg → niet nog eens los', async () => {
+    const fl = meldAan(o.kern, FL);
+    const oud = await cockpit();
+    oud.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
+    await wachtOp(() => trigs(fl, 'take').length === 1);
+    const nieuw = await cockpit();
+    nieuw.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 0 });   // de pagina laat los zonder zelf te hebben ingedrukt
+    await wachtOp(() => trigs(fl, 'take').length === 2);
+    oud.weg();
+    await even(100);
+    expect(trigs(fl, 'take')).toEqual([true, false]);
+    nieuw.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });  // en daarna werkt vasthouden + wegvallen gewoon
+    await wachtOp(() => trigs(fl, 'take').length === 3);
+    nieuw.weg();
+    await wachtOp(() => trigs(fl, 'take').length === 4);
+    expect(trigs(fl, 'take')).toEqual([true, false, true, false]);
+  });
+
+  it('LPD8 P1 houdt de paniek vast, de cockpit ook, de cockpit valt weg → de paniek loopt door tot P1 los is', async () => {
+    const fl = meldAan(o.kern, FL);
+    lpdDruk(o.kern, 1);
+    o.klok.loop(PANIEK_MS + 50);
+    expect(o.kern.beeld().globaal).toMatchObject({ paniek: 1 });
+    const c = await cockpit();
+    c.stuur({ t: 'zet', app: 'formula-lab', id: 'paniek', v: 1 });
+    await wachtOp(() => trigs(fl, 'paniek').length === 2);
+    c.weg();
+    await even(100);
+    expect(trigs(fl, 'paniek')).toEqual([true, true]);
+    lpdLos(o.kern, 1);
+    expect(trigs(fl, 'paniek')).toEqual([true, true, false]);
+  });
+
+  it('Stop All op de APC vast, de cockpit houdt de paniek ook, de cockpit valt weg → de paniek loopt door tot Stop All los is', async () => {
+    const fl = meldAan(o.kern, FL);
+    druk(o.kern, 'stopall');
+    const c = await cockpit();
+    c.stuur({ t: 'zet', app: 'formula-lab', id: 'paniek', v: 1 });
+    await wachtOp(() => trigs(fl, 'paniek').length === 2);
+    c.weg();
+    await even(100);
+    expect(trigs(fl, 'paniek')).toEqual([true, true]);
+    los(o.kern, 'stopall');
+    expect(trigs(fl, 'paniek')).toEqual([true, true, false]);
+  });
+
+  it('een APC-pad houdt de trigger vast, de cockpit ook, de cockpit valt weg → aan tot de pad los is', async () => {
+    const fl = meldAan(o.kern, FL);
+    druk(o.kern, 'pad5-2');                                       // take (zie de indeling van FL)
+    const c = await cockpit();
+    c.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
+    await wachtOp(() => trigs(fl, 'take').length === 2);
+    c.weg();
+    await even(100);
+    expect(trigs(fl, 'take')).toEqual([true, true]);
+    los(o.kern, 'pad5-2');
+    expect(trigs(fl, 'take')).toEqual([true, true, false]);
+  });
+
+  it('P1-paniek op de LPD8 houdt alleen "paniek" vast: een andere trigger van de cockpit gaat bij wegvallen wel los', async () => {
+    const fl = meldAan(o.kern, FL);
+    lpdDruk(o.kern, 1);
+    o.klok.loop(PANIEK_MS + 50);
+    const c = await cockpit();
+    c.stuur({ t: 'zet', app: 'formula-lab', id: 'take', v: 1 });
+    await wachtOp(() => trigs(fl, 'take').length === 1);
+    c.weg();
+    await wachtOp(() => trigs(fl, 'take').length === 2);
+    expect(trigs(fl, 'take')).toEqual([true, false]);
+    expect(trigs(fl, 'paniek')).toEqual([true]);
+    lpdLos(o.kern, 1);
+  });
+
+  // Open punt 2 van docs/DUURTEST.md: de kern telt per trigger de bronnen nog niet. Een nette `zet v:0` van een
+  // cockpit gaat direct door als aan:false, ook als Stop All, P1 of een APC-pad dezelfde trigger nog vasthoudt.
+  it.todo('Stop All (of P1) vast en een cockpit laat dezelfde paniek netjes los (v:0) → de paniek loopt door tot Stop All los is');
 
   it('nieuw manifest tussen indrukken en wegvallen, trigger bestaat nog → los', async () => {
     const fl = meldAan(o.kern, FL);
