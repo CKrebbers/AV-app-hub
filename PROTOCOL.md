@@ -188,7 +188,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`).
 - Bij verbinden krijgt een cockpit `beeld` én een volledig `leds`. Ongeldige cockpitberichten → `{ t:"fout", reden }`.
 - Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
-- Valt een cockpit weg terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los.
+- Valt een cockpit weg (sluiten, fout of geen pong) terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los; zo ook elke trigger die hij met `zet` (`v > 0`) indrukte en niet losliet (golf 8): `zet v:0` → `trig aan:false`. Houdt een andere cockpit dezelfde trigger nog vast, dan niet: die laat hem los, of de hub als ook die wegvalt. Is de id na een nieuw manifest geen trigger meer (een waarde, of weg) of is de app vergeten, dan stuurt de hub niets (een `zet` zou een waarde op 0 zetten); is de app op dat moment weg, dan valt het loslaten weg, zoals bij de APC (kwam hij al terug, dan hoort hij het).
 - De virtuele LPD8 stuurt altijd de mk2-fabrieksstand (noot 36–43 kanaal 10, CC 70–77); de hub leest die los van het profiel van de echte LPD8.
 
 ## 11. Beslissingen (golf 2 — uit het breken)
