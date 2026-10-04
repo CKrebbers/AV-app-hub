@@ -366,9 +366,14 @@ describe('generator: een bronmap die er niet is', () => {
     const gen = new URL('../tools/genereer-manifesten.mjs', import.meta.url).pathname;
     const leeg = mkdtempSync(join(tmpdir(), 'geen-kit-'));
     opgeruimd.push(() => rmSync(leeg, { recursive: true, force: true }));
-    for (const [vlag, repo] of [['--scene-kit', 'av-scene-kit'], ['--sediment', 'sediment']]) {
+    // Hermetisch: de andere bron wijst naar een map die de eerste controle wél haalt (een lege kit-config),
+    // zodat elk geval alleen over zijn eigen repo gaat, ook in CI zonder /home/user/av-scene-kit.
+    const kit = mkdtempSync(join(tmpdir(), 'nep-kit-'));
+    opgeruimd.push(() => rmSync(kit, { recursive: true, force: true }));
+    writeFileSync(join(kit, 'config.json'), '{}');
+    for (const [vlag, repo, anders] of [['--scene-kit', 'av-scene-kit', []], ['--sediment', 'sediment', ['--scene-kit', kit]]]) {
       let fout;
-      try { execFileSync('node', [gen, vlag, leeg, '--toets'], { stdio: 'pipe', encoding: 'utf8' }); } catch (e) { fout = e; }
+      try { execFileSync('node', [gen, vlag, leeg, ...anders, '--toets'], { stdio: 'pipe', encoding: 'utf8' }); } catch (e) { fout = e; }
       expect(fout?.status, vlag).toBe(2);
       expect(fout.stderr).toContain(`${repo} niet gevonden op ${leeg}`);
       expect(fout.stderr).toContain(`geef ${vlag} <pad naar ${repo}>`);
