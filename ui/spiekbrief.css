@@ -1,7 +1,6 @@
 /* Spiekbrief (docs/SPIEKBRIEF.md). Op het scherm: de tokens en de kop van de cockpit (stijl.css).
    Op papier: één A4 liggend per set, zwart op wit; de appkleur alleen als randje. Geen externe bronnen. */
 
-.sb { overflow-x: hidden; }
 .sb .kop { gap: 12px; }
 .sb-print-hint { margin-left: auto; font-size: 12px; color: var(--stil); white-space: nowrap; }
 
@@ -49,14 +48,16 @@
 .sb-apc thead th:first-child { width: 4.8em; }
 .sb-apc th.rand { width: 4.5em; }
 .sb-apc + .sb-apc { margin-top: 3px; }
-.sb-pads { width: auto; min-width: 50%; max-width: 100%; }
-.sb-pads td.pad { width: 7.5em; }
-.sb-pads td.scene, .sb-pads th.scene { width: 6.5em; }
+/* pads: vaste kolommen van ±7,5em (--n = aantal kolommen, html.js), maar nooit breder dan de kaart; een lange
+   naam breekt dan op woordgrenzen in plaats van de tabel (en de pagina) breder te maken */
+.sb-pads { width: min(100%, calc(var(--n, 4) * 7.5em + 11.5em)); }
+/* in een vaste tabel telt de breedte van de kop (kleinere letter): 8,5em daar ≈ 6,5em in de vakken */
+.sb-pads th.scene { width: 8.5em; }
 .sb-pads th[scope="row"] { font-weight: 400; color: var(--stil); }
 .sb-apc th[scope="row"], .sb-apc th[scope="rowgroup"] { text-align: left; font-weight: 600; font-size: 9.5px; color: var(--zacht); vertical-align: middle; overflow-wrap: normal; word-break: keep-all; }
-.sb-apc th small { overflow-wrap: anywhere; }
+.sb-apc th small { overflow-wrap: break-word; }
 .sb-apc th small { display: block; font-weight: 400; color: var(--stil); }
-.sb-apc td { padding: 2px 3px; border-radius: 3px; vertical-align: middle; overflow-wrap: anywhere; hyphens: auto; height: 1.7em; }
+.sb-apc td { padding: 2px 3px; border-radius: 3px; vertical-align: middle; overflow-wrap: break-word; hyphens: manual; height: 1.7em; }
 .sb-apc td.vol { background: var(--vlak2); border: 1px solid var(--rand); }
 .sb-apc td.leeg { border: 1px dashed color-mix(in srgb, var(--rand) 55%, transparent); }
 .sb-apc td.rand, .sb-apc th.rand { border: 0; background: none; }
@@ -89,7 +90,6 @@
     --bg: #fff; --vlak: #fff; --vlak2: #fff; --rand: #9a9a9a; --tekst: #000; --zacht: #333; --stil: #555; --accent2: #000;
   }
   html, body { background: #fff; color: #000; font-size: 8pt; min-height: 0; }
-  .sb { overflow: visible; }
   .sb-scherm { display: none !important; }
   .sb-blad { padding: 0; max-width: none; margin: 0; break-after: page; page-break-after: always; }
   .sb-blad:last-of-type { break-after: auto; page-break-after: auto; }
@@ -121,12 +121,24 @@
   .sb-apc td.leeg { border: .2mm dashed #bbb; }
   .sb-apc td.scene, .sb-apc td.stopall { font-size: 6.8pt; color: #000; }
   .sb-apc i { color: #444; }
+  /* de rijen van 8 (track, fader, device): iets kleiner en krapper, zodat een naam heel in zijn vak past */
+  .sb-strook { font-size: 6.7pt; border-spacing: .3mm; }
+  .sb-strook td { padding: .3mm .3mm; }
+  .sb-strook thead th:first-child { width: 4em; }
+  .sb-strook th.rand { width: 4.5em; }
+  .sb-apc td.stopall { font-size: 6.2pt; }
   .sb-legenda { margin-top: 2mm; font-size: 7.4pt; color: #000; }
   .sb-legenda b { color: #000; }
+  /* niet te vol (data-dicht="0"): de LPD8 en de hublaag als strook ónder de kaarten, zodat de kaarten de hele
+     breedte krijgen en een naam in een vak van 8 niet midden in een woord hoeft af te breken */
+  .sb-blad[data-dicht="0"] .sb-lijf { grid-template-columns: minmax(0, 1fr); }
+  .sb-blad[data-dicht="0"] .sb-altijd { order: 2; grid-template-columns: minmax(0, 72fr) minmax(0, 28fr); }
+  .sb-blad[data-dicht="0"] .sb-lpd8 { display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 42fr); column-gap: 3mm; align-content: start; }
+  .sb-blad[data-dicht="0"] .sb-lpd8 h2 { grid-column: 1 / -1; }
+  .sb-blad[data-dicht="0"] .sb-lijst { margin-bottom: 0; }
   /* veel apps (src/spiekbrief/html.js dichtheid): smallere linkerkolom en alles kleiner, zodat het op één A4 blijft */
   .sb-blad[data-kolommen="3"] .sb-lijf { grid-template-columns: minmax(0, 22fr) minmax(0, 78fr); }
   .sb-blad[data-dicht="1"] { zoom: .86; }
   .sb-blad[data-dicht="2"] { zoom: .72; }
-}
-}
+  .sb-blad[data-dicht="3"] { zoom: .6; }
 }

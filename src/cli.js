@@ -425,10 +425,14 @@ const opdrachten = {
       process.exit(1);
     }
     for (const b of r.brieven) {
-      const volgt = b.apps.filter((a) => a.soort === 'volgt' || a.soort === 'fout').map((a) => a.naam);
+      const volgt = b.apps.filter((a) => a.soort === 'volgt').map((a) => a.naam);
+      const fout = b.apps.filter((a) => a.soort === 'fout').map((a) => `${a.naam} (${a.fout})`);
       console.log(`${b.set.naam}: ${b.apps.map((a) => a.naam).join(', ')}${volgt.length ? ` — indeling volgt als ${volgt.join(', ')} zich meldt` : ''}`);
+      if (fout.length) console.error(`let op, ${b.set.naam}: geen indeling voor ${fout.join(', ')}`);
     }
-    console.log(`spiekbrief → ${r.pad}\nOpen hem in Chrome en druk ⌘P (A4 liggend). Draait de hub, dan staat hij ook live op http://localhost:${config.poorten?.http ?? 7700}/spiekbrief`);
+    // Kapotte bronbestanden (vastgelegde manifesten, apps/*.json): één keer melden, niet per set.
+    for (const f of new Set(r.brieven.flatMap((b) => b.fouten))) console.error(`let op: niet te lezen: ${f}`);
+    console.log(`spiekbrief → ${r.pad}\nOpen hem in Chrome en druk ⌘P (A4 liggend). Draait de hub, dan staat hij ook live op /spiekbrief van de cockpit (zelfde adres als de cockpit; LAN-adres: varve-hub token).`);
   },
 
   help() {

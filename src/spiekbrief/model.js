@@ -26,7 +26,8 @@ import * as APC from '../devices/apc40mk2.js';
  *  @typedef {{ naam: string, dk: (Vak|null)[] }} Pagina
  *  @typedef {{
  *    app: string, naam: string, kleur: string, koppeling: string|null, bron: BronSoort|null, bronUitleg: string,
- *    soort: 'indeling'|'lease'|'volgt'|'fout', fout: string|null, slot: number|null, beginFocus: boolean, opmerking: string|null,
+ *    soort: 'indeling'|'lease'|'volgt'|'fout', fout: string|null, slot: number|null, status: string|null,
+ *    beginFocus: boolean, opmerking: string|null,
  *    faders: (Vak|null)[], tk: (Vak|null)[], paginas: Pagina[], grid: (Vak|null)[][], scenes: ({ ctrl: string, naam: string }|null)[],
  *    stopAll: Vak|null, overig: Vak[], niet: string[], macros: { knop: string, rol: string, naam: string }[], paniek: boolean,
  *  }} AppBlad
@@ -37,7 +38,10 @@ import * as APC from '../devices/apc40mk2.js';
  *    live: boolean, apps: AppBlad[], ookVerbonden: { app: string, naam: string, kleur: string, slot: number|null }[],
  *    lpd8: { knoppen: LpdKnop[], pads: LpdPad[] },
  *    hub: { toets: string, toetsNaam: string, overname: boolean },
+ *    fouten: string[],
  *  }} Spiekbrief
+ *  `status` van een app: wat de draaiende hub ervan zegt ('actief', 'stil', 'weg', …), null zonder hub of als de
+ *  hub de app nog nooit zag. `fouten`: bronbestanden die niet te lezen waren (bronnen.js laadBronnen).
  */
 
 /** Hoe een rol op papier heet (PROTOCOL §6). Volgorde = K1..K8 = ROLLEN. */
@@ -142,9 +146,10 @@ const VASTE_CTRLS = new Set([
 /**
  * Het blad van één app: wat elke control van de APC doet als deze app focus heeft.
  * @param {string} id @param {KernApp|undefined} k @param {Bron|undefined} bron @param {any} config @param {SetDef} set
+ * @param {string|null} bronFout een kapot bronbestand van deze app (`<app>.json: …`), als er geen manifest is
  * @returns {AppBlad}
  */
-function appBlad(id, k, bron, config, set) {
+function appBlad(id, k, bron, config, set, bronFout) {
   const cfg = config?.apps?.[id] ?? {};
   const m = k?.manifest ?? null;
   /** @type {AppBlad} */
@@ -152,8 +157,8 @@ function appBlad(id, k, bron, config, set) {
     app: id, naam: k?.naam ?? cfg.naam ?? id, kleur: k?.kleur ?? (typeof cfg.kleur === 'string' ? cfg.kleur : '#ffffff'),
     koppeling: typeof cfg.koppeling === 'string' ? cfg.koppeling : null,
     bron: m ? (bron?.bron ?? null) : null, bronUitleg: m ? (bron?.uitleg ?? '') : '',
-    soort: !m ? (k?.fout ? 'fout' : 'volgt') : m.lease ? 'lease' : 'indeling', fout: k?.fout ?? null,
-    slot: k?.slot ?? null, beginFocus: set.focus === id, opmerking: set.apps[id]?.opmerking ?? null,
+    soort: !m ? (k?.fout || bronFout ? 'fout' : 'volgt') : m.lease ? 'lease' : 'indeling', fout: k?.fout ?? (m ? null : bronFout),
+    slot: k?.slot ?? null, status: k?.status ?? null, beginFocus: set.focus === id, opmerking: set.apps[id]?.opmerking ?? null,
     faders: [], tk: [], paginas: [], grid: [], scenes: [], stopAll: null, overig: [], niet: [], macros: [], paniek: false,
   };
   if (!m) return blad;
@@ -188,12 +193,12 @@ function appBlad(id, k, bron, config, set) {
  * Het overzicht van één set.
  * @param {{
  *   id: string, set: SetDef, config: any, bronnen: Record<string, Bron|undefined>,
- *   kern?: KernBeeld|null,
- * }} o  `bronnen`: manifest per app (bronnen.js). `kern`: de draaiende hub (uitKern(hub.kern)); zonder rekent
+ *   kern?: KernBeeld|null, fouten?: string[],
+ * }} o  `bronnen`: manifest per app (bronnen.js); `fouten`: wat laadBronnen niet kon lezen. `kern`: de draaiende hub (uitKern(hub.kern)); zonder rekent
  *   een schaduw-kern de indeling uit en zijn er geen Track Select-nummers (die hangen af van wie zich eerst meldt).
  * @returns {Spiekbrief}
  */
-export function maakSpiekbrief({ id, set, config, bronnen, kern = null }) {
+export function maakSpiekbrief({ id, set, config, bronnen, kern = null, fouten = [] }) {
   const ids = Object.keys(set.apps);
   const live = !!kern;
   // Live: wat de hub heeft wint (ook voor apps die nu niet verbonden zijn maar wel een manifest stuurden);
@@ -205,9 +210,11 @@ export function maakSpiekbrief({ id, set, config, bronnen, kern = null }) {
     const echt = kern?.apps.get(app);
     if (echt?.manifest) return { k: echt, b: { manifest: echt.manifest, bron: 'live', uitleg: echt.status === 'weg' ? 'zoals de hub hem kent (nu niet verbonden)' : 'live uit de hub' } };
     const s = schaduw.apps.get(app);
-    return { k: s ? { ...s, slot: echt?.slot ?? null } : echt, b: bronnen[app] };
+    return { k: s ? { ...s, slot: echt?.slot ?? null, status: echt?.status ?? null } : echt, b: bronnen[app] };
   };
-  const apps = ids.map((app) => { const { k, b } = kies(app); return appBlad(app, k, b, config, set); });
+  // Een kapot bronbestand van een app zonder manifest: dan is dát de reden, niet "hij meldde zich nooit".
+  const bronFout = (/** @type {string} */ app) => fouten.find((f) => f.startsWith(`${app}.json:`)) ?? null;
+  const apps = ids.map((app) => { const { k, b } = kies(app); return appBlad(app, k, b, config, set, bronFout(app)); });
   const naamVan = (/** @type {string|null|undefined} */ app) => (app ? apps.find((a) => a.app === app)?.naam ?? config?.apps?.[app]?.naam ?? app : null);
 
   const knoppen = ROLLEN.map((rol, i) => ({
@@ -225,5 +232,6 @@ export function maakSpiekbrief({ id, set, config, bronnen, kern = null }) {
       : [],
     lpd8: { knoppen, pads: lpdPads(apps.filter((a) => a.paniek).map((a) => a.naam)) },
     hub: { toets: hubtoets, toetsNaam: APC.OP_ID.get(hubtoets)?.label ?? hubtoets, overname: kern?.overname ?? schaduw.overname },
+    fouten: [...fouten],
   };
 }

@@ -74,6 +74,6 @@ export function spiekbriefVoorSet(naam, { config, kern = null, setsMap = SETS_MA
   if (!sets.includes(naam)) throw new Error(`onbekende set "${naam}" — beschikbaar: ${sets.length ? sets.join(', ') : '(geen)'}`);
   const cfg = kern?.config ?? hubConfig(config);
   const set = laadSet(naam, { config: cfg, map: setsMap });
-  const { bronnen } = laadBronnen({ appsMap, vastgelegdMap });
-  return maakSpiekbrief({ id: naam, set, config: cfg, bronnen, kern: kern ? uitKern(kern) : null });
+  const { bronnen, fouten } = laadBronnen({ appsMap, vastgelegdMap });
+  return maakSpiekbrief({ id: naam, set, config: cfg, bronnen, fouten, kern: kern ? uitKern(kern) : null });
 }

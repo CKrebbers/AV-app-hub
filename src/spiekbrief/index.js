@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { HUB_MAP, laadConfig } from '../config.js';
 import { laadSet, lijstSets, SETS_MAP } from '../sets/index.js';
-import { spiekbriefVoorSet } from './bronnen.js';
+import { spiekbriefVoorSet, laadBronnen } from './bronnen.js';
 import { spiekbriefHtml, lijstHtml } from './html.js';
 
 export { maakSpiekbrief, schaduwKern, uitKern, lpdPads, ROL_NAMEN } from './model.js';
@@ -34,10 +34,10 @@ function namenVoor(naam, setsMap = SETS_MAP) {
 /**
  * Het antwoord op GET /spiekbrief (zonder set: de lijst) en /spiekbrief?set=<naam> voor de server.
  * Met de kern van de draaiende hub: wat de hub nu doet, met de echte Track Select-nummers.
- * @param {string|null} set @param {{ kern?: any, setsMap?: string, gemaakt?: Date|null }} [o]
+ * @param {string|null} set @param {{ kern?: any, setsMap?: string, gemaakt?: Date|null, appsMap?: string, vastgelegdMap?: string }} [o]
  * @returns {{ code: number, html: string }}
  */
-export function spiekbriefPagina(set, { kern = null, setsMap = SETS_MAP, gemaakt = null } = {}) {
+export function spiekbriefPagina(set, { kern = null, setsMap = SETS_MAP, gemaakt = null, appsMap, vastgelegdMap } = {}) {
   const config = kern?.config ?? laadConfig();
   if (set === null || set === '') {
     /** @type {string[]} */
@@ -45,10 +45,12 @@ export function spiekbriefPagina(set, { kern = null, setsMap = SETS_MAP, gemaakt
     const sets = lijstSets(setsMap).flatMap((id) => {
       try { const s = laadSet(id, { config, map: setsMap }); return [{ id, naam: s.naam, beschrijving: s.beschrijving ?? '' }]; } catch (e) { fouten.push(`${id}: ${/** @type {Error} */ (e).message}`); return []; }
     });
+    // kapotte bronbestanden (apps/*.json, vastgelegde manifesten): die apps staan op de bladen zonder indeling
+    fouten.push(...laadBronnen({ appsMap, vastgelegdMap }).fouten);
     return { code: 200, html: lijstHtml(sets, { fouten }) };
   }
   try {
-    const brieven = namenVoor(set, setsMap).map((naam) => spiekbriefVoorSet(naam, { config, kern, setsMap }));
+    const brieven = namenVoor(set, setsMap).map((naam) => spiekbriefVoorSet(naam, { config, kern, setsMap, appsMap, vastgelegdMap }));
     return { code: 200, html: spiekbriefHtml(brieven, { css: 'link', gemaakt }) };
   } catch (e) {
     const fout = /** @type {Error & { code?: string }} */ (e);

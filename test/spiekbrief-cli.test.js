@@ -6,7 +6,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { lijstSets } from '../src/sets/index.js';
+import { lijstSets, laadSet } from '../src/sets/index.js';
+import { laadConfig } from '../src/config.js';
+import { laadBronnen, hubConfig } from '../src/spiekbrief/index.js';
 
 const HUB_MAP = join(import.meta.dirname, '..');
 const CLI = join(HUB_MAP, 'src', 'cli.js');
@@ -23,7 +25,17 @@ describe('cli spiekbrief', () => {
     const r = cli(['spiekbrief', 'meditatie', '--uit', pad]);
     expect(r.code).toBe(0);
     expect(r.uit).toContain(`spiekbrief → ${pad}`);
-    expect(r.uit).toMatch(/Meditatie: MediSynth, Waterschaal, Uurwerk, AV-kern — indeling volgt als AV-kern zich meldt/);
+    // Elke app van de set staat in de regel; "volgt" alleen voor de apps waar (nu) geen manifest van is.
+    const config = hubConfig(laadConfig());
+    const set = laadSet('meditatie', { config });
+    const namen = Object.keys(set.apps).map((a) => config.apps?.[a]?.naam ?? a);
+    const { bronnen } = laadBronnen();
+    const volgt = Object.keys(set.apps).filter((a) => !bronnen[a]).map((a) => config.apps?.[a]?.naam ?? a);
+    const regel = r.uit.split('\n').find((l) => l.startsWith(`${set.naam}: `)) ?? '';
+    for (const n of namen) expect(regel, n).toContain(n);
+    if (volgt.length) expect(regel).toContain(` — indeling volgt als ${volgt.join(', ')} zich meldt`);
+    else expect(regel).not.toContain('indeling volgt');
+    expect(r.uit).not.toContain('localhost:7700');      // de poort komt uit config.json of de opdrachtregel, niet uit de CLI
     const html = readFileSync(pad, 'utf8');
     expect(html).toContain('data-set="meditatie"');
     expect(html).toContain('@page { size: A4 landscape');
@@ -43,10 +55,11 @@ describe('cli spiekbrief', () => {
     const map = mkdtempSync(join(tmpdir(), 'spiekbrief-'));
     const zonder = cli(['spiekbrief']);
     expect(zonder.code).toBe(1);
-    expect(zonder.uit).toMatch(/gebruik: varve-hub spiekbrief <set\|alle> \[--uit bestand\.html\] — sets: dj, meditatie, scene-kit/);
-    const feest = cli(['spiekbrief', 'feest', '--uit', join(map, 'x.html')]);
-    expect(feest.code).toBe(1);
-    expect(feest.uit).toMatch(/onbekende set "feest" — beschikbaar: dj, meditatie, scene-kit/);
+    const sets = lijstSets().join(', ');
+    expect(zonder.uit).toContain(`gebruik: varve-hub spiekbrief <set|alle> [--uit bestand.html] — sets: ${sets}`);
+    const onbekend = cli(['spiekbrief', 'bestaat-niet-xyz', '--uit', join(map, 'x.html')]);
+    expect(onbekend.code).toBe(1);
+    expect(onbekend.uit).toContain(`onbekende set "bestaat-niet-xyz" — beschikbaar: ${sets}`);
     expect(existsSync(join(map, 'x.html'))).toBe(false);
     expect(cli(['spiekbrief', 'dj', '--uit']).code).toBe(1);
   });
