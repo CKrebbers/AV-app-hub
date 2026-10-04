@@ -137,7 +137,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 
 | Richting | Bericht |
 |---|---|
-| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}}` — volledig, bij verbinden en max 10×/s bij wijziging |
+| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
 | hub → cockpit | `{t:"leds", dev:"apc40", staat:{<control-id>: LedStaat}}` — alleen gewijzigde |
 | hub → cockpit | `{t:"invoer", g}` — elke controller-gebeurtenis (voor de live-weergave) |
 | cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam |

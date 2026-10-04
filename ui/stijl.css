@@ -38,6 +38,30 @@ h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
 .naar-oefen { color: var(--zacht); text-decoration: none; font-size: 13px; border: 1px solid var(--rand); border-radius: 999px; padding: 2px 10px; }
 .naar-oefen:hover { color: var(--tekst); }
 .merk .stip { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+/* opname (LPD8-pad 4): rode REC met mapnaam en looptijd, en de laatste melding (fout = rood) */
+.kop { flex-wrap: wrap; row-gap: 6px; }
+.merk, .chip { white-space: nowrap; }
+/* .opname is alleen een groep: REC en de melding zijn zelf items van de kop (een fout kan dan een eigen rij krijgen) */
+.opname { display: contents; }
+.rec { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+  font: 600 12px var(--mono); color: #fff; background: #c8332e; border: 1px solid var(--fout);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--fout) 55%, transparent); }
+.rec[hidden], .opname-melding[hidden] { display: none; }
+.rec .rec-stip { color: #fff; animation: rec-stip 1.2s ease-in-out infinite; }
+.rec .rec-map { font-weight: 400; opacity: .9; }
+.rec .rec-tijd { font-variant-numeric: tabular-nums; }
+@keyframes rec-stip { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .rec .rec-stip { animation: none; } }
+/* pad 4 aan, maar er komt niets op schijf: geen rode REC, maar doorgestreept en grijs met een rode rand */
+.rec.niets { background: var(--vlak2); color: var(--zacht); box-shadow: none; }
+.rec.niets .rec-stip { color: var(--fout); animation: none; }
+.rec.niets .rec-woord { text-decoration: line-through; text-decoration-color: var(--fout); }
+.opname-melding { font-size: 12px; color: var(--zacht); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42ch; }
+/* een fout loopt door over meer regels: het advies staat achteraan (en op een tablet bestaat hover niet) */
+.opname-melding { min-width: 0; flex: 0 1 auto; }
+.opname-melding.fout { color: var(--fout); font-weight: 600; white-space: normal; max-width: 72ch; line-height: 1.3; }
+/* smal (tablet): een fout over de volle breedte onder de kop, in plaats van een smal kolommetje */
+@media (max-width: 1100px) { .opname-melding.fout { order: 10; flex-basis: 100%; max-width: none; } }
 .apparaten { display: flex; gap: 6px; margin-left: auto; }
 .chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rand); color: var(--stil); }
 .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--stil); }
@@ -156,6 +180,11 @@ body.paniek .kop { box-shadow: inset 0 -2px 0 var(--fout); }
 .lpd-pad.in, .lpd-pad.hw { background: #c8332e; border-color: #ff6a5e; box-shadow: 0 0 12px #c8332e88; }
 .lpd-pad.in .naam, .lpd-pad.hw .naam, .lpd-pad.in .kort, .lpd-pad.hw .kort { color: #fff; }
 .lpd-pad.vast { box-shadow: 0 0 0 2px var(--accent); }
+/* P4 = gebaren opnemen: zolang de opname loopt een rode rand en stip */
+.lpd-pad.opneemt { border-color: var(--fout); box-shadow: inset 0 0 0 2px var(--fout); }
+.lpd-pad.opneemt::after { content: '● REC'; position: absolute; top: 4px; right: 6px; font: 600 9px var(--mono); color: var(--fout); }
+.lpd-pad.opneemt.niets { border-style: dashed; box-shadow: none; }
+.lpd-pad.opneemt.niets::after { content: 'REC ✕'; text-decoration: line-through; }
 @media (max-width: 700px) { .lpd8 { grid-template-columns: 1fr; } }
 
 /* ── apps ── */
@@ -189,6 +218,21 @@ body.paniek .kop { box-shadow: inset 0 -2px 0 var(--fout); }
 .param .keuzes { display: flex; flex-wrap: wrap; gap: 4px; }
 .param .keuzes button { padding: 3px 8px; font-size: 12px; }
 .param .trigger { touch-action: none; }
+/* slew (§12): de schuif staat op het doel; de tussenwaarde (wat de app nu heeft) is een aparte balk.
+   Streep en balk staan op de baan van de duim: het midden van de duim loopt van duim/2 tot 100% − duim/2
+   (Chromium: duim van 16px, de schuif zonder marge). De ruimte voor "→ 80%" is er altijd, zodat de rijen
+   niet verspringen als een slew begint of eindigt. */
+.param .schuif { position: relative; min-width: 0; --duim: 16px; }
+.param .schuif input[type="range"] { display: block; margin: 0; }
+.param.met-schuif { padding-bottom: 10px; }
+.param .schuif .tussen, .param .schuif .doel { position: absolute; pointer-events: none; display: none; }
+.param .schuif .tussen { z-index: 1; left: 0; top: 50%; height: 4px; margin-top: -2px; width: calc(var(--duim) / 2 + var(--tussen, 0) * (100% - var(--duim))); border-radius: 2px;
+  background: #e6e9f0d9; box-shadow: 0 0 0 1px #0b0d1299; }
+.param .schuif .tussen::after { content: ''; position: absolute; right: -4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #fff; }
+.param .schuif .doel { z-index: 1; top: 1px; bottom: 1px; left: calc(var(--duim) / 2 + var(--doel, 0) * (100% - var(--duim))); width: 2px; margin-left: -1px; background: var(--let); }
+.param .schuif .naar { position: absolute; top: 100%; left: calc(var(--duim) / 2 + var(--doel, 0) * (100% - var(--duim))); transform: translateX(-50%); margin-top: -2px;
+  font: 10px var(--mono); color: var(--let); white-space: nowrap; display: none; pointer-events: none; }
+.param.glijdt .schuif .tussen, .param.glijdt .schuif .doel, .param.glijdt .schuif .naar { display: block; }
 
 /* ── snapshots ── */
 .snapshots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
