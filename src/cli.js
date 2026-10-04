@@ -8,6 +8,9 @@
 //   installeer [--weg] [--lokaal] [--node PAD]  altijd aan: launchd (macOS) / systemd --user (Linux)
 //   token [--nieuw] [--poort N]  het token en de cockpit-adressen voor een tablet
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
+//   check [set] [--json] [--lan] [--poort N]
+//                            vlak vóór een optreden: alles nalopen, per punt ✓/!/✗ en wat te doen (docs/CHECK.md);
+//                            exitcode 1 als er iets ✗ is
 //   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
@@ -32,6 +35,7 @@ import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, s
 import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
 import { doelVanCockpit } from './opname/cockpit-doel.js';
 import { GEBAREN } from './opname/opnemer.js';
+import { check, tekstVan, jsonVan } from './check/index.js';
 import { leesOfMaakToken, isLoopbackHost, lanNamen, mdnsNaam, lanOrigins, lanAdressen, cockpitAdressen, kondigAan, installeer, dienstVoor } from './lan.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
@@ -252,6 +256,19 @@ const opdrachten = {
     console.log(args.includes('--json') ? JSON.stringify(data, null, 2) : tekst);
   },
 
+  async check() {
+    const ruw = optie('--poort');
+    const poort = args.includes('--poort') ? Number(ruw) : undefined;
+    if (poort !== undefined && !(Number.isInteger(poort) && poort > 0 && poort < 65536)) {
+      console.error(`--poort moet een poortnummer zijn (1-65535), niet "${ruw ?? ''}"`);
+      process.exit(2);
+    }
+    const r = await check({ config, laadMidi: laadRtMidi, set: setNaam() ?? null, lan: args.includes('--lan'), ...(poort ? { poort } : {}) });
+    // Geen process.exit hier: een pipe naar stdout (check --json | script) is op macOS asynchroon en kan nog vol zitten.
+    console.log(args.includes('--json') ? JSON.stringify(jsonVan(r), null, 2) : tekstVan(r));
+    process.exitCode = r.code;
+  },
+
   async proef() {
     const naam = args[0] ?? 'f0-hardware';
     const protocol = PROTOCOLLEN[naam];
@@ -378,6 +395,8 @@ const opdrachten = {
   installeer        altijd aan bij inloggen (launchd/systemd --user); --weg haalt weg, --lokaal zonder --lan
   token [--nieuw]   token en cockpit-adressen voor een tablet (--nieuw: ander token, --poort N)
   doctor [--json]   overzicht: MIDI, controllers, poorten, apps
+  check [set]       vlak vóór een optreden: hub, controllers, proef, geheugen, avondmap, Chrome en de apps van de set
+                    (--json, --lan: ook het token, --poort N); per punt ✓/!/✗ en wat te doen, exitcode 1 bij een ✗
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt
   opname [naam]     speelsessie opnemen in proef/

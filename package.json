@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "doctor": "node src/cli.js doctor",
+    "check": "node src/cli.js check",
     "proef": "node src/cli.js proef",
     "testpatroon": "node src/cli.js testpatroon",
     "opname": "node src/cli.js opname",
