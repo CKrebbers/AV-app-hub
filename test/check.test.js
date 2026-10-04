@@ -179,6 +179,29 @@ describe('check: bestanden van de hub', () => {
     expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'let', doen: expect.stringMatching(/npm run proef/) });
   });
 
+  it('LPD8-profiel met pads in PC-modus: P1 = ✗ (de paniek eindigt nooit), alleen P5–P8 = ! (geen snapshot), P2–P4 = ✓', async () => {
+    const { opties, hubMap } = opzet();
+    /** @param {number[]} pcPads pads (1..8) in PC-modus, de rest noten */
+    const schrijf = (pcPads) => writeFileSync(join(hubMap, 'lpd8-profiel.json'), JSON.stringify({
+      model: 'mk2', bron: 'geleerd',
+      pads: Array.from({ length: 8 }, (_, i) => (pcPads.includes(i + 1) ? { t: 'pc', n: i, ch: 9 } : { t: 'note', n: 36 + i, ch: 9 })),
+      knoppen: Array.from({ length: 8 }, (_, i) => ({ n: 70 + i })),
+    }));
+    schrijf([1, 2, 3, 4, 5, 6, 7, 8]);   // de hele LPD8 in PC-modus (de knop PROG CHNG)
+    let r = await check(opties);
+    expect(punt(r, 'lpd8-profiel')).toMatchObject({
+      status: 'fout',
+      uitleg: expect.stringMatching(/^P1, P5, P6, P7, P8 van de LPD8 staan in PC-modus .*P1-paniek begint dan wel, maar eindigt nooit, en P5, P6, P7, P8 doen niets/),
+      doen: expect.stringMatching(/LPD8 Editor.*note-modus.*npm run proef/),
+    });
+    expect(r.code).toBe(1);
+    schrijf([6]);
+    r = await check(opties);
+    expect(punt(r, 'lpd8-profiel')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/^P6 van de LPD8 staat in PC-modus .*P6 doet niets/) });
+    schrijf([2, 3, 4]);   // tap, adem en opname tellen elke druk: werkt
+    expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/^LPD8-profiel geleerd/) });
+  });
+
   it('statische manifesten (apps/): geldig = ✓; een kapotte lees-spec = ! (de app speelt); geen map = !', async () => {
     const { opties, hubMap } = opzet();
     expect(punt(await check(opties), 'apps')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/^\d+ statische manifesten in orde \(.*uurwerk.*\)$/) });

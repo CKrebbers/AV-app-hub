@@ -72,6 +72,9 @@ in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met he
 - `lpd8-profiel.json`: geleerd = ✓ met het model en de datum van het bestand; ontbreekt of `null` = ! (de hub
   gebruikt de standaardnoten; `npm run proef`); kapot = ✗ (dan start de hub niet) en zonder `pads`/`knoppen` = ✗ (dan
   werkt de LPD8 niet), allebei met `mv lpd8-profiel.json lpd8-profiel.json.oud` of de proef opnieuw.
+  Staan pad 1 of pad 5–8 in het profiel in PC-modus (de LPD8-knop PROG CHNG): zo'n pad stuurt geen los, dus P1 = ✗
+  (de paniek begint maar eindigt nooit) en alleen P5–P8 = ! (geen snapshot). Wat te doen: de pads in de LPD8 Editor
+  van Akai op NOTE (en MOMENTARY) zetten, het programma naar de LPD8 schrijven en de proef opnieuw draaien.
 - De statische manifesten in `apps/` (de driver-apps: Scene Kit, Sediment, td-lab, uurwerk; PROTOCOL.md §2): dezelfde
   controle als de hub doet voor hij de drivers start (`valideerStatisch` in `src/drivers/index.js`), ook van het
   teruglezen (`driver.lees`, of de standaard-patchtaal van uurwerk). Een ongeldig bestand = ✗ per bestand met wat er
