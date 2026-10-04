@@ -24,12 +24,18 @@ function jsonBlokken() {
   return uit;
 }
 
-/** Een aanvulling (`params+`, `driver.map+`, `driver.presets+`) toepassen op een manifest. @param {any} basis @param {any} a */
+/**
+ * Een aanvulling (`params+`, `driver.map+`, `driver.presets+`) toepassen op een manifest. Wat er al in staat
+ * (zelfde param-id, zelfde preset-noot: het voorstel is intussen gebouwd, golf 6) wordt niet nog eens toegevoegd.
+ * @param {any} basis @param {any} a
+ */
 function pasAanvullingToe(basis, a) {
   const m = structuredClone(basis);
-  m.params = [...m.params, ...(a['params+'] ?? [])];
+  const ids = new Set(m.params.map((/** @type {any} */ p) => p.id));
+  m.params = [...m.params, ...(a['params+'] ?? []).filter((/** @type {any} */ p) => !ids.has(p.id))];
   m.driver.map = { ...m.driver.map, ...(a['driver.map+'] ?? {}) };
-  if (a['driver.presets+']) m.driver.presets = [...(m.driver.presets ?? []), ...a['driver.presets+']];
+  const noten = new Set((m.driver.presets ?? []).map((/** @type {any} */ p) => p.noot));
+  if (a['driver.presets+']) m.driver.presets = [...(m.driver.presets ?? []), ...a['driver.presets+'].filter((/** @type {any} */ p) => !noten.has(p.noot))];
   return m;
 }
 
@@ -98,7 +104,9 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   });
 
   it('het uurwerk-voorstel is precies het huidige apps/uurwerk.json plus master_terug en paniek', () => {
-    const nu = JSON.parse(readFileSync(hubPad('apps/uurwerk.json'), 'utf8'));
+    // Sinds golf 6 staan master_terug en paniek in apps/uurwerk.json zelf: vergelijk met het bestand zonder die twee.
+    const metPaniek = JSON.parse(readFileSync(hubPad('apps/uurwerk.json'), 'utf8'));
+    const nu = { ...metPaniek, params: metPaniek.params.filter((/** @type {any} */ p) => !['master_terug', 'paniek'].includes(p.id)) };
     const voorstel = jsonBlokken().map((b) => JSON.parse(b.bron)).find((x) => x.app === 'uurwerk');
     expect(voorstel).toBeDefined();
     // geen ongemerkte wijzigingen (slew_s, max_hz): lagen in uurwerk ontstaan per seconde, dat los je niet in de hub op

@@ -8,7 +8,7 @@ import { valideerManifest } from '../src/protocol/manifest.js';
 import { leesVanApp, leesNaarApp } from '../src/protocol/berichten.js';
 import { maakDriver, valideerStatisch, laadStatisch, startDrivers, midiBytes, verbBericht, APPS_MAP } from '../src/drivers/index.js';
 import { CHECK_TIMEOUT_MS, POST_TIMEOUT_MS } from '../src/drivers/http.js';
-import { genereer, opmaak, leesParamsH, leesPresets, naarGenormaliseerd, sedimentManifest, sceneKitManifest, VERBODEN_CC } from '../tools/genereer-manifesten.mjs';
+import { genereer, opmaak, leesParamsH, leesPresets, naarGenormaliseerd, sedimentManifest, sceneKitManifest, VERBODEN_CC, PANIEK_CC } from '../tools/genereer-manifesten.mjs';
 import { laadConfig } from '../src/config.js';
 
 /** Kleine nep-kern volgens het contract (src/core/kern.js): verbind / ontvang / verbreek. */
@@ -355,12 +355,22 @@ describe('MIDI-driver (av-scene-kit → "VARVE-HUB TD")', () => {
     ]);
   });
 
-  it('sediment: alle 22 parameters op eigen CC, geen botsing met CC 1/7/10/64', () => {
+  // Golf 6: Sediment kreeg een paniek-trigger op CC 123 (All Notes Off). Dat is een bewuste uitzondering op
+  // VERBODEN_CC (PANIEK_CC in tools/genereer-manifesten.mjs, docs/VOLGENDE-KOPPELINGEN.md §5.4): CC 123 is een
+  // kanaalmodus-bericht en mag nooit een parameter zijn, maar is precies wat een paniek moet doen. Deze test
+  // telt dus alleen de waarde-parameters (22, geen verboden CC) en controleert apart dat paniek de enige
+  // trigger is en de enige op een verboden CC.
+  it('sediment: alle 22 parameters op eigen CC, geen botsing met CC 1/7/10/64; alleen paniek op CC 123', () => {
     const s = leesApp('sediment.json');
-    const ccs = Object.values(s.driver.map).map((d) => d.cc);
+    const waarden = s.params.filter((p) => p.soort === 'waarde').map((p) => p.id);
+    const ccs = waarden.map((id) => s.driver.map[id].cc);
     expect(ccs).toHaveLength(22);
     expect(new Set(ccs).size).toBe(22);
     for (const cc of ccs) expect(VERBODEN_CC).not.toContain(cc);
+    expect(s.params.filter((p) => p.soort !== 'waarde').map((p) => [p.id, p.soort])).toEqual([['paniek', 'trigger']]);
+    expect(s.driver.map.paniek).toEqual({ cc: PANIEK_CC });
+    expect(PANIEK_CC).toBe(123);
+    expect(Object.entries(s.driver.map).filter(([, d]) => VERBODEN_CC.includes(d.cc)).map(([id]) => id)).toEqual(['paniek']);
     const klok = new NepKlok(), systeem = new NepSysteem(), kern = new NepKern();
     const d = maakDriver(s, { systeem, klok });
     d.start(kern);
@@ -689,7 +699,7 @@ describe('genereer-manifesten', () => {
     expect(naarGenormaliseerd(1000, 30, 18000, 1000)).toBeCloseTo(0.5, 6); // centre ligt op 0.5
     expect(naarGenormaliseerd(0.18, 0, 1, -1)).toBeCloseTo(0.18);
     const m = sedimentManifest(specs, { naam: 'Sediment', kleur: '#ffffff', midipoort: 'P' });
-    expect(m.params.map((p) => p.id)).toEqual(['cutoff', 'echo_mix']);
+    expect(m.params.map((p) => p.id)).toEqual(['cutoff', 'echo_mix', 'paniek']); // paniek komt altijd mee, buiten SEDIMENT_CC
     expect(valideerStatisch(m).ok).toBe(true);
   });
 
@@ -719,12 +729,17 @@ describe('genereer-manifesten', () => {
       expect(readFileSync(join(APPS_MAP, naam), 'utf8')).toBe(opmaak(m));
     }
     const kit = uit['av-scene-kit.json'];
-    expect(Object.values(kit.driver.map).map((d) => d.cc ?? d.noot)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41]);
+    // Met de TD-patch (koppelingen/av-scene-kit) staat midi.pads.paniek = 42 in de kit; daarvoor niet.
+    const paniek = JSON.parse(readFileSync('/home/user/av-scene-kit/config.json', 'utf8')).midi.pads.paniek;
+    const extra = paniek === undefined ? [] : [paniek];
+    expect(Object.values(kit.driver.map).map((d) => d.cc ?? d.noot)).toEqual([20, 21, 22, 23, 24, 25, 26, 27, 36, 37, 38, 39, 40, 41, ...extra]);
     expect(kit.driver.kanaal).toBe(0);
     expect(kit.params.find((p) => p.id === 'record').soort).toBe('trigger');
-    expect(kit.driver.presets.map((p) => p.noot)).toEqual([36, 37, 38, 39]);
+    expect(kit.driver.presets.map((p) => p.noot)).toEqual([36, 37, 38, 39, ...extra]);
     expect(kit.driver.presets[0].waarden).toEqual(Object.fromEntries(kit.params.filter((p) => p.soort === 'waarde').map((p) => [p.id, p.standaard])));
     expect(Object.fromEntries(kit.params.filter((p) => p.rol).map((p) => [p.id, p.rol]))).toMatchObject({ hue: 'macro.kleur', orbit: 'macro.beweging', emission: 'macro.intensiteit' });
-    expect(uit['sediment.json'].params).toHaveLength(22);
+    // 22 parameters uit Params.h plus de paniek-trigger op CC 123 (golf 6, zie de sediment-test hierboven)
+    expect(uit['sediment.json'].params.filter((p) => p.soort === 'waarde')).toHaveLength(22);
+    expect(uit['sediment.json'].params.at(-1)).toMatchObject({ id: 'paniek', soort: 'trigger' });
   });
 });

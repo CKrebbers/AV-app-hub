@@ -2,7 +2,7 @@
 // @ts-check
 // Maakt de statische manifesten van passieve MIDI-apps opnieuw uit hun bronbestanden:
 //   apps/av-scene-kit.json  ← av-scene-kit/config.json (+ presets uit td/td_build_hub.py)
-//   apps/sediment.json      ← sediment/src/Params.h
+//   apps/sediment.json      ← sediment/src/Params.h (+ trigger paniek op CC 123, PANIEK_CC)
 // Naam, kleur en MIDI-poort komen uit de config.json van de hub (huisregel 6).
 //
 //   node tools/genereer-manifesten.mjs [--scene-kit /home/user/av-scene-kit] [--sediment /home/user/sediment] [--uit apps] [--toets]
@@ -79,6 +79,13 @@ export function sceneKitManifest(kit, app, presets = []) {
   // TD togglet opname en take-log zelf bij elke note-on (td_build_hub.py onOffToOn): dus triggers, geen schakelaars.
   if (pads.record !== undefined) { params.push({ id: 'record', naam: 'Opname aan/uit', soort: 'trigger', hint: 'pad', groep: 'opname' }); map.record = { noot: pads.record }; }
   if (pads.takelog !== undefined) { params.push({ id: 'takelog', naam: 'Take-log aan/uit', soort: 'trigger', hint: 'pad', groep: 'opname' }); map.takelog = { noot: pads.takelog }; }
+  // Paniek (LPD8-P1 vasthouden, of Stop All met TD in focus): alleen als de kit er een noot voor heeft
+  // (config.json → midi.pads.paniek, docs/VOLGENDE-KOPPELINGEN.md §4.4). TD zet dan zelf knob8 (master-dim)
+  // op 0 en houdt hem daar tot de fader 0 kruist; zonder die noot in de kit stuurt de hub hem niet (TD zou
+  // hem negeren en de hub zou ten onrechte denken dat de master dicht is).
+  const masterId = knopIds[7] ?? null;
+  const paniekNoot = pads.paniek;
+  if (paniekNoot !== undefined) { params.push({ id: 'paniek', naam: 'Paniek: master dicht', soort: 'trigger', hint: 'pad', groep: 'veilig' }); map.paniek = { noot: paniekNoot }; }
   const scenes = presets.slice(0, 4).map((p) => p.naam.slice(0, 32));
   // Een preset-noot laat TD zelf alle knoppen op de presetwaarden zetten (apply_preset); de driver meldt
   // die waarden dan aan de kern, zodat ringen en pickup TD volgen.
@@ -86,6 +93,9 @@ export function sceneKitManifest(kit, app, presets = []) {
     noot: pads[`preset${i + 1}`],
     waarden: Object.fromEntries(knopIds.map((id, k) => [id, p.knoppen[k]]).filter(([id, v]) => id !== null && Number.isFinite(v))),
   })).filter((p) => p.noot !== undefined);
+  // De paniek-noot zet in TD de master op 0: de driver meldt dat aan de kern (zoals een preset), zodat de
+  // hub-pickup van master_dim ook op 0 wacht.
+  if (paniekNoot !== undefined && masterId !== null) presetWaarden.push({ noot: paniekNoot, waarden: { [masterId]: 0 } });
   return {
     v: 1, app: 'av-scene-kit', naam: app.naam, ...(app.kleur ? { kleur: app.kleur } : {}), truth: 'hub', hb_s: 1, lease: false,
     scenes,
@@ -108,6 +118,13 @@ export function sceneKitManifest(kit, app, presets = []) {
  */
 export const SEDIMENT_CC = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119];
 export const VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123, 124, 125, 126, 127];
+/**
+ * De ene bewuste uitzondering op VERBODEN_CC: CC 123 (All Notes Off) is een kanaalmodus-bericht, nooit een
+ * parameter, maar wel precies wat een paniek moet doen. Alleen de trigger `paniek` krijgt hem
+ * (docs/VOLGENDE-KOPPELINGEN.md §5.4, docs/LOGIC.md). De driver stuurt bij indrukken CC 123 = 127 en bij
+ * loslaten CC 123 = 0; All Notes Off kijkt niet naar de waarde, dus beide zetten alle noten uit.
+ */
+export const PANIEK_CC = 123;
 
 const EENHEID = /** @type {Record<string, string>} */ ({ Percent: '%', Cents: 'ct', Hz: 'Hz', Seconds: 's', Ms: 'ms', Db: 'dB' });
 const SEDIMENT_EXTRA = /** @type {Record<string, { rol?: string, hint?: 'fader'|'knop' }>} */ ({
@@ -172,13 +189,17 @@ export function sedimentManifest(specs, app) {
     });
     map[id] = { cc: SEDIMENT_CC[i] };
   });
+  // Paniek: buiten SEDIMENT_CC om, op de uitzondering PANIEK_CC (zie boven). Een waarde-parameter komt nooit op een verboden CC.
+  for (const [id, d] of Object.entries(map)) if (VERBODEN_CC.includes(d.cc)) throw new Error(`sediment: ${id} op verboden CC ${d.cc}`);
+  params.push({ id: 'paniek', naam: 'Paniek: alle noten uit', soort: 'trigger', hint: 'pad', groep: 'veilig' });
+  map.paniek = { cc: PANIEK_CC };
   return {
     v: 1, app: 'sediment', naam: app.naam, ...(app.kleur ? { kleur: app.kleur } : {}), truth: 'hub', hb_s: 1, lease: false,
     scenes: [],
     params,
     driver: {
       soort: 'midi', poort: app.midipoort ?? 'VARVE-HUB Logic', kanaal: 0, map,
-      _bron: 'tools/genereer-manifesten.mjs ← sediment/src/Params.h; koppelen in Logic: docs/LOGIC.md',
+      _bron: 'tools/genereer-manifesten.mjs ← sediment/src/Params.h; paniek = CC 123 (PANIEK_CC); koppelen in Logic: docs/LOGIC.md',
     },
   };
 }

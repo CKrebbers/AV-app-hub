@@ -1,0 +1,157 @@
+From 27e21719f23cb4208b40006f5fbdd54ba1823ab2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 4 Oct 2026 04:11:31 +0000
+Subject: [PATCH] TD: paniek-pad 42 (varve-hub LPD8-P1) zet de master dicht
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+config.json → midi.pads.paniek = 42 (vrij: 36–41 bezet). In de pads-DAT van
+td_build_hub.py zet een note-on op die noot knob8 (master-dim → opacity van
+dim) vast op 0, los van de pickup-stand: preset_base.knob8 = 0, pickup_mask 0,
+pickup_inv 1, picked['knob8'] = False. De master komt terug met een preset-pad
+of als de fader 0 kruist (fader omlaag, dan weer op). De andere knoppen en de
+preset blijven staan. Zonder midi.pads.paniek doet noot 42 niets.
+
+De varve-hub stuurt deze noot bij LPD8-P1 (1 s vasthouden) en bij Stop All met
+Scene Kit in focus, en meldt zelf master_dim = 0 (driver.presets), zodat de
+hub-pickup ook op 0 wacht. Achtergrond: AV-app-hub
+docs/VOLGENDE-KOPPELINGEN.md §4.4, koppelingen/av-scene-kit/LEESMIJ.md.
+
+_mock_td_test.py: notescope 36–42, paniek-tak (vast op 0, andere knoppen
+blijven, terug bij 0-kruising of preset, config zonder paniek).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ config.json         |  2 +-
+ td/_mock_td_test.py | 27 ++++++++++++++++++++++++++-
+ td/td_build_hub.py  | 23 ++++++++++++++++++++---
+ 3 files changed, 47 insertions(+), 5 deletions(-)
+
+diff --git a/config.json b/config.json
+index 9346b34..e08c6af 100644
+--- a/config.json
++++ b/config.json
+@@ -12,7 +12,7 @@
+     "channel": 1,
+     "devices": {"controller": 1, "td2l": 2, "l2td": 3},
+     "knob_cc": [20, 21, 22, 23, 24, 25, 26, 27],
+-    "pads": {"preset1": 36, "preset2": 37, "preset3": 38, "preset4": 39, "record": 40, "takelog": 41},
++    "pads": {"preset1": 36, "preset2": 37, "preset3": 38, "preset4": 39, "record": 40, "takelog": 41, "paniek": 42},
+     "energy": {"channel": 2, "note": 48, "thresh": 0.35}
+   },
+   "knobs": {
+diff --git a/td/_mock_td_test.py b/td/_mock_td_test.py
+index e219857..38fbfa1 100644
+--- a/td/_mock_td_test.py
++++ b/td/_mock_td_test.py
+@@ -417,7 +417,7 @@ def run():
+     rec = hub.op('rec')
+     check(rec.par.uniquesuff.val is True and rec.par.videocodec.val == 'prores', 'rec: uniquesuff aan, codec prores')
+     mi = hub.op('midi_in')
+-    check(mi.par.controlind.val == '20 21 22 23 24 25 26 27' and mi.par.notescope.val == '36 37 38 39 40 41'
++    check(mi.par.controlind.val == '20 21 22 23 24 25 26 27' and mi.par.notescope.val == '36 37 38 39 40 41 42'
+           and mi.par.norm.val == 'off' and mi.par.notenorm.val == '0to1' and mi.par.id.val == 1,
+           'midi_in: controlind/notescope/norm/id')
+     check(hub.op('midi_logic').par.id.val == 3 and hub.op('midi_out').par.id.val == 2, 'device-ids L2TD 3 / TD2L 2')
+@@ -518,6 +518,31 @@ def run():
+     pads.onOffToOn(Chan('ch1n36', 1), 0, 1, 0)
+     check(hub.fetch('preset') == 1 and hub.op('pickup_mask')['knob1'].eval() == 0, 'pad 36 → preset 1, pickup reset')
+ 
++    # paniek (pad 42, varve-hub LPD8-P1): master (knob8) vast op 0, los van de pickup; andere knoppen blijven
++    base, mask, inv = hub.op('preset_base'), hub.op('pickup_mask'), hub.op('pickup_inv')
++    pick.onValueChange(Chan('knob8', 0.9), 0, 0.9, 0.0)        # eerste event van knob8: genegeerd
++    pick.onValueChange(Chan('knob8', 1.0), 0, 1.0, 0.9)        # passeert preset 1 (1.00): opgepakt
++    check(mask['knob8'].eval() == 1, 'knob8 opgepakt vóór paniek')
++    k1 = base['knob1'].eval()
++    pads.onOffToOn(Chan('ch1n42', 1), 0, 1, 0)
++    check(base['knob8'].eval() == 0 and mask['knob8'].eval() == 0 and inv['knob8'].eval() == 1
++          and hub.fetch('pickup')['knob8'] is False, 'pad 42 → paniek: knob8 vast op 0 (ctrl.knob8 = 0)')
++    check(base['knob1'].eval() == k1 and hub.fetch('preset') == 1, 'paniek laat andere knoppen en preset staan')
++    check(ui_status_log[-1].startswith('PANIEK'), 'paniek → status PANIEK')
++    pick.onValueChange(Chan('knob8', 0.5), 0, 0.5, 1.0)        # fader omlaag, nog niet bij 0
++    check(mask['knob8'].eval() == 0, 'na paniek: knob8 op 0.5 nog niet opgepakt')
++    pick.onValueChange(Chan('knob8', 0.01), 0, 0.01, 0.5)      # kruist 0 (PICK_EPS): weer live
++    check(mask['knob8'].eval() == 1 and inv['knob8'].eval() == 0, 'na paniek: knob8 kruist 0 → weer opgepakt')
++    pads.onOffToOn(Chan('ch1n42', 1), 0, 1, 0)
++    pads.apply_preset(1)
++    check(base['knob8'].eval() == 1.0, 'preset na paniek zet de master terug op de presetwaarde')
++    no_pan = dict(pads.NOTES)
++    no_pan.pop('paniek')
++    pads.NOTES = no_pan
++    pads.onOffToOn(Chan('ch1n42', 1), 0, 1, 0)                 # config zonder paniek: noot 42 doet niets
++    check(base['knob8'].eval() == 1.0, 'zonder midi.pads.paniek: geen paniek, geen fout')
++    pads.NOTES = dict(no_pan, paniek=42)
++
+     # osc/grid data (kanaalnamen slash-vrij in to_blender)
+     hub.op('osc_in').vals = {'cam_g_0': 0.3, 'cam_energy': 0.5, 'cam_fps': 29.7}
+     hub.op('to_blender').vals = {'knob4': 0.2, 'energy': 0.5, 'g12': 0.1, 'kick': 0.7}
+diff --git a/td/td_build_hub.py b/td/td_build_hub.py
+index 77e3260..57a522b 100644
+--- a/td/td_build_hub.py
++++ b/td/td_build_hub.py
+@@ -52,7 +52,7 @@ _DEFAULTS = {
+              "devices": {"controller": 1, "td2l": 2, "l2td": 3},
+              "knob_cc": [20, 21, 22, 23, 24, 25, 26, 27],
+              "pads": {"preset1": 36, "preset2": 37, "preset3": 38, "preset4": 39,
+-                      "record": 40, "takelog": 41},
++                      "record": 40, "takelog": 41, "paniek": 42},
+              "energy": {"channel": 2, "note": 48, "thresh": 0.35}},
+     "video": {"out_w": 720, "out_h": 1280, "fps": 30,
+               "syphon_cam": "ESP32", "syphon_blender": "Blender", "ndi_blender": ""},
+@@ -775,12 +775,13 @@ try:
+ except Exception as e:  # noqa: BLE001
+     _warn.append(f"presets-tabel niet gevuld: {e}")
+ 
+-# --- pads: presets (soft-takeover) / record / take-log
++# --- pads: presets (soft-takeover) / record / take-log / paniek
+ pad_exec = mk(hub, chopexecDAT, 'pads', X3 + 150, 0)
+ setp(pad_exec, 'notes', 'chop')
+ setp(pad_exec, True, 'offtoon')
+ pad_exec.text = f'''
+-# Pads 1–4 = preset uit `presets`; pad record/takelog = toggles. Soft-takeover-state in hub-storage.
++# Pads 1–4 = preset uit `presets`; pad record/takelog = toggles; pad paniek (varve-hub LPD8-P1) = master dicht.
++# Soft-takeover-state in hub-storage.
+ NOTES = {PAD_NOTES!r}
+ CH = {MIDI_CH!r}
+ KNOBS = {KNOB_NAMES!r}
+@@ -788,6 +789,7 @@ FX = {{'sort': 'fx_sort', 'palette': 'fx_palette', 'shift': 'fx_shift'}}
+ FX_OK = {fx_ok!r}
+ FX_COLS = {FX_COLS!r}
+ PICK_EPS = 0.02
++MASTER = 'knob8'   # master-dim → opacity van dim
+ ''' + '''
+ import time
+ 
+@@ -850,6 +852,19 @@ def knob_moved(name, val, prev):
+         _set_const(op('pickup_mask'), name, 1)
+         _set_const(op('pickup_inv'), name, 0)
+ 
++def paniek():
++    """Master dicht, los van de pickup-stand: knob8 vastgehouden op 0 tot de fader 0 kruist.
++    Zelfde mechaniek als apply_preset, maar alleen voor de master; de andere knoppen blijven staan.
++    De master komt terug met een preset-pad of door de master-fader naar 0 en weer omhoog te draaien."""
++    _set_const(op('preset_base'), MASTER, 0.0)
++    _set_const(op('pickup_mask'), MASTER, 0)
++    _set_const(op('pickup_inv'), MASTER, 1)
++    hub = parent()
++    picked = dict(hub.fetch('pickup', {}))
++    picked[MASTER] = False
++    hub.store('pickup', picked)
++    ui.status = 'PANIEK: master dicht (fader naar 0 en weer op, of een preset)'
++
+ def set_record(on):
+     """Rec aan/uit; take-log start/stopt mee (tenzij die al handmatig liep). rec-start = log-t0."""
+     hub = parent()
+@@ -876,6 +891,8 @@ def onOffToOn(channel, sampleIndex, val, prev):
+     hub = parent()
+     if n == 'ch%dn%d' % (CH, NOTES['record']):
+         set_record(not op('rec').par.record.eval())
++    elif 'paniek' in NOTES and n == 'ch%dn%d' % (CH, NOTES['paniek']):
++        paniek()
+     elif n == 'ch%dn%d' % (CH, NOTES['takelog']):
+         # optioneel handmatig; t blijft relatief aan rec-start als rec loopt
+         on = not hub.fetch('takelog_on', False)
+-- 
+2.43.0
+
