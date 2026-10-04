@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { opzet, meldAan, FL } from './kern-hulp.js';
-import { startHub, isOpnameFout } from '../src/hub.js';
+import { startHub, isOpnameFout, opnameMeldingen } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
 
@@ -89,21 +89,53 @@ describe('hub: Opnemer-meldingen naar beeld.opnameInfo', () => {
     expect(isOpnameFout('iets anders', new Error('EACCES'))).toBe(true);
   });
 
+  it('een fout van deze avond blijft staan tot een nieuwe avond begint', () => {
+    /** @type {any} */ let info = {};
+    const m = opnameMeldingen((x) => { info = { ...info, ...x }; });
+    m.melding('opname gestart — map wordt gemaakt in /x…');
+    m.melding('opname loopt: /x/a');
+    expect(info).toEqual({ melding: 'opname loopt: /x/a', fout: false });
+    m.melding('opname: samenvatting niet geschreven in /x/a — ENOSPC', new Error('ENOSPC'));
+    m.melding('opname klaar: /x/a (1:00, 10 regels)');
+    expect(info).toEqual({ melding: 'opname klaar: /x/a (1:00, 10 regels) — maar: samenvatting niet geschreven in /x/a — ENOSPC', fout: true });
+    // schrijven lukte weer, maar er gingen regels verloren: toch rood
+    m.melding('opname gestart — map wordt gemaakt in /x…');
+    m.melding('opname: kan niet schrijven in /x — ENOSPC', new Error('ENOSPC'));
+    m.melding('opname: schrijven lukt weer (/x/b/gebaren.jsonl)');
+    expect(info.fout).toBe(false);
+    m.melding('opname klaar: /x/b (1:00, 10 regels, 3 verloren)');
+    expect(info.fout).toBe(false);
+    m.klaar({ verloren: 3 });
+    expect(info).toEqual({ melding: 'opname klaar: /x/b (1:00, 10 regels, 3 verloren)', fout: true });
+    // een nieuwe avond: weer schoon
+    m.melding('opname gestart — map wordt gemaakt in /x…');
+    m.melding('opname klaar: /x/c (0:10, 2 regels)');
+    m.klaar({ verloren: 0 });
+    expect(info).toEqual({ melding: 'opname klaar: /x/c (0:10, 2 regels)', fout: false });
+  });
+
   /** @type {(() => Promise<void>)[]} */
   const lopend = [];
   afterEach(async () => { for (const f of lopend.splice(0).reverse()) await f(); });
 
-  /** Bestanden in het geheugen; `kapot` = elke mkdir mislukt met die code. @param {string|null} [kapot] */
-  function nepBestanden(kapot = null) {
+  /**
+   * Bestanden in het geheugen; `kapot` = elke mkdir mislukt met die code; `vol` = appendFile en/of writeFile
+   * mislukken met ENOSPC (schijf vol).
+   * @param {string|null} [kapot] @param {{ append?: boolean, write?: boolean }} [vol]
+   */
+  function nepBestanden(kapot = null, vol = {}) {
     const mappen = new Set();
+    const enospc = (/** @type {string} */ pad) => Object.assign(new Error(`ENOSPC: no space left on device, write '${pad}'`), { code: 'ENOSPC' });
     return {
       mappen,
-      async mkdir(/** @type {string} */ pad) {
+      async mkdir(/** @type {string} */ pad, /** @type {{ recursive?: boolean }} */ o = {}) {
         if (kapot) throw Object.assign(new Error(`${kapot}: ${pad}`), { code: kapot });
-        if (mappen.has(pad)) throw Object.assign(new Error('EEXIST'), { code: 'EEXIST' });
+        if (mappen.has(pad) && !o.recursive) throw Object.assign(new Error('EEXIST'), { code: 'EEXIST' });
         mappen.add(pad);
       },
-      async appendFile() {}, async writeFile() {}, async truncate() {},
+      async appendFile(/** @type {string} */ pad) { if (vol.append) throw enospc(pad); },
+      async writeFile(/** @type {string} */ pad) { if (vol.write) throw enospc(pad); },
+      async truncate() {},
     };
   }
 
@@ -147,11 +179,48 @@ describe('hub: Opnemer-meldingen naar beeld.opnameInfo', () => {
     expect(h.kern.beeld().opname).toBe(true);
   });
 
-  it('geen avondmap in config.json: meteen een fout', async () => {
+  it('geen avondmap in config.json: meteen een fout, en geen sinds (er loopt niets, dus ook geen looptijd)', async () => {
     const h = await hub({ avondmap: '', bestanden: nepBestanden() });
     p4(h);
-    expect(h.kern.beeld().opnameInfo).toMatchObject({ map: null, fout: true });
+    expect(h.kern.beeld().opname).toBe(true);   // de pad-4-toggle staat aan…
+    expect(h.kern.beeld().opnameInfo).toMatchObject({ map: null, fout: true, sinds: null });   // …maar er wordt niets opgenomen
     expect(h.kern.beeld().opnameInfo.melding).toMatch(/geen "avondmap"/);
-    expect(typeof h.kern.beeld().opnameInfo.sinds).toBe('number');
+  });
+
+  /** Opname aan, wachten tot hij loopt, en weer uit; geeft de opnameInfo als de avond is afgesloten. @param {any} h */
+  async function neemOp(h) {
+    p4(h);
+    await tot(() => h.kern.beeld().opnameInfo.map);
+    await wacht(120);   // een paar spoelingen (spoelMs 50)
+    p4(h);
+    await h.opnemer.afgesloten;
+    return h.kern.beeld().opnameInfo;
+  }
+
+  it('samenvatting niet geschreven (schijf vol): de fout verdwijnt niet achter "opname klaar"', async () => {
+    const h = await hub({ bestanden: nepBestanden(null, { write: true }) });
+    const info = await neemOp(h);
+    expect(info.fout).toBe(true);
+    expect(info.melding).toMatch(/^opname klaar: /);
+    expect(info.melding).toMatch(/samenvatting niet geschreven/);
+  });
+
+  it('schijf vol tijdens de opname: na stoppen blijft het rood (regels verloren)', async () => {
+    const h = await hub({ bestanden: nepBestanden(null, { append: true }) });
+    const info = await neemOp(h);
+    expect(info.melding).toMatch(/^opname klaar: /);
+    expect(info.fout).toBe(true);
+    expect(info.melding).toMatch(/ENOSPC|verloren/);
+  });
+
+  it('een nieuwe opname begint weer zonder fout', async () => {
+    const b = nepBestanden(null, { write: true });
+    const h = await hub({ bestanden: b });
+    expect((await neemOp(h)).fout).toBe(true);
+    // .. ruimte vrijgemaakt, nieuwe avond
+    b.writeFile = async () => {};
+    const info = await neemOp(h);
+    expect(info).toMatchObject({ fout: false });
+    expect(info.melding).toMatch(/^opname klaar: .*-2 /);
   });
 });

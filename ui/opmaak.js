@@ -109,19 +109,24 @@ export function looptijdTekst(ms) {
 
 /**
  * Opname-stand uit het beeld (PROTOCOL.md §8): loopt hij, de mapnaam, hoe lang hij al loopt (op het moment
- * van het beeld; de cockpit telt zelf door), en de laatste melding. Robuust tegen ontbrekende velden.
+ * van het beeld; de cockpit telt zelf door), en de laatste melding. `niets`: pad 4 staat aan, maar er komt
+ * niets op schijf (een fout en geen map: geen avondmap, map niet schrijfbaar) — dan geen gewone REC en geen
+ * looptijd. Robuust tegen ontbrekende velden.
  * @param {any} beeld
- * @returns {{ aan: boolean, map: string, looptijdMs: number|null, melding: string, fout: boolean }}
+ * @returns {{ aan: boolean, niets: boolean, map: string, looptijdMs: number|null, melding: string, fout: boolean }}
  */
 export function opnameVan(beeld) {
   const info = beeld && typeof beeld.opnameInfo === 'object' && beeld.opnameInfo ? beeld.opnameInfo : {};
   const aan = beeld?.opname === true;
   const nu = typeof beeld?.nu === 'number' && Number.isFinite(beeld.nu) ? beeld.nu : null;
   const sinds = typeof info.sinds === 'number' && Number.isFinite(info.sinds) ? info.sinds : null;
+  const map = aan ? mapNaamVan(info.map) : '';
+  const niets = aan && !map && info.fout === true;
   return {
     aan,
-    map: aan ? mapNaamVan(info.map) : '',
-    looptijdMs: aan && nu !== null && sinds !== null ? Math.max(0, nu - sinds) : null,
+    niets,
+    map,
+    looptijdMs: aan && !niets && nu !== null && sinds !== null ? Math.max(0, nu - sinds) : null,
     melding: typeof info.melding === 'string' ? info.melding : '',
     fout: info.fout === true,
   };

@@ -119,13 +119,17 @@ export function maakLpd8(root, { stuur }) {
         if (typeof v === 'number' && !bezig.has(`k${i + 1}`)) zetStand(`k${i + 1}`, v);
       });
     },
-    /** Opname-stand (beeld.opname) op P4 'gebaren': rood zolang de avond wordt opgenomen. @param {boolean} aan */
-    zetOpname(aan) {
+    /**
+     * Opname-stand (beeld.opname) op P4 'gebaren': rood zolang de avond wordt opgenomen; `niets` = pad 4 staat
+     * aan maar er wordt niets bewaard (gestreepte rand). @param {boolean} aan @param {boolean} [niets]
+     */
+    zetOpname(aan, niets = false) {
       const d = el.get('p4');
       if (!d) return;
       d.classList.toggle('opneemt', aan);
+      d.classList.toggle('niets', aan && niets);
       d.setAttribute('aria-pressed', String(aan));
-      d.setAttribute('aria-label', `LPD8 pad 4: ${PAD_NAMEN[3]}${aan ? ' — opname loopt' : ''}`);
+      d.setAttribute('aria-label', `LPD8 pad 4: ${PAD_NAMEN[3]}${aan ? (niets ? ' — aan, maar er wordt niets bewaard' : ' — opname loopt') : ''}`);
     },
     /** @param {any} g */
     invoer(g) {

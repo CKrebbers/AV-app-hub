@@ -108,9 +108,11 @@ const opnameKlok = { aan: false, looptijdMs: /** @type {number|null} */ (null), 
 function tekenOpname(o) {
   const rec = $('rec');
   rec.hidden = !o.aan;
-  rec.classList.toggle('zonder-map', o.aan && !o.map);
-  /** @type {HTMLElement} */ (rec.querySelector('.rec-map')).textContent = o.map;
-  rec.title = o.aan ? `de avond wordt opgenomen${o.map ? ` in ${o.map}` : ''} (LPD8-pad 4)` : '';
+  // Pad 4 staat aan, maar er komt niets op schijf (fout en geen map): geen rode REC met looptijd die doortelt.
+  rec.classList.toggle('niets', o.niets);
+  /** @type {HTMLElement} */ (rec.querySelector('.rec-map')).textContent = o.niets ? '— niets bewaard' : o.map;
+  rec.title = !o.aan ? '' : o.niets ? 'LPD8-pad 4 staat aan, maar er wordt niets bewaard — zie de melding'
+    : `de avond wordt opgenomen${o.map ? ` in ${o.map}` : ''} (LPD8-pad 4)`;
   Object.assign(opnameKlok, { aan: o.aan, looptijdMs: o.looptijdMs, t: performance.now() });
   tekenLooptijd();
   // De laatste melding blijft staan tot er een andere komt (ook na het stoppen: 'opname klaar: …').
@@ -119,7 +121,7 @@ function tekenOpname(o) {
   m.title = o.melding;
   m.hidden = !o.melding;
   m.classList.toggle('fout', o.fout);
-  lpd.zetOpname(o.aan);
+  lpd.zetOpname(o.aan, o.niets);
 }
 
 function tekenLooptijd() {
@@ -188,9 +190,10 @@ function tekenApps(apps, focus) {
 
 let huidigeParams = '';
 /**
- * zet: de bediening op v zetten. glij: een lopende slew tonen (tussen = waar de app nu is, doel = waar hij heen
- * glijdt, null = jouw eigen waarde); tussen null = hij glijdt niet.
- * @type {Map<string, { zet: (v: number) => void, glij: (tussen: number|null, doel: number|null, restMs?: number|null) => void, rustTot: number }>}
+ * zet: de bediening op v zetten. glij: een lopende slew tonen (tussen = waar de app nu is, doel = waar de hub
+ * hem heen laat glijden; tussen null = hij glijdt niet). bedient: jij hebt hem vast (of liet hem net los):
+ * het getal blijft dan jouw waarde, niet de tussenwaarde.
+ * @type {Map<string, { zet: (v: number) => void, glij: (tussen: number|null, doel: number|null, restMs?: number|null, bedient?: boolean) => void, rustTot: number }>}
  */
 const paramRijen = new Map();
 /** Parameters die je nu bedient: binnenkomende waarden even negeren. @type {Set<string>} */
@@ -232,8 +235,9 @@ function tekenParams(app, slews = new Map()) {
     const slew = slews.get(id) ?? null;
     if (paramBezig.has(id) || nu < r.rustTot) {
       // Je bedient hem (of liet hem net los): de schuif blijft van jou. Glijdt de app nog achter je aan,
-      // dan toont de balk waar hij nu is.
-      r.glij(slew && v !== null ? v : null, null, slew?.restMs);
+      // dan toont de balk waar hij nu is en "→" het doel van de hub (dat kan ook een snapshot of macro zijn).
+      if (slew && v !== null) r.glij(v, slew.doel, slew.restMs, true);
+      else r.glij(null, null);
       continue;
     }
     // Glijdt hij (slew_s, PROTOCOL.md §12), dan staat de schuif op het doel en is de tussenwaarde een aparte
@@ -328,13 +332,14 @@ function paramRij(app, p) {
     s.addEventListener('pointerup', klaar); s.addEventListener('pointercancel', klaar); s.addEventListener('change', klaar);
     s.addEventListener('input', () => stuurGebundeld(Number(s.value)));
     // Slew: balk = tussenwaarde (wat de app nu heeft), streep + "→ 80%" = het doel.
+    rij.classList.add('met-schuif');
     const tussen = document.createElement('i'); tussen.className = 'tussen';
     const doel = document.createElement('i'); doel.className = 'doel';
     const naar = document.createElement('span'); naar.className = 'naar';
     schuif.append(tussen, s, doel, naar);
     rij.append(schuif);
     toon = (v) => { s.value = String(v); };
-    rijStaat.glij = (t, d, restMs) => {
+    rijStaat.glij = (t, d, restMs, bedient = false) => {
       const glijdt = t !== null && Number.isFinite(t);
       rij.classList.toggle('glijdt', glijdt);
       if (!glijdt) { delete rij.dataset.tussen; delete rij.dataset.doel; waarde.textContent = toonWaarde(p, huidige); return; }
@@ -346,7 +351,7 @@ function paramRij(app, p) {
       naar.title = typeof restMs === 'number' ? `glijdt nog ${(restMs / 1000).toLocaleString('nl-NL', { maximumFractionDigits: 1 })} s` : 'glijdt (slew)';
       tussen.title = `nu ${toonWaarde(p, t)}`;
       // Je liet hem los: de schuif staat op het doel, het getal is waar de app nu is. Bedien je hem, dan blijft het jouw getal.
-      if (d !== null) waarde.textContent = toonWaarde(p, t);
+      waarde.textContent = toonWaarde(p, bedient ? huidige : t);
     };
   }
   rij.append(waarde);

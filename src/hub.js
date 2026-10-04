@@ -29,6 +29,38 @@ export function isOpnameFout(tekst, e) {
 }
 
 /**
+ * Opnemer-meldingen → beeld.opnameInfo (melding + fout) voor de cockpit. Het beeld wordt gedrosseld, dus alleen
+ * de laatste melding komt aan; daarom verdwijnt een fout van deze avond niet stilletjes achter 'opname klaar':
+ * die wordt dan samengevoegd ('opname klaar: … — maar: samenvatting niet geschreven …') en blijft rood. Ook een
+ * avond met verloren regels eindigt rood. Pas een nieuwe avond ('opname gestart') begint weer zonder fout.
+ * Let op: hangt af van de tekst van de meldingen in src/opname/opnemer.js en schrijver.js (zie isOpnameFout).
+ * @param {(info: { melding?: string, fout: boolean }) => void} zet
+ */
+export function opnameMeldingen(zet) {
+  /** @type {string|null} de laatste fout van deze avond (null = geen, of 'schrijven lukt weer') */
+  let fout = null;
+  return {
+    /** @param {string} t @param {unknown} [e] */
+    melding(t, e) {
+      const tekst = String(t);
+      if (/^opname gestart/.test(tekst)) fout = null;
+      if (/^opname klaar/.test(tekst)) {
+        if (fout) zet({ melding: `${tekst} — maar: ${fout.replace(/^opname: /, '')}`, fout: true });
+        else zet({ melding: tekst, fout: false });
+        fout = null;
+        return;
+      }
+      const isFout = isOpnameFout(tekst, e);
+      if (isFout) fout = tekst;
+      else if (/^opname: schrijven lukt weer/.test(tekst)) fout = null;   // verloren regels komen bij 'klaar'
+      zet({ melding: tekst, fout: isFout });
+    },
+    /** De avond is afgesloten (Opnemer 'klaar', direct na 'opname klaar'): regels verloren = rood. @param {{ verloren?: number }} [r] */
+    klaar(r) { if ((r?.verloren ?? 0) > 0) zet({ fout: true }); },
+  };
+}
+
+/**
  * @param {{
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
@@ -66,15 +98,16 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
     ...(opname.git !== undefined ? { git: opname.git } : {}), spoelMs: opname.spoelMs,
     lpd8Profiel: () => apparaten.lpd8.profiel,
   });
-  // Cockpit: sinds wanneer er opgenomen wordt (vóór opnemer.koppel, zodat het er al staat als de eerste melding komt).
-  if (opnemer) kern.bij('opname', (/** @type {boolean} */ aan) => kern.zetOpnameInfo({ sinds: aan ? klok.nu() : null }));
   opnemer?.koppel();
+  // Cockpit: sinds wanneer er opgenomen wordt — ná opnemer.koppel, zodat de Opnemer al geprobeerd heeft te
+  // beginnen: zonder avondmap loopt er niets (opnemer.actief false), dan ook geen sinds en geen looptijd.
+  if (opnemer) kern.bij('opname', (/** @type {boolean} */ aan) => kern.zetOpnameInfo({ sinds: aan && opnemer.actief ? klok.nu() : null }));
   await opnemer?.gitKlaar;   // kort (git rev-parse): dan staat de commit ook in de kop van een avond die meteen begint
-  opnemer?.bij('melding', (/** @type {string} */ t, /** @type {unknown} */ e) => {
-    log(t);
-    // Ook naar de cockpit (beeld.opnameInfo): de laatste melding blijft daar staan tot er een nieuwe komt.
-    kern.zetOpnameInfo({ map: opnemer.huidig?.map ?? null, melding: t, fout: isOpnameFout(t, e) });
-  });
+  if (opnemer) {
+    const meldingen = opnameMeldingen((info) => kern.zetOpnameInfo({ map: opnemer.huidig?.map ?? null, ...info }));
+    opnemer.bij('melding', (/** @type {string} */ t, /** @type {unknown} */ e) => { log(t); meldingen.melding(t, e); });
+    opnemer.bij('klaar', (/** @type {{ verloren?: number }} */ r) => meldingen.klaar(r));
+  }
   apparaten.lpd8.bij('profiel', () => opnemer?.profielGewijzigd());
 
   // Echte controllers → kern; hun stand → cockpit.
