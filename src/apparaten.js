@@ -21,9 +21,22 @@ class Sessie extends Zender {
     this.logboek = o.logboek ?? null;
     /** @type {Poort|null} */
     this.poort = null;
+    /** Sturen mislukte sinds de laatste keer dat het lukte (één melding per storing). */
+    this.stuurFout = false;
     this.rij = new Wachtrij({
       klok: o.klok, perBurst: o.led?.per_burst ?? 16, burstMs: o.led?.burst_ms ?? 4,
-      stuur: (b) => { if (!this.poort) return; this.logboek?.midi('uit', this.dev, b); this.poort.stuur(b); },
+      stuur: (b) => {
+        if (!this.poort) return;
+        this.logboek?.midi('uit', this.dev, b);
+        // Het apparaat is net losgetrokken en de hotplug-ronde heeft het nog niet gezien: de poort gooit. Dat mag de
+        // hub niet laten vallen (dit draait in een timer: een uitzondering hier stopte het hele proces).
+        try { this.poort.stuur(b); this.stuurFout = false; } catch (e) {
+          if (this.stuurFout) return;
+          this.stuurFout = true;
+          this.logboek?.regel('melding', { dev: this.dev, wat: 'fout', fout: /** @type {Error} */ (e).message });
+          this.meld('fout', e);
+        }
+      },
     });
     this.aansluiting = new Aansluiting({
       systeem: o.systeem, patroon: o.patroon, klok: o.klok, intervalMs: o.intervalMs,
@@ -34,7 +47,8 @@ class Sessie extends Zender {
   }
   get verbonden() { return this.poort !== null; }
   start() { this.aansluiting.start(); }
-  stop() { this.aansluiting.stop(); this.poort = null; }
+  /** Poort dicht; wat nog in de wachtrij stond kan nergens meer heen (en geen timer blijft op de klok staan). */
+  stop() { this.aansluiting.stop(); this.poort = null; this.rij.wis(); }
   /** @param {number[]} b */
   stuur(b) { this.rij.zet(b); }
   /** @param {Poort} p */
@@ -84,7 +98,9 @@ export class ApcSessie extends Sessie {
   /** Bij afsluiten: alles uit via de wachtrij (niet overspoelen), en wachten tot het verstuurd is. */
   async zwartEnWacht(maxMs = 500) {
     this.zwart();
-    await Promise.race([this.rij.leeg(), new Promise((r) => this.klok.zet(() => r(undefined), maxMs))]);
+    /** @type {any} */ let h;
+    await Promise.race([this.rij.leeg(), new Promise((r) => { h = this.klok.zet(() => r(undefined), maxMs); })]);
+    this.klok.wis(h);   // leeg op tijd: de wachttimer niet laten staan (hield de hub na stop() nog 0,5 s in leven)
   }
 }
 

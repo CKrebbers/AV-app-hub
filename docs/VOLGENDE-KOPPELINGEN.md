@@ -47,13 +47,15 @@ kleinste herstel: §2.3.
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
 | **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:91` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
-Nieuwe driver-soorten komen bij `src/drivers/index.js:26` (`DRIVER_SOORTEN`) en `:33-41` (`maakDriver`), plus
+Nieuwe driver-soorten komen bij `src/drivers/index.js:28` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
-manifest hebben (`src/core/kern.js:734-739`; Stop All: `src/core/kern.js:696`). Geen enkele driver-app heeft die nu
-(`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:196`).
-**LPD8-P1 doet nu dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder.
+manifest hebben (`src/core/kern.js:830-835`; Stop All: `src/core/kern.js:740`). Bij dit onderzoek had geen enkele
+driver-app die (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:230`, `src/drivers/http.js:206`).
+**LPD8-P1 deed toen dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder. *Sinds
+golf 6 hebben uurwerk, Sediment en td-lab een trigger `paniek` in hun statische manifest; Scene Kit volgt na de
+TD-patch in `koppelingen/av-scene-kit/` (PROTOCOL §14).*
 
 ---
 
@@ -192,7 +194,7 @@ database: wat de hub doet is van één luisteraar (Clay), niet van de uitzending
   Lek-herstel en hub-koppeling zijn dus **twee deploys**.
 - Bron van waarheid is het LIVE-bestand, één bestand, geen build. Claude mag geen DDL draaien (alleen anon-key).
 - De pagina draait op `https://varve.nl`. Een verbinding naar `ws://localhost:7700` vraagt dat `https://varve.nl` in
-  `config.json` → `server.origins` staat (`src/transports/server.js:86-95`); en Chrome vraagt bij een publieke site die
+  `config.json` → `server.origins` staat (`src/transports/server.js:88-97`); en Chrome vraagt bij een publieke site die
   `localhost` aanspreekt mogelijk toestemming (Local Network Access) — **op de Mac te proberen**. Alternatief zonder
   die twee: het LIVE-bestand lokaal serveren (`python3 -m http.server`), dan is de origin `localhost` en mag hij altijd.
 
@@ -228,7 +230,7 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
 | `bevries` {aan} | `server.js:30`, `brug.js:128` (`aan !== false`) | ja |
 | `bewaar` {bron:"varve-hub"} | `server.js:19`, `brug.js:84-89` (zonder naam = automatische naam) | ja |
 | `uur` start/stop/meer/minder | `server.js:28`, `brug.js:116-126` (start zonder minuten = 60) | ja |
-| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:226` | ja |
+| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:236` | ja |
 
 **Bevindingen:**
 1. **`truth:"hub"` klopt niet met wat de tab zelf doet.** De tab verandert de macro's zelf: `uur.js:121-122`
@@ -255,7 +257,7 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
   (`brug.js:49`, geeft de patchtekst) en haalt eruit: `licht x` (`taal.js:214`, ontbreekt bij 0), `samenhang x`
   (`:215`, ontbreekt bij 0), `tuinman onrust x [bevroren]` (`:216`) en `dicht x` in de `stem`-regel (`:185`).
   Verschilt iets van wat de hub denkt, dan meldt de driver een `zet` aan de kern (zoals `#meldPreset` in
-  `src/drivers/midi.js:185`). Daarna kan `truth` naar `"app"` (PROTOCOL §1 punt 4): geen replay meer over de tab
+  `src/drivers/midi.js:206`). Daarna kan `truth` naar `"app"` (PROTOCOL §1 punt 4): geen replay meer over de tab
   heen. ~~Ontwerp: `driver.lees = { verb:"toon", elke_s:2, regels: { licht: { patroon:…, bereik:[-1,1], ontbreekt:0 }, … } }`~~
   (vervangen: het interval staat in `config.json`, het bereik komt uit `driver.verbs`).
   **Met tolerantie:** de tab schrijft macro's met twee decimalen (`taal.js:211-216`, `toFixed(2)`); zonder marge
@@ -280,7 +282,10 @@ volgt de buitenwereld en de kern stuurt het niet terug naar de tab (PROTOCOL §1
   onrust x [bevroren]` (onrust en bevries), `licht x`, `samenhang x` (alle drie 0 als de regel ontbreekt) en `dicht x`
   in de `stem`-regel (onbekend zonder stemmen). Het bereik komt uit `driver.verbs` (licht −1..1).
 - **Per app overschrijven of uitzetten:** `driver.lees` in `apps/uurwerk.json` vervangt de standaard; `"lees": false`
-  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Voorbeeld zonder
+  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Een fout in het
+  teruglezen (`driver.lees`, of `STANDAARD_LEES` die niet meer bij de params past) = ! in `varve-hub check`
+  (`valideerStatisch` geeft hem als waarschuwing, met dezelfde melding als de driver): de app speelt gewoon, alleen die
+  regel wordt niet teruggelezen. Voorbeeld zonder
   `dicht` (zie open vraag 4; dit blok staat **niet** in het manifest — dat bestand is in golf 6 ook van "paniek"):
 
 <!-- toets: lees -->
@@ -369,7 +374,7 @@ Precies `apps/uurwerk.json` plus twee triggers (`master_terug`, `paniek`); geen 
 }
 ```
 Wat **paniek** hier betekent: het hoofdvolume van uurwerk naar 0 (de slingers lopen door, de tuinman ook). Pas
-bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:188`). Terug met
+bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:198`). Terug met
 `master_terug` of door in de tab het volume te draaien. De laag krijgt auteur `varve-hub`. Liep de engine nog niet,
 dan start paniek hem (stil, want master 0; `brug.js:51`).
 
@@ -436,7 +441,7 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
      Logic automation op CC 20–27 (track TO_TD, `av-scene-kit/logic/README.md` §3), dan kan de hub niet lager dan
      Logic. En als TO_TD het geselecteerde spoor is, stuurt Logic de CC's van "VARVE-HUB Logic" (Sediment: Shape …
      Resonance = CC 20–27!) door naar L2TD — dan bewegen Sediment-knoppen de TD-knoppen.
-  4. De driver ziet niet of TD luistert (`src/drivers/index.js:147`; `sets/scene-kit.json`, opmerking): de app staat
+  4. De driver ziet niet of TD luistert (`src/drivers/index.js:235`; `sets/scene-kit.json`, opmerking): de app staat
      "actief" zolang de poort open is.
 
 ### 4.3 Beste koppelvorm
@@ -448,7 +453,7 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
   `_set_const(op('preset_base'),'knob8',0)`, `pickup_mask` 0, `pickup_inv` 1, `picked['knob8']=False`. Dan is
   `ctrl.knob8 = 0` → `dim` dicht, **los van de pickup-stand**; de master komt pas terug als de fader 0 kruist (dus
   bewust: fader naar beneden, dan weer op). Wil je een fade i.p.v. een sprong: een Lag CHOP op `ctrl` voor `dim`.
-- De hub weet het via `driver.presets`: noot 42 zet `master_dim` op 0 (`#meldPreset`, `src/drivers/midi.js:185`), dus
+- De hub weet het via `driver.presets`: noot 42 zet `master_dim` op 0 (`#meldPreset`, `src/drivers/midi.js:206`), dus
   ook de hub-pickup wacht tot de fader 0 kruist. `tools/genereer-manifesten.mjs` moet dan voor een pad `paniek` een
   preset-regel `{noot:42, waarden:{master_dim:0}}` maken (de kern herkent de trigger aan zijn id `paniek`).
 - *Gebouwd in golf 6, met één afwijking (uit de review):* "terug pas als de fader 0 kruist" liet hub en TD uit de pas
@@ -497,7 +502,7 @@ Daarnaast een generatieve Scripter-set op vier Sediment-sporen (`sediment/script
 
 ### 5.2 Huidige hub-stand
 `apps/sediment.json` (MIDI-driver "VARVE-HUB Logic", CC 20–31 en 102–111, kanaal 1), `docs/LOGIC.md`.
-`node tools/genereer-manifesten.mjs --toets` → `sediment.json: actueel (22 params)`. Werkt alleen na de
+`node tools/genereer-manifesten.mjs --toets` → `sediment.json: actueel (23 params)` (22 uit `Params.h` plus sinds golf 6 de paniek). Werkt alleen na de
 Controller Assignments in Logic (Klaar-als in `STATUS.md`, golf 1, nog open). **Sediment staat in geen enkele set**
 (`sets/*.json`; ONDERZOEK.md §11 noemde hem in `meditatie`). Geen paniek. *Gebouwd in golf 6 (PROTOCOL §14), volgens §5.4: `apps/sediment.json` heeft nu 23 params.*
 
@@ -524,7 +529,7 @@ Gedrag: JUCE's `Synthesiser` verwerkt All Notes Off als `allNotesOff(kanaal, all
 `sediment/src/dsp/Voice.cpp:108-110`; standaard 7 s, tot 30 s, `Params.h:51`), plus de staarten van echo en galm. Geen
 harde stop: in de praktijk "alle toetsen los". De Scripter-set speelt
 daarna gewoon verder: echte stilte vraagt `output` → 0 (= −30 dB, niet stil). Bij het **loslaten** stuurt de driver
-nog een CC 123 met waarde 0 (`#uit` in `src/drivers/midi.js:138-144`; All Notes Off kijkt niet naar de waarde, dus
+nog een CC 123 met waarde 0 (`#uit` in `src/drivers/midi.js:156-162`; All Notes Off kijkt niet naar de waarde, dus
 nogmaals noten uit). En Logic routeert binnenkomende CC's alleen naar het **geselecteerde** spoor (of naar wat de
 Controller Assignments aanwijzen): met de Scripter-set op vier sporen krijgt alleen dat ene spoor de paniek (open
 vraag 2 en 3). **Op de Mac te proeven:** komt CC 123 via Logic bij het instrument aan?
@@ -596,7 +601,7 @@ in de hub (§1); td-lab deed nergens mee.
   `url` in het manifest is alleen de terugval. (Bij voorkeur zet de hub-config de poort dan ook in `apps.td-lab`, naast
   `bekende_apps.td-lab.tcp`, `config.json:34`.)
 - **Per tik één POST `/exec`** met alle gewijzigde parameters (`c=op('/genesis')\nc.par.Speed=0.7\n…`), laatste
-  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:158-182`, maar per batch i.p.v. per param):
+  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:168-192`, maar per batch i.p.v. per param):
   TD's hoofddraad krijgt hooguit 10 verzoeken per seconde. Waarde = `bereik[0] + v·(bereik[1]-bereik[0])`;
   schakelaar → `True/False`; puls → `c.par.Reseed.pulse()`. **Niet half toepassen:** de batch begint met
   `c=op('/genesis')` en `if c is None: raise RuntimeError('geen comp')`, en elke toewijzing staat in een eigen
@@ -604,7 +609,7 @@ in de hub (§1); td-lab deed nergens mee.
   hernoemde parameter niet de rest van de batch tegenhouden, en telt de batch toch als mislukt.
 - **Antwoord lezen, niet alleen de status:** `/exec` geeft **altijd HTTP 200**, ook als de Python faalde — dan staat
   er `ok:false` in de JSON (`td-lab/bridge/td_bridge.py:124` `out['ok'] = False`, `:146` `statusCode = 200`). Een
-  driver die zoals `src/drivers/http.js:141` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
+  driver die zoals `src/drivers/http.js:151` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
   `gemist`, geen replay. Dus: de body altijd als JSON lezen; `ok:false` of een niet-JSON-antwoord = mislukt →
   `gemist = true` → bij de volgende geslaagde gezondheidscheck opnieuw aanmelden (replay, `truth:"hub"`).
 - **Gezondheid**: POST `/exec` met `(lambda c: c.id if c else None)(op('/genesis'))` (TD-time-out zoals
@@ -855,6 +860,9 @@ eerst de omgeving te repareren; de muzikale waarde van "macro's → prompt" is o
 ---
 
 ## 9. Voorgestelde volgorde
+
+*Stand na golf 6 (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 staan op
+een tak met een PR in dat repo en wachten op Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
 
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|

@@ -156,21 +156,21 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   // De dragende hub-verwijzingen op inhoud: draait ook in CI.
   /** @type {{ pad: string, regel: number, bevat: string }[]} */
   const hubClaims = [
-    { pad: 'src/core/kern.js', regel: 734, bevat: '#paniek(' },
-    { pad: 'src/core/kern.js', regel: 696, bevat: "'stopall'" },
-    { pad: 'src/drivers/midi.js', regel: 138, bevat: '#uit(a)' },
-    { pad: 'src/drivers/midi.js', regel: 185, bevat: '#meldPreset' },
-    { pad: 'src/drivers/midi.js', regel: 209, bevat: 'globaal' },
+    { pad: 'src/core/kern.js', regel: 830, bevat: '#paniek(' },
+    { pad: 'src/core/kern.js', regel: 740, bevat: "'stopall'" },
+    { pad: 'src/drivers/midi.js', regel: 156, bevat: '#uit(a)' },
+    { pad: 'src/drivers/midi.js', regel: 206, bevat: '#meldPreset' },
+    { pad: 'src/drivers/midi.js', regel: 230, bevat: 'globaal' },
     { pad: 'src/drivers/http.js', regel: 25, bevat: 'POST_TIMEOUT_MS = 2000' },
     { pad: 'src/drivers/http.js', regel: 75, bevat: 'huisregel 6' },
-    { pad: 'src/drivers/http.js', regel: 141, bevat: 'r.ok === false' },
-    { pad: 'src/drivers/http.js', regel: 158, bevat: '#zet(' },
-    { pad: 'src/drivers/http.js', regel: 188, bevat: 'alleen bij indrukken' },
-    { pad: 'src/drivers/http.js', regel: 196, bevat: 'globaal' },
-    { pad: 'src/drivers/http.js', regel: 226, bevat: 'tabs === 0' },
-    { pad: 'src/drivers/index.js', regel: 26, bevat: 'DRIVER_SOORTEN' },
+    { pad: 'src/drivers/http.js', regel: 151, bevat: 'r.ok === false' },
+    { pad: 'src/drivers/http.js', regel: 168, bevat: '#zet(' },
+    { pad: 'src/drivers/http.js', regel: 198, bevat: 'alleen bij indrukken' },
+    { pad: 'src/drivers/http.js', regel: 206, bevat: 'globaal' },
+    { pad: 'src/drivers/http.js', regel: 236, bevat: 'tabs === 0' },
+    { pad: 'src/drivers/index.js', regel: 28, bevat: 'DRIVER_SOORTEN' },
     { pad: 'src/doctor.js', regel: 91, bevat: "'osc'" },
-    { pad: 'src/transports/server.js', regel: 86, bevat: 'originToegestaan' },
+    { pad: 'src/transports/server.js', regel: 88, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
     { pad: 'test/drivers.test.js', regel: 753, bevat: 'actueel t.o.v. de bronnen' },
@@ -182,7 +182,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.
-  const VENSTER = 30;
+  const VENSTER = 5;
   it.each(hubClaims)('$pad:$regel bevat "$bevat"', ({ pad, regel, bevat }) => {
     const regels = readFileSync(hubPad(pad), 'utf8').split('\n');
     const buurt = regels.slice(Math.max(0, regel - 1 - VENSTER), regel + VENSTER);

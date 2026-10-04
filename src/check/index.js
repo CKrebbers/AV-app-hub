@@ -18,6 +18,7 @@ import { avondmapPad } from '../opname/opnemer.js';
 import { tokenPad, isLoopbackHost, GELDIG } from '../lan.js';
 import { laadSet as echteLaadSet, laadPaden as echteLaadPaden, poortOpen as echtePoortOpen, PADEN_PAD, toonPad } from '../sets/index.js';
 import { controleerSet, isDriver } from './set.js';
+import { laadStatisch } from '../drivers/index.js';
 import { haal } from './systeem.js';
 
 /** @typedef {'ok'|'let'|'fout'} Status */
@@ -169,12 +170,40 @@ export async function check(o) {
     }
   }
 
+  // De statische manifesten (apps/<app>.json, PROTOCOL.md §2): dezelfde controle als de hub bij het starten van de
+  // drivers (valideerStatisch, ook het teruglezen). Een ongeldig bestand slaat de hub over (één logregel; de app
+  // ontbreekt in de cockpit): ✗, maar alleen voor een app die de hub die avond echt zou starten (startDrivers: niet
+  // bij autostart:false, een td-driver alleen met autostart:true) en, met een set, die in de set staat; anders !.
+  // Een fout in het teruglezen (driver.lees) is !: de app speelt gewoon, alleen die regel wordt niet teruggelezen.
+  const appsMap = join(hubMap, 'apps');
+  if (!fs.existsSync(appsMap)) best('let', 'apps', `geen ${toon(appsMap)}: de hub start geen drivers (uurwerk, td-lab, sediment, …)`, 'haal de map terug uit git (git checkout -- apps)');
+  else {
+    const { statisch, fouten, waarschuwingen } = laadStatisch(appsMap, { fs });
+    /** Zou de hub (startDrivers) deze app vanavond starten, en hoort hij bij de set? @param {string|undefined} app @param {string|undefined} soort */
+    const doetMee = (app, soort) => {
+      if (!app) return true;   // onleesbaar bestand: niet te zeggen, dus ✗
+      const cfg = config.apps?.[app];
+      if (cfg?.autostart === false || (soort === 'td' && cfg?.autostart !== true)) return false;
+      return !def || Object.hasOwn(def.apps ?? {}, app);
+    };
+    for (const f of fouten) {
+      const bestand = f.bestand === appsMap ? toon(appsMap) : `apps/${f.bestand}`;
+      const mee = f.bestand === appsMap || doetMee(f.app, f.soort);
+      best(mee ? 'fout' : 'let', bestand, `${bestand} is ongeldig, de hub slaat die driver over${mee ? '' : ` (${f.app} doet vanavond toch niet mee)`}: ${f.fouten.join('; ')}`, `herstel ${bestand} (PROTOCOL.md §2) en draai check opnieuw`);
+    }
+    for (const w of waarschuwingen) {
+      const bestand = `apps/${w.bestand}`;
+      best('let', bestand, `${bestand}: het teruglezen klopt niet, ${w.app} speelt gewoon maar die regels worden niet teruggelezen: ${w.waarschuwingen.join('; ')}`, `herstel driver.lees in ${bestand} (of STANDAARD_LEES in src/drivers/http.js) en draai check opnieuw`);
+    }
+    if (!fouten.length && !waarschuwingen.length) best('ok', 'apps', `${statisch.length} statische manifest${statisch.length === 1 ? '' : 'en'} in orde${statisch.length ? ` (${statisch.map((s) => s.app).join(', ')})` : ''}`);
+  }
+
   const proefMap = join(hubMap, config.proefmap ?? 'proef');
   const f0 = f0Proeven(fs, proefMap);
   const klaar = f0.filter((x) => x.af);
   if (klaar.length) best('ok', 'proef', `de F0-proef is gedaan (${klaar.length}×, laatst ${klaar.at(-1)?.wanneer})`);
-  else if (f0.length) best('let', 'proef', `de F0-proef is begonnen maar niet afgemaakt (${f0.at(-1)?.wanneer}; geen samenvatting in het logboek)`, 'doe de proef helemaal (npm run proef, ±30-40 min; met o sla je een stap over) en push het bestand');
-  else best('let', 'proef', `de F0-proef is nog nooit gedaan (geen ${toon(proefMap)}/*-f0-hardware.jsonl): wat de hub over je hardware weet, is niet nagemeten`, 'doe de proef (npm run proef, ±30-40 min) en push het bestand');
+  else if (f0.length) best('let', 'proef', `de F0-proef is begonnen maar niet afgemaakt (${f0.at(-1)?.wanneer}; geen samenvatting in het logboek)`, 'doe de proef helemaal (npm run proef, ±35-45 min; met o sla je een stap over) en push het bestand');
+  else best('let', 'proef', `de F0-proef is nog nooit gedaan (geen ${toon(proefMap)}/*-f0-hardware.jsonl): wat de hub over je hardware weet, is niet nagemeten`, 'doe de proef (npm run proef, ±35-45 min) en push het bestand');
 
   const gPad = geheugenPad(config, { env, thuis });
   if (!gPad) best('let', 'geheugen', 'geheugen staat uit (config.json → geheugen.pad): snapshots gaan bij stoppen verloren', 'zet geheugen.pad in config.json als je ze wilt bewaren');

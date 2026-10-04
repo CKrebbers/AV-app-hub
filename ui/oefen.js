@@ -8,7 +8,7 @@
 import { maakApc } from './apc.js';
 import { maakLpd8 } from './lpd8.js';
 import { Verbinding, cockpitUrl } from './verbinding.js';
-import { isVerbonden, toonWaarde } from './opmaak.js';
+import { isVerbonden, toonWaarde, slewsVan } from './opmaak.js';
 import { OefenApp, MANIFESTEN, ZON, ZEE } from './oefen/apps.js';
 import { Leraar, LESSEN, SPIEKBRIEF, kortWaar } from './oefen/lessen.js';
 import { startTafereel } from './oefen/tekening.js';
@@ -172,7 +172,7 @@ function tekenApps() {
         if (p.soort === 'trigger') continue;
         const rij = document.createElement('div');
         rij.className = 'p'; rij.dataset.p = p.id;
-        rij.innerHTML = '<span><span class="label"></span><span class="waar"></span></span><span class="balk"><b></b><i class="fysiek" hidden></i></span><span class="w"></span>';
+        rij.innerHTML = '<span><span class="label"></span><span class="waar"></span></span><span class="balk"><b></b><i class="fysiek" hidden></i><i class="doel" hidden></i><span class="naar"></span></span><span class="w"></span>';
         /** @type {HTMLElement} */ (rij.querySelector('.label')).textContent = p.naam;
         /** @type {HTMLElement} */ (rij.querySelector('.waar')).textContent = kortWaar(a.app, p.id);
         doos.append(rij);
@@ -184,6 +184,8 @@ function tekenApps() {
     /** @type {HTMLElement} */ (doos.querySelector('.slot')).textContent = !a.verbonden
       ? (a.reden === 'vervangen' ? 'open in een andere tab' : a.reden === 'token' ? 'token nodig' : 'niet verbonden')
       : info?.slot ? `slot ${info.slot}` : 'verbinden…';
+    // Glijden (slew_s, PROTOCOL.md §12): dezelfde lezing van beeld.slews als de cockpit.
+    const slews = slewsVan(beeld, a.app);
     // Pickup: waar staat de fysieke control, en heeft hij de app al "gevangen"?
     /** @type {string[]} */
     const wachtend = [];
@@ -193,6 +195,7 @@ function tekenApps() {
       const v = a.waarden[p.id] ?? 0;
       /** @type {HTMLElement} */ (rij.querySelector('.balk b')).style.width = `${v * 100}%`;
       /** @type {HTMLElement} */ (rij.querySelector('.w')).textContent = p.soort === 'keuze' || p.soort === 'schakelaar' ? toonWaarde(p, v) : toonPct(v);
+      tekenGlij(rij, slews.get(p.id) ?? null);
       const fys = /** @type {HTMLElement} */ (rij.querySelector('.fysiek'));
       const pk = beeld?.focus === a.app ? Object.entries(beeld?.pickup ?? {}).find(([, x]) => /** @type {any} */ (x).id === p.id) : null;
       const x = /** @type {any} */ (pk?.[1]);
@@ -204,6 +207,24 @@ function tekenApps() {
     }
     /** @type {HTMLElement} */ (doos.querySelector('.pickup')).textContent = wachtend[0] ?? '';
   }
+}
+
+/**
+ * Het glij-teken van één parameter: een streep op het doel en "→ 80% · 2,1 s" onder de balk. De balk zelf blijft
+ * wat de app nu heeft (de tussenwaarde). Absoluut geplaatst: de controllers eronder verspringen er niet door.
+ * @param {HTMLElement} rij @param {{ doel: number, restMs: number|null } | null} slew
+ */
+function tekenGlij(rij, slew) {
+  const doel = /** @type {HTMLElement} */ (rij.querySelector('.doel'));
+  const naar = /** @type {HTMLElement} */ (rij.querySelector('.naar'));
+  rij.classList.toggle('glijdt', !!slew);
+  doel.hidden = !slew;
+  if (!slew) { naar.textContent = ''; delete rij.dataset.doel; return; }
+  doel.style.left = `calc(${slew.doel * 100}% - 1px)`;
+  rij.dataset.doel = String(slew.doel);
+  const rest = typeof slew.restMs === 'number' ? ` · ${(slew.restMs / 1000).toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s` : '';
+  naar.textContent = `→ ${toonPct(slew.doel)}${rest}`;
+  naar.title = 'glijdt (slew): de hub laat hem naar dit doel gaan';
 }
 
 // ── de les ───────────────────────────────────────────────────────────────────

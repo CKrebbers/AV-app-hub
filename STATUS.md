@@ -74,10 +74,10 @@ Gevonden door de repetitie — opgelost in golf 5 (PROTOCOL §14):
 - Waterschaal `tempo`: app-kant op de PR-tak (tempo continu, CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app). Helemaal dicht zodra die PR gemerged is.
 
 ## Oefenruimte ✓
-http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 13 lessen met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
+http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 14 lessen (les 14, glijden zien, kwam erbij in golf 7) met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
 
 Klaar als (op jouw Mac):
-- [ ] alle 13 lessen gehaald met de echte APC40 en LPD8
+- [ ] alle 14 lessen gehaald met de echte APC40 en LPD8
 
 ## Golf 5 — klaar voor de eerste echte avond ✓ (gebouwd en getest zonder hardware)
 6 onderdelen (bouwer + 2 reviewers + verwerker), plus een beveiligingsreview en een review van de oefenruimte; samengevoegd en opnieuw getest.
@@ -113,6 +113,24 @@ Klaar als (op jouw Mac):
 - [ ] iets veranderen in de uurwerk-tab → de cockpit volgt binnen een paar seconden
 - [ ] td-lab: de testtabel in `docs/TDLAB.md`
 
+## Golf 7 — klaar voor een lange avond ✓ (gebouwd en getest zonder hardware)
+4 onderdelen (bouwer + 2 reviewers + verwerker), samengevoegd en opnieuw getest.
+- [x] **Spiekbrief** — één A4 liggend per set met wat elke knop doet (`npm run spiekbrief -- <set|alle>`, of `/spiekbrief` in de cockpit; `docs/SPIEKBRIEF.md`). De indeling komt van een echte kern, en een test drukt elke knop op de spiekbrief en kijkt of de kern precies dat doet
+- [x] **Duurtest** — een hele avond (±3,5 uur) in een paar minuten: `npm run duurtest -- --minuten 3 --seed 7` (`docs/DUURTEST.md`). Vond en herstelde vier lekken/crashes: apps zonder manifest bleven voor altijd staan, waarden met vreemde ids groeiden, een timer bleef na stop staan, en een crash bij een losgetrokken APC met LEDs in de wachtrij. Een korte versie draait in `npm test`
+- [x] **Herstart midden in de set** — valt de hub om (crash, kill -9) of stop je hem per ongeluk: apps krijgen hun eigen slot terug, de focus komt terug, apps van de set draaien door en worden overgenomen (niet dubbel gestart), de opname gaat verder in een nieuwe avond en de afgebroken avond wordt hersteld. `npm start -- <set> --blijf` start de hub na een crash vanzelf opnieuw. Wat je ziet en doet: `docs/HARDWARE-AVOND.md`, "Als de hub omvalt"
+- [x] **Afwerking** — `npm run check` controleert ook het teruglezen in `apps/*.json`; de oefenruimte laat zien dat een waarde glijdt (les 14); docs kloppen weer met de code
+
+Klaar als (op jouw Mac):
+- [ ] spiekbrief van je set geprint en naast de controllers gelegd; klopt hij met wat je voelt?
+- [ ] midden in een set de hub met Ctrl-C stoppen en opnieuw starten: komt alles terug zoals beschreven?
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
+
+## Bekende risico's (gevonden door de duurtest, golf 7 — werk voor de volgende golf)
+De duurtest (`docs/DUURTEST.md`, "Open punten") omzeilt ze bewust, dus hij meldt ze niet; elk heeft een `it.todo` in `test/duurtest.test.js`.
+- [ ] **Tablet-cockpit verliest wifi terwijl hij een trigger vasthoudt**: de app houdt `trig aan:true` (bv. de paniek-trigger van Waterschaal: volume blijft 0) tot iemand hem opnieuw indrukt en loslaat. Herstel in `src/transports/server.js` (ingedrukte triggers per cockpit-socket, bij sluiten loslaten).
+- [ ] **Dezelfde toets twee keer ingedrukt** (APC én cockpit, of twee cockpits) met een focuswissel ertussen: de eerste app krijgt zijn `los` nooit; bij Stop All eindigt de paniek van die app niet. Herstel in `src/core/kern.js` (`invoer`).
+- [ ] **Kabel korter los dan één hotplug-ronde** (2 s): de hub ziet geen `weg`/`verbonden`, de APC blijft donker in modus 0x40 en de hub hoort hem niet meer. Herstel in de hotplug (`src/core/aansluiting.js`).
+- [ ] Mislukt sturen naar de APC/LPD8 (`fout` op de apparaten) komt nog nergens in beeld: `src/hub.js` luistert er niet naar. Eén logregel met advies ("APC: sturen mislukt — kabel los? de hub probeert opnieuw").

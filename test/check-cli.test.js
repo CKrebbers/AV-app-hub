@@ -50,6 +50,7 @@ describe('cli check', () => {
     expect(j.punten.find((/** @type {any} */ p) => p.naam === 'hub')).toMatchObject({ status: 'let', uitleg: `de hub draait nog niet (poort ${poort})` });
     expect(j.punten.find((/** @type {any} */ p) => p.naam === 'paden')).toMatchObject({ status: 'fout', teken: '✗' });
     expect(j.punten.find((/** @type {any} */ p) => p.naam === 'token')).toMatchObject({ status: 'fout' });
+    expect(j.punten.find((/** @type {any} */ p) => p.naam === 'apps')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/uurwerk/) });
     expect(j.ok).toBe(false);
     expect(code).toBe(1);
   }, 15000);

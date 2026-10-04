@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // @ts-check
 // varve-hub — opdrachten:
-//   start [set] [--poort N] [--host H] [--lan] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer] [--zonder-geheugen]
+//   start [set] [--poort N] [--host H] [--lan] [--zonder-midi] [--geen-drivers] [--zonder-chrome] [--uitvoer] [--zonder-geheugen] [--blijf]
 //                            de hub: controllers, kern, cockpit op http://localhost:7700, drivers, geheugen;
 //                            met een set (sets/<set>.json) ook alle apps van die avond (docs/SETS.md)
 //                            --lan: ook op het netwerk (0.0.0.0), met token en mDNS (docs/NETWERK.md)
+//                            --blijf: valt de hub om, dan start hij vanzelf opnieuw (begrensd; docs/HARDWARE-AVOND.md)
 //   installeer [--weg] [--lokaal] [--node PAD]  altijd aan: launchd (macOS) / systemd --user (Linux)
 //   token [--nieuw] [--poort N]  het token en de cockpit-adressen voor een tablet
 //   doctor [--json]          overzicht: MIDI, controllers, poorten, apps
@@ -16,8 +17,11 @@
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
 //   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
 //                            een opgenomen avond (avondmap, LPD8-pad 4) opnieuw afspelen tegen een draaiende hub
+//   spiekbrief <set|alle> [--uit bestand.html]
+//                            wat doet welke knop, per set: een HTML om te printen (A4 liggend), zonder hub (docs/SPIEKBRIEF.md)
 import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
 import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
 import { laadRtMidi } from './ports/rtmidi.js';
@@ -29,13 +33,16 @@ import { voerUit, terminalIO } from './proef/runner.js';
 import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
 import { startHub } from './hub.js';
-import { geheugenPad } from './opslag.js';
+import { geheugenPad, loopPad, openLoopbestand } from './opslag.js';
 import { NepSysteem } from './ports/nep.js';
 import { laadSet, laadPaden, lijstSets, startSet, kernToegang, cockpitToegang, startProces, openInChrome, poortOpen, PADEN_PAD, toonPad } from './sets/index.js';
 import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
 import { doelVanCockpit } from './opname/cockpit-doel.js';
-import { GEBAREN } from './opname/opnemer.js';
+import { GEBAREN, avondmapPad } from './opname/opnemer.js';
+import { herstelAvonden } from './opname/herstel.js';
+import { bewaker, BLIJF_MAX, BLIJF_VENSTER_MS } from './blijf.js';
 import { check, tekstVan, jsonVan } from './check/index.js';
+import { schrijfSpiekbrief } from './spiekbrief/index.js';
 import { leesOfMaakToken, isLoopbackHost, lanNamen, mdnsNaam, lanOrigins, lanAdressen, cockpitAdressen, kondigAan, installeer, dienstVoor } from './lan.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
@@ -98,8 +105,12 @@ const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i +
  * starter zelf startte, daarna `naStop` (de hub stoppen, of de cockpitverbinding sluiten).
  * @param {import('./sets/set.js').SetDef} set @param {import('./sets/toegang.js').KernToegang} hub
  * @param {number} hubPoort @param {() => Promise<void>|void} naStop
+ * @param {{ herstart?: { apps?: Record<string, number> }|null, bijProces?: (app: string, pid: number) => void,
+ *   logMap?: string|null, overleef?: () => boolean }} [h]
+ *   herstart: wat de omgevallen hub achterliet (src/opslag.js, loopbestand); logMap: uitvoer van de apps naar bestanden;
+ *   overleef: true = dit proces valt om (een fout) en de volgende start neemt de apps over: laat ze leven
  */
-function draaiSet(set, hub, hubPoort, naStop) {
+function draaiSet(set, hub, hubPoort, naStop, { overleef = () => false, ...h } = {}) {
   const log = (/** @type {string} */ r) => console.log(r);
   const openUrl = args.includes('--zonder-chrome') ? null : openInChrome();
   // Een venster dat dichtgaat geeft EPIPE/EIO op stdout: dat mag het opruimen niet afbreken.
@@ -107,10 +118,12 @@ function draaiSet(set, hub, hubPoort, naStop) {
   let paden = {};
   if (!existsSync(PADEN_PAD)) console.log(`${toonPad(PADEN_PAD)} ontbreekt — doe eenmalig: cp sets/paden.voorbeeld.json sets/paden.json en zet je mappen erin (docs/SETS.md)`);
   try { paden = laadPaden(); } catch (e) { console.error(/** @type {Error} */ (e).message); }
-  const s = startSet({ set, config, paden, hub, hubPoort, klok: echteKlok, startProces, openUrl, poortOpen, log, toonUitvoer: args.includes('--uitvoer') });
-  // Vangnet: valt dit proces weg zonder dat stop() kon lopen (een fout, process.exit elders), dan krijgen de
-  // eigen apps toch SIGTERM — anders blijven ze als wees draaien en houden ze hun poort bezet.
-  process.on('exit', () => s.stopNu());
+  const s = startSet({ set, config, paden, hub, hubPoort, klok: echteKlok, startProces, openUrl, poortOpen, log, toonUitvoer: args.includes('--uitvoer'), ...h });
+  // Vangnet: valt dit proces weg zonder dat stop() kon lopen (process.exit elders, een tweede Ctrl-C), dan krijgen
+  // de eigen apps toch SIGTERM — anders blijven ze als wees draaien en houden ze hun poort bezet. Behalve als de hub
+  // omvalt door een fout terwijl het loopbestand staat (overleef): dan spelen de apps door, net als bij kill -9, en
+  // neemt de volgende start (met de hand of --blijf) ze over.
+  process.on('exit', () => { if (!overleef()) s.stopNu(); });
   bijStoppen(async () => { console.log('\nStoppen…'); await s.stop(); await naStop(); });
   s.klaar
     .then((u) => { if (u.some((x) => !x.klaar)) console.log('De hub blijft draaien; start wat mist met de hand of los het op en draai de set opnieuw. Ctrl-C stopt alles wat de set startte.'); })
@@ -161,6 +174,14 @@ async function stopMetVasteFout(code) {
 
 const opdrachten = {
   async start() {
+    // --blijf: dit proces bewaakt alleen; de hub zelf draait in een kindproces dat na een crash opnieuw start.
+    if (args.includes('--blijf')) {
+      // Een onbekende of kapotte set is geen omvallen: meteen melden, niet zes keer opnieuw proberen.
+      const n = setNaam();
+      if (n) { try { laadSet(n, { config }); } catch (e) { console.error(/** @type {Error} */ (e).message); process.exit(1); } }
+      const r = await bewaker({ node: process.execPath, cli: fileURLToPath(import.meta.url), args: ['start', ...args.filter((a) => a !== '--blijf')], log: (t) => console.error(t) });
+      process.exit(r.code);
+    }
     const naam = setNaam();
     let set = null;
     if (naam) {
@@ -188,6 +209,7 @@ const opdrachten = {
       hubConfig = { ...config, server: { ...config.server, origins: [...(config.server?.origins ?? []), ...lanOrigins(namen, poort)] } };
     }
     let hub;
+    const begin = new Date();
     try {
       hub = await startHub({
         config: hubConfig, systeem, poort, host, token,
@@ -221,26 +243,94 @@ const opdrachten = {
         : `poort ${poort} mag niet gebruikt worden (${code}) — kies een andere met --poort N.`);
       return stopMetVasteFout(3);
     }
+    // Meteen na het starten, vóór er een app kan binnenkomen (er zit geen await tussen): viel de vorige hub om
+    // (loopbestand naast het geheugen, src/opslag.js)? Dan is dit een herstart midden in de set: slots en focus terug.
+    const loop = hub.opslag ? openLoopbestand({ pad: loopPad(hub.opslag.pad), set: set?.naam ?? null }) : null;
+    const vorige = loop?.vorige ?? null;
+    if (vorige && (vorige.slots || vorige.focus)) hub.kern.herstelSlotsEnFocus({ slots: vorige.slots, focus: vorige.focus });
+    if (loop && !loop.ander) {
+      loop.slotsEnFocus(hub.kern.slotsEnFocus());
+      hub.kern.bij('beeld', () => loop.slotsEnFocus(hub.kern.slotsEnFocus()));
+    }
+    // Valt de hub om door een fout in zijn eigen code, dan blijft het loopbestand staan en spelen de apps door (net als
+    // bij kill -9); het geheugen gaat nog snel naar schijf. Zonder loopbestand (--zonder-geheugen, of er draait nog een
+    // hub met hetzelfde geheugen) weet de volgende start niets: dan stoppen de apps van de set mee.
+    let omgevallen = false;
+    const valOm = (/** @type {unknown} */ e) => {
+      if (omgevallen) return;
+      omgevallen = true;
+      console.error('De hub viel om door een fout:', e);
+      try { hub.opslag?.schrijfNu(); } catch { /* het geheugen van ±1 s geleden staat er al */ }
+      process.exit(1);
+    };
+    process.on('uncaughtException', valOm);
+    process.on('unhandledRejection', valOm);
+    const overleef = () => omgevallen && !!loop && !loop.ander;
+
     for (const [dev, s] of [['APC40', hub.apparaten.apc], ['LPD8', hub.apparaten.lpd8]]) {
       /** @type {any} */ (s).bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
       /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
     }
     hub.kern.bij('naarApp', () => {});
     const lokaal = `http://localhost:${hub.server.poort}`;
-    console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren.');
-    console.log(`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`);
+    console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren; valt de hub om, dan weet hij bij de volgende start niets meer en stoppen de apps van de set mee.');
+    // In één keer geschreven: wie op "varve-hub draait" wacht (tests, scripts), ziet de netwerkregels er meteen bij.
+    const klaarRegels = [`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`];
     /** @type {{ stop: () => void } | null} */
     let mdns = null;
     if (lan && token) {
       const adressen = cockpitAdressen({ namen, adressen: lanAdressen(), poort: hub.server.poort, token });
       // Het token alleen op een terminal tonen, niet in een logbestand (launchd/systemd).
-      if (process.stdout.isTTY) console.log(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
-      else console.log(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: node src/cli.js token --poort ${hub.server.poort} (in ${HUB_MAP})`);
-      mdns = kondigAan({ poort: hub.server.poort, log });
+      if (process.stdout.isTTY) klaarRegels.push(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
+      else klaarRegels.push(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: node src/cli.js token --poort ${hub.server.poort} (in ${HUB_MAP})`);
     }
-    const stopHub = async () => { mdns?.stop(); await hub.stop(); };
-    if (set) draaiSet(set, kernToegang(hub.kern), hub.server.poort, stopHub);
-    else bijStoppen(stopHub);
+    console.log(klaarRegels.join('\n'));
+    if (lan && token) mdns = kondigAan({ poort: hub.server.poort, log });
+    if (loop?.ander) console.log(`Let op: er draait nog een hub met hetzelfde geheugen (proces ${loop.ander}). Deze hub laat diens loopbestand staan; valt deze om, dan weet de volgende start dat niet.`);
+    if (loop?.verlopen) {
+      console.log(`De vorige hub stopte niet netjes${loop.omgevallen?.begon ? ` (gestart ${loop.omgevallen.begon})` : ''}, maar dat was vóór de laatste herstart van de computer — dit is een gewone start.`);
+    }
+    if (vorige) {
+      console.log(`De vorige hub stopte niet netjes${vorige.begon ? ` (gestart ${vorige.begon})` : ''} — herstart: slots, focus, snapshots en truth:"hub"-waarden komen terug; apps herverbinden vanzelf.`);
+      for (const [app, pid] of Object.entries(vorige.vreemd ?? {})) {
+        console.log(`  ${app}: proces ${pid} is niet meer dat van toen (het nummer is hergebruikt) — niet overgenomen, niet gestopt`);
+      }
+      const wezen = Object.entries(vorige.apps ?? {});
+      if (wezen.length && vorige.set !== (set?.naam ?? null)) {
+        // Een andere set (of geen) dan toen: die apps neemt niemand over. Zeg welke er nog zijn, zodat Clay ze kan stoppen.
+        const levend = wezen.filter(([, pid]) => { try { process.kill(-pid, 0); return true; } catch { return false; } });
+        if (levend.length) {
+          console.log(`  Van de set "${vorige.set}" van toen draaien nog: ${levend.map(([a, pid]) => `${a} (proces ${pid})`).join(', ')}.`
+            + ` Deze start neemt ze niet over; stop ze met: kill -TERM ${levend.map(([, pid]) => `-${pid}`).join(' ')}`);
+        }
+      }
+    }
+    // De afgebroken avond van de omgevallen hub (kill -9, crash, stroom weg) leesbaar maken — alleen die: avonden die
+    // begonnen nadat die hub startte. Een avond die een andere hub nu opneemt, of een die netjes stopte, blijft ongemoeid.
+    const hersteld = loop?.omgevallen
+      ? await herstelAvonden({ map: avondmapPad(hubConfig), na: loop.omgevallen.begon ? new Date(loop.omgevallen.begon) : null, voor: begin, log: (t) => console.log(t) })
+      : [];
+    if (vorige?.opname && hub.opnemer) {
+      hub.opnemer.hervat();
+      console.log(`opname liep toen de hub omviel — loopt door in een nieuwe avond${hersteld.length ? ` (de afgebroken: ${hersteld.at(-1)?.map})` : ''}`);
+    }
+    if (loop) hub.kern.bij('opname', (/** @type {boolean} */ aan) => loop.opname(aan && !!hub.opnemer?.actief));
+    if (loop && hub.opnemer?.actief) loop.opname(true);
+    const fout = loop?.fout();
+    if (fout) console.log(`Loopbestand niet te schrijven (${fout}): na een crash weet de hub niet dat hij omviel.`);
+    const stopHub = async () => { mdns?.stop(); await hub.stop(); loop?.wis(); };
+    if (set) {
+      // Uitvoer van de apps naar bestanden, niet naar een pipe: die gaat dicht als de hub omvalt, en dan stopt een
+      // Node-app bij zijn volgende regel (EPIPE). Zo overleven de apps een crash van de hub.
+      const uitvoer = loop ? join(dirname(loop.pad), 'uitvoer') : null;
+      if (uitvoer) console.log(`Uitvoer van de apps: ${uitvoer}/<app>.log`);
+      draaiSet(set, kernToegang(hub.kern), hub.server.poort, stopHub, {
+        herstart: vorige && vorige.set === set.naam ? vorige : null,
+        bijProces: (app, pid) => loop?.app(app, pid),
+        logMap: uitvoer,
+        overleef,
+      });
+    } else bijStoppen(stopHub);
   },
 
   installeer() {
@@ -406,9 +496,36 @@ const opdrachten = {
     process.exit(r.verschillen?.length ? 1 : 0);
   },
 
+  spiekbrief() {
+    const uit = optie('--uit');
+    const naam = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--uit');
+    if (!naam || (args.includes('--uit') && !uit)) {
+      console.error(`gebruik: varve-hub spiekbrief <set|alle> [--uit bestand.html] — sets: ${lijstSets().join(', ') || '(geen)'}`);
+      process.exit(1);
+    }
+    let r;
+    try {
+      // Een relatief --uit-pad geldt vanaf waar Clay het typte (npm run zet de map anders op die van de hub).
+      r = schrijfSpiekbrief(naam, { config, uit: uit && resolve(process.env.INIT_CWD ?? process.cwd(), uit), gemaakt: new Date() });
+    } catch (e) {
+      console.error(/** @type {Error} */ (e).message);
+      process.exit(1);
+    }
+    for (const b of r.brieven) {
+      const volgt = b.apps.filter((a) => a.soort === 'volgt').map((a) => a.naam);
+      const fout = b.apps.filter((a) => a.soort === 'fout').map((a) => `${a.naam} (${a.fout})`);
+      console.log(`${b.set.naam}: ${b.apps.map((a) => a.naam).join(', ')}${volgt.length ? ` — indeling volgt als ${volgt.join(', ')} zich meldt` : ''}`);
+      if (fout.length) console.error(`let op, ${b.set.naam}: geen indeling voor ${fout.join(', ')}`);
+    }
+    // Kapotte bronbestanden (vastgelegde manifesten, apps/*.json): één keer melden, niet per set.
+    for (const f of new Set(r.brieven.flatMap((b) => b.fouten))) console.error(`let op: niet te lezen: ${f}`);
+    console.log(`spiekbrief → ${r.pad}\nOpen hem in Chrome en druk ⌘P (A4 liggend). Draait de hub, dan staat hij ook live op /spiekbrief van de cockpit (zelfde adres als de cockpit; LAN-adres: varve-hub token).`);
+  },
+
   help() {
     console.log(`varve-hub — opdrachten:
-  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --lan, --zonder-midi, --geen-drivers, --zonder-geheugen);
+  start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --lan, --zonder-midi, --geen-drivers, --zonder-geheugen,
+                    --blijf: na een crash vanzelf opnieuw starten, hooguit ${BLIJF_MAX}× per ${BLIJF_VENSTER_MS / 60000} min);
                     met een set ook de apps van die avond (${lijstSets().join(', ') || 'geen sets'}; --zonder-chrome, --uitvoer)
                     --lan: ook op het netwerk, met token (~/.varve-hub/token) en mDNS
   installeer        altijd aan bij inloggen (launchd/systemd --user); --weg haalt weg, --lokaal zonder --lan
@@ -419,7 +536,8 @@ const opdrachten = {
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt
   opname [naam]     speelsessie opnemen in proef/
-  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)`);
+  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)
+  spiekbrief <set>  wat doet welke knop: HTML om te printen, zonder hub (alle = elke set een pagina; --uit bestand.html)`);
   },
 };
 
