@@ -65,7 +65,8 @@ andere hub intussen, dan zegt de starter dat (`verbinding met de hub … verbrok
 
 Opties: `--zonder-chrome` (URL's alleen tonen), `--uitvoer` (alle uitvoer van de apps meelezen), en de
 gewone van `start` (`--poort`, `--zonder-midi`, `--geen-drivers`, …). Een set mag ook een pad naar een
-`.json`-bestand zijn.
+`.json`-bestand zijn. De uitvoer van elke app die de set startte staat ook in `~/.varve-hub/uitvoer/<app>.log`
+(die van de start daarvoor in `<app>.vorige.log`); zie docs/HARDWARE-AVOND.md, "Als de hub omvalt".
 
 ## Een set schrijven
 
