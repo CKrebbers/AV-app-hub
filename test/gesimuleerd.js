@@ -42,10 +42,18 @@ function apcBerichten(id, extra = {}) {
   return [0, 20, 40, 60, 80, 100, 127].map((v) => [0xb0, c.n, v]); // draaiknop: veel verschillende waarden
 }
 
+/** Berichten voor een akkoord: de eerste knop vast, de rest erbij, dan in omgekeerde volgorde los. */
+function akkoordBerichten(ids) {
+  const c = ids.map((id) => A.OP_ID.get(id));
+  return [...c.map((x) => [0x90 | x.ch, x.n, 127]), ...[...c].reverse().map((x) => [0x80 | x.ch, x.n, 127])];
+}
+
 /**
- * @param {{ antwoorden?: Record<string, string> }} o  antwoorden per stap-id (standaard "j")
+ * @param {{ antwoorden?: Record<string, string>, schaal?: number, lpd8Toggle?: boolean }} o
+ *   antwoorden per stap-id (standaard "j"); schaal: dezelfde als de runner (vasthouden duurt houdMs·schaal);
+ *   lpd8Toggle: de LPD8-pads staan in TOGGLE-modus (geen note-off bij loslaten)
  */
-export function simulatie({ antwoorden = {} } = {}) {
+export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false } = {}) {
   const systeem = new NepSysteem();
   const poorten = { apc: sluitApcAan(systeem), lpd8: sluitLpd8Aan(systeem) };
   const gebruiker = new Zender();
@@ -69,6 +77,18 @@ export function simulatie({ antwoorden = {} } = {}) {
       return;
     }
     if (w.soort === 'eerste') {
+      if (w.akkoord) return later(() => { for (const b of akkoordBerichten(w.akkoord)) poorten.apc.injecteer(b); });
+      if (w.pad) {
+        if (w.loslaten) return; // het loslaten is al gepland bij het indrukken
+        const n = 35 + w.pad;
+        const los = () => { if (!lpd8Toggle) poorten.lpd8.injecteer([0x89, n, 0]); };
+        return later(() => {
+          poorten.lpd8.injecteer([0x99, n, 100]);
+          if (!w.houdMs) return los(); // kort tikken: los in dezelfde tik
+          setTimeout(() => poorten.lpd8.injecteer([0xa9, n, 60]), (w.houdMs * schaal) / 2); // mk2: aftertouch tijdens vasthouden
+          setTimeout(los, w.houdMs * schaal);
+        });
+      }
       if (w.wat) return later(() => poorten.lpd8.injecteer(w.wat === 'pad' ? [0x99, 35 + w.nr, 100] : [0xb0, 69 + w.nr, 64]));
       if (w.id) return later(() => { for (const b of apcBerichten(w.id, w)) poorten.apc.injecteer(b); });
       return; // identiteit/intro: het nep-apparaat antwoordt zelf
@@ -76,6 +96,10 @@ export function simulatie({ antwoorden = {} } = {}) {
     if (w.soort === 'melding' && w.dev === 'apc40') {
       if (w.wat === 'weg') later(() => systeem.verwijder('APC40 mkII'));
       if (w.wat === 'verbonden') later(() => { poorten.apc = sluitApcAan(systeem); });
+    }
+    if (w.soort === 'melding' && w.dev === 'lpd8') {
+      if (w.wat === 'weg') later(() => systeem.verwijder('LPD8 mk2'));
+      if (w.wat === 'verbonden') later(() => { poorten.lpd8 = sluitLpd8Aan(systeem); });
     }
   });
   return { systeem, poorten, gebruiker, io, getoond, typ };

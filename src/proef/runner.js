@@ -5,6 +5,7 @@
 // gesimuleerde gebruiker (tests) dezelfde proef automatisch kan doorlopen.
 import { bronUitBericht } from '../devices/lpd8.js';
 import { Zender } from '../core/zender.js';
+import { laadConfig } from '../config.js';
 
 /**
  * @typedef {{ toon: (t: string) => void, regel: () => { p: Promise<string>, annuleer: () => void } }} IO
@@ -16,7 +17,8 @@ import { Zender } from '../core/zender.js';
 /**
  * @param {Protocol} protocol
  * @param {{ apparaten: ReturnType<typeof import('../apparaten.js').maakApparaten>, io: IO, klok: import('../core/klok.js').Klok,
- *           logboek: import('../core/logboek.js').Logboek, schaal?: number, gebruiker?: Zender, bewaarProfiel?: (p: any) => void }} ctx
+ *           logboek: import('../core/logboek.js').Logboek, schaal?: number, gebruiker?: Zender, bewaarProfiel?: (p: any) => void,
+ *           config?: Record<string, any> }} ctx  config: standaard config.json (voor bv. de hubtoets)
  */
 export async function voerUit(protocol, ctx) {
   const h = maakHulp(ctx);
@@ -50,6 +52,7 @@ function maakHulp(ctx) {
   const { apparaten, io, klok, logboek } = ctx;
   const schaal = ctx.schaal ?? 1;
   const gebruiker = ctx.gebruiker ?? new Zender();
+  const config = ctx.config ?? leesConfig();
   /** @type {Record<string, unknown>} */
   const bevindingen = {};
 
@@ -74,6 +77,10 @@ function maakHulp(ctx) {
     apc: apparaten.apc,
     lpd8: apparaten.lpd8,
     klok,
+    /** Tijdschaal (1 = echt; tests versnellen). Gemeten tijden vergelijk je met `drempel * h.schaal`. */
+    schaal,
+    /** config.json (of wat de aanroeper meegaf): de proef leest bv. de hubtoets, net als de kern. */
+    config,
     stapId: '',
     bevindingen,
     /** @param {string} t */
@@ -195,6 +202,11 @@ function maakHulp(ctx) {
     },
   };
   return h;
+}
+
+/** config.json lezen; ontbreekt of kapot: leeg (dan gelden de standaarden, zoals in de kern). */
+function leesConfig() {
+  try { return laadConfig(); } catch { return {}; }
 }
 
 /** Terminal-IO met readline: één regel tegelijk, annuleerbaar. @param {import('node:readline').Interface} rl @returns {IO} */

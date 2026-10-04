@@ -1,0 +1,279 @@
+# Hardware-avond — draaiboek
+
+De eerste avond met de echte APC40 mkII en LPD8. Alles in de hub is tot nu toe zonder hardware gebouwd en getest;
+vanavond kijken we of de echte controllers doen wat we dachten. Je hoeft niets te weten of te beslissen: volg de
+stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er vaste tests van.
+
+**Hoe lang:** ±2 uur in totaal. Je kunt na elk blok stoppen; het belangrijkste is blok 2 (de proef) en blok 6 (pushen).
+
+| Blok | Wat | ±Tijd |
+|---|---|---|
+| 1 | Voorbereiden | 15 min |
+| 2 | De F0-proef: elke knop, elk lampje, vijf open vragen | 35–45 min |
+| 3 | Oefenruimte met de echte controllers | 20–30 min |
+| 4 | Cockpit en een set (`meditatie`) | 30 min |
+| 5 | Opnemen met LPD8-pad 4 | 5 min |
+| 6 | Pushen | 5 min |
+| 7 | Als iets niet werkt | (naslag) |
+
+---
+
+## 1. Voorbereiden (±15 min)
+
+- [ ] **Bijwerken en installeren.** In de map AV-app-hub:
+  ```bash
+  git pull
+  npm install            # haalt ook @julusian/midi binnen: daarmee praat de hub met USB-MIDI
+  ```
+  Node 22 is nodig (`node -v`; anders `brew install node`).
+- [ ] **Chrome bijwerken** (menu Chrome → Over Google Chrome). Chrome is nodig voor de cockpit, de oefenruimte en de apps.
+- [ ] **Sluit alles wat zelf met de APC praat.** Op de Mac mogen meerdere programma's tegelijk naar de APC schrijven;
+  dan vechten de lampjes en weet je niet meer wat de hub doet.
+  - [ ] Chrome-tabs met Varve DJ of av-kern (zonder `?hub=` in het adres openen die de APC zelf).
+  - [ ] Ableton Live.
+  - [ ] Logic: haal de APC40 weg als bedieningsoppervlak (Logic Pro → Bedieningsoppervlakken → Configuratie, de APC40 selecteren en verwijderen). Alleen Logic sluiten is ook goed.
+  - [ ] Een hub die al draait: een ander Terminal-venster met `npm start` (Ctrl-C), of de hub als dienst als je ooit `node src/cli.js installeer` deed (`node src/cli.js installeer --weg`).
+- [ ] **Sluit de APC40 en de LPD8 aan** via USB, het liefst rechtstreeks op de Mac.
+- [ ] **Kijk of de hub ze ziet:**
+  ```bash
+  node src/cli.js doctor
+  ```
+  Je wilt zien: MIDI werkt, de APC40 gevonden, de LPD8 gevonden (met model en programma 1), poort 7700 vrij.
+  Zie je iets anders, kijk dan in blok 7.
+- [ ] *(Optioneel, 2 min, leuk als eerste kennismaking)* `node src/cli.js testpatroon`: een regenboog op de APC en in
+  de terminal live wat elke knop stuurt. Ctrl-C zet alles weer uit.
+- [ ] Maak het Terminal-venster breed (de proef toont kleurvoorbeelden van 8 vakjes breed).
+
+---
+
+## 2. De F0-proef (±35–45 min)
+
+```bash
+node src/cli.js proef
+```
+
+De proef praat je door alles heen. Hij laat elke knop en elk lampje een keer werken, stelt vragen, en neemt alles op
+in een logboek. Tijdens de proef:
+
+| Toets | Betekent |
+|---|---|
+| **Enter** | ja / klopt / door |
+| **n** + notitie + Enter | klopt niet, bv. `n pad 2-3 werd blauw` |
+| **o** + Enter | deze stap overslaan (bv. geen footswitch) |
+| **Ctrl-C** | stoppen; wat tot dan toe gemeten is, blijft bewaard |
+
+Wat er gebeurt, stap voor stap:
+
+| # | Stap | Wat je doet | ±Tijd |
+|---|---|---|---|
+| 1 | Voorbereiding | lezen, Enter | 1 min |
+| 2 | Apparaten zoeken | niets: de hub zoekt de APC en de LPD8 | — |
+| 3 | Identiteit en LPD8-programma's (V5) | niets: de hub vraagt beide apparaten wie ze zijn en leest de LPD8-programma's | — |
+| 4 | Faderstanden bij opstart (V4) | fader 1 omhoog, de rest omlaag, Enter | 1 min |
+| 5 | Alle 40 pads | elke pad indrukken; hij wordt groen | 2 min |
+| 6 | Scene launch, clip stop, stop all, master | die knoppen indrukken | 1 min |
+| 7 | Knoppen per track (5 rijen × 8) | Track Select, nummer, A\|B, S, ● per track | 2 min |
+| 8 | Faders en crossfader | elke fader van onder naar boven | 2 min |
+| 9 | 16 draaiknoppen met lichtring | elke knop een flink stuk draaien | 2 min |
+| 10 | TEMPO en CUE LEVEL (relatief) | beide naar links en rechts | 1 min |
+| 11 | Losse knoppen één voor één | de knop drukken die de proef noemt | 3 min |
+| 12 | De hubtoets vasthouden + een andere knop | BANK vast + Track Select 3; BANK + SHIFT vast + Scene 2 | 1 min |
+| 13 | Footswitch (optioneel) | indrukken, of `o` | — |
+| 14 | Nemen de knoppen een waarde van de hub over? (V1) | twee knoppen een klein tikje draaien | 1 min |
+| 15 | Het kleurenpalet (128 kleuren in 4 pagina's) | vergelijken met het voorbeeld in de terminal | 3 min |
+| 16 | Pulseren, knipperen, one-shot | kijken en vier vragen beantwoorden | 2 min |
+| 17 | Volgen animaties de MIDI-clock? (V2) | kijken of het knipperen sneller/langzamer gaat | 2 min |
+| 18 | LED veranderen terwijl je een pad vasthoudt (V3) | blauwe pad vasthouden, kijken, loslaten | 1 min |
+| 19 | Volledige repaint: snelheid | kijken of alles tegelijk verschijnt | 1 min |
+| 20 | USB eruit en erin (hotplug) | APC-kabel eruit en er weer in | 1 min |
+| 21 | LPD8: pads en knoppen leren | pad 1–8 en knop 1–8, in volgorde | 2 min |
+| 22 | LPD8: herkent de hub alles? | alles nog een keer | 1 min |
+| 23 | LPD8: lang drukken (snapshots P5–P8, paniek P1) | pad 8 tot drie tellen vasthouden, pad 5 kort tikken | 1 min |
+| 24 | LPD8: pad-lampjes vanuit de hub (V5) | kijken of de pad-lampjes aangaan | 1 min |
+| 25 | LPD8: USB eruit en erin (hotplug) | LPD8-kabel eruit en erin, pad 1 en knop 1 | 1 min |
+| 26 | Klaar | — | — |
+
+Aan het eind staat er een samenvatting in de terminal, en twee bestanden:
+
+- `proef/<datum-tijd>-f0-hardware.jsonl` — het logboek: alles wat binnenkwam en wat je antwoordde.
+- `lpd8-profiel.json` — welke noot en welke CC jouw LPD8 stuurt per pad en knop (alleen als alle 8 pads geleerd zijn).
+  De hub leest dit bestand bij elke start.
+
+### De vijf open vragen, in gewone woorden
+
+Dit zijn de dingen die in de handleiding van Akai niet (zeker) staan, en waar de hub op dit moment een gok doet.
+
+**V1 — Neemt een draaiknop de waarde van de hub over?** De draaiknoppen van de APC hebben geen begin en eind; de
+lichtring eromheen wordt door de hub getekend. Als je van app wisselt, zet de hub elke ring op de waarde van de nieuwe
+app. De vraag is of de knop dan ook echt vanaf díe waarde verder telt. *Waarom het ertoe doet:* zo ja (dat verwachten
+we), dan voelt een knop na een appwissel meteen goed. Zo nee, dan moet de hub voor de knoppen hetzelfde doen als voor de
+faders (pas meenemen als je langs de oude waarde draait). Dat is één instelling: `ringen_nemen_waarde_over` in
+`config.json` (nu `true`). Claude zet hem om als de proef "nee" zegt.
+
+**V2 — Volgt het knipperen het tempo dat de hub stuurt?** De APC kan lampjes zelf laten pulseren en knipperen. De vraag
+is of dat op een vaste snelheid gaat of meeloopt met een tempo (MIDI-clock) dat de hub stuurt. *Waarom:* zo ja, dan kan
+het knipperen straks op de maat van je tap-tempo (LPD8-pad 2) of op de ademklok lopen.
+
+**V3 — Luistert een pad naar de hub terwijl je hem vasthoudt?** Er is een melding dat de APC een kleurwissel negeert
+zolang je een pad indrukt. *Waarom:* zo ja, dan moet de hub de kleur opnieuw sturen zodra je loslaat; anders blijft er
+een verkeerde kleur staan na het indrukken.
+
+**V4 — Vertelt de APC bij het opstarten waar de faders staan?** De APC antwoordt op het startbericht van de hub met een
+rij getallen. Misschien zijn dat de faderstanden. *Waarom:* zo ja, dan weet de hub vanaf de eerste seconde waar je
+faders staan en hoeft het lampje "pak de fader op" (clip-stop knippert) niet te knipperen bij de start.
+
+**V5 — Welke LPD8 heb je en wat staat erin?** mk1 of mk2, wat elk programma stuurt, en of de hub de pad-lampjes kan
+aanzetten. *Waarom:* dat bepaalt welke noten de hub verwacht (het profiel) en of we de lampjes van de LPD8 kunnen
+gebruiken (bv. pad 4 laten branden tijdens een opname) of dat alles via de cockpit moet.
+
+### Drie extra metingen (wat de hub sinds golf 1 van de hardware vraagt)
+
+- **De hubtoets (stap 12).** Focus wisselen is BANK vasthouden + Track Select; een hub-snapshot bewaren is BANK +
+  SHIFT + Scene. Dat werkt alleen als de APC elke knop gewoon doorgeeft terwijl je er een andere vasthoudt.
+- **Lang drukken op de LPD8 (stap 23).** Pad 5–8: kort = snapshot laden, langer dan 0,6 s = bewaren. Pad 1 een seconde
+  vasthouden = paniek. Dat kan de hub alleen zien als de pad ook iets stuurt bij het *loslaten*. In de TOGGLE-modus van
+  de LPD8 gebeurt dat niet; dan zegt de proef dat, en dan zet je de pads op MOMENTARY (zie blok 7).
+- **LPD8 eruit en erin (stap 25).** Of de hub de LPD8 na opnieuw aansluiten zelf terugvindt, met het geleerde profiel.
+
+---
+
+## 3. Oefenruimte met de echte controllers (±20–30 min)
+
+```bash
+npm start
+```
+
+Open **http://localhost:7700/oefen** in Chrome. Sluit de controllers aan *voordat* je de hub start. Dertien korte lessen
+leren je de basis met twee oefen-apps, Zon en Zee (alles staat in `docs/OEFENEN.md`).
+
+Let vanavond vooral op wat alleen echte hardware kan laten zien:
+
+- [ ] **Focus (les 2):** zolang je BANK vasthoudt, toont de bovenste rij de apps in hun eigen kleur en pulseert de app met focus; Track Select erbij wisselt tussen Zon en Zee.
+- [ ] **Pickup (les 4):** een fader doet pas iets als hij langs de waarde van de app komt; tot dan knippert de clip-stop-lamp van die strip. Voelt dat natuurlijk?
+- [ ] **Device-knop (les 5):** loopt de lichtring mee, en springt er niets na een appwissel (dat is V1 in het echt)?
+- [ ] **Snapshot (les 10):** pad 8 lang = bewaren, kort = laden.
+- [ ] **Paniek (les 11):** pad 1 een seconde vasthouden.
+- [ ] Schrijf op wat raar voelt (te traag, verkeerde kleur, knop die niets doet). Dat is net zo waardevol als de proef.
+
+Snapshot 4 en het tempo blijven na de les staan, net als op een echte avond. Ctrl-C stopt de hub.
+
+---
+
+## 4. Cockpit en een set (±30 min)
+
+Eenmalig: vertel de hub waar je repo's staan.
+
+```bash
+cp sets/paden.voorbeeld.json sets/paden.json   # en zet daarin je eigen mappen (docs/SETS.md)
+```
+
+Dan een hele avond met één commando:
+
+```bash
+npm start -- meditatie
+```
+
+De hub start MediSynth, Waterschaal, Uurwerk en av-kern, opent ze in Chrome met `?hub=` erachter, zet de beginwaarden
+en geeft Waterschaal de focus. De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
+een virtuele APC en LPD8 die meelopen met de echte.
+
+- [ ] Wisselen van app: BANK vast + Track Select. Kloppen de kleuren in de bovenste rij (zolang BANK vast is) met de apps?
+- [ ] Faders en knoppen op de app met focus; kijk in de cockpit mee.
+- [ ] LPD8-knoppen K1–K8 werken op alle apps tegelijk (K2 helderheid, K3 ruimte, …).
+- [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek.
+- [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon.
+
+Ctrl-C stopt alles wat de set zelf startte, en dan de hub.
+
+---
+
+## 5. Opnemen met LPD8-pad 4 (±5 min)
+
+Terwijl de hub draait (blok 3 of 4):
+
+- [ ] Druk **pad 4**: de opname start. In het hubvenster komt `opname loopt: <map>`.
+- [ ] Speel een paar minuten.
+- [ ] Druk nog een keer **pad 4**: de opname stopt en er komt een `samenvatting.md` bij.
+
+Die avond staat in `~/Movies/varve-avonden/<datum-tijd>/` (zie `docs/OPNAME.md`) en blijft op je Mac; je kunt hem
+later opnieuw afspelen met `npm run herhaal -- <map>`.
+
+*(Optioneel, voor extra vaste tests)* Met de hub **uit** neemt `node src/cli.js opname eerste-avond` ruw op wat je
+controllers sturen, in `proef/`. Speel vijf minuten vrij (faders, knoppen, BANK-akkoorden, LPD8 lang en kort) en stop met
+Ctrl-C. Ook dat bestand wordt een vaste test.
+
+---
+
+## 6. Pushen (±5 min)
+
+```bash
+git add proef/ lpd8-profiel.json
+git commit -m "proef f0-hardware"
+git push
+```
+
+Wat Claude daarmee doet:
+
+- Elk bestand in `proef/` wordt een *golden test*: dezelfde ruwe MIDI moet voortaan altijd hetzelfde betekenen.
+  Verandert de hub ooit hoe hij jouw hardware leest, dan valt die test om.
+- De antwoorden op V1–V5 en de drie extra metingen gaan naar `STATUS.md`, en waar nodig naar `config.json`
+  (bv. `ringen_nemen_waarde_over`) of naar de kern (bv. kleur opnieuw sturen bij loslaten als V3 "ja" is).
+- `lpd8-profiel.json` wordt het profiel waar de virtuele en echte LPD8 mee getest worden.
+
+Zet een avondmap uit blok 5 **niet** los in `proef/` (de golden test leest elk `.jsonl` daar als proeflog). Wil je dat
+Claude er een kijkt, zet hem dan in een eigen submap, bv. `proef/avonden/<datum-tijd>/`, en zeg het erbij.
+
+---
+
+## 7. Als iets niet werkt
+
+**De lampjes van de APC vechten** (flikkeren, verkeerde kleuren, dingen gaan aan die de hub niet aanzette).
+*Oorzaak:* een ander programma schrijft ook naar de APC; macOS mengt dat. Meestal een Chrome-tab met Varve DJ of av-kern
+*zonder* `?hub=`, Ableton, een APC-bedieningsoppervlak in Logic, of twee hubs tegelijk (bv. de proef terwijl de hub als
+dienst draait). *Oplossing:* sluit die (blok 1), `node src/cli.js doctor` toont wat er draait, en trek daarna de APC
+één keer los en weer vast: de hub zet hem binnen ±2 s zelf weer goed (de APC vergeet bij elke herstart zijn modus; de
+hub stuurt hem opnieuw en tekent alles opnieuw).
+
+**De hub vindt de APC of de LPD8 niet.** *Oorzaak:* geen MIDI (`npm install` niet gedaan; doctor zegt dan "✗ geen MIDI" met de
+reden), of de poortnaam is anders dan verwacht. *Oplossing:* `npm install`; `node src/cli.js doctor` toont de
+namen van alle MIDI-poorten. Staat de APC er onder een andere naam, zet dan een stukje van die naam bij
+`apparaten.apc40.naam` (of `apparaten.lpd8.naam`) in `config.json`.
+
+**De LPD8 stuurt andere noten** (pads doen niets of het verkeerde, de cockpit ziet ze niet). *Oorzaak:* de LPD8 staat op
+een ander programma dan tijdens de proef, of op een andere padmodus (de knoppen linksboven: CC of PROG CHNG in plaats
+van de noten-stand). De hub kent alleen wat hij in de proef leerde (`lpd8-profiel.json`). *Oplossing:* zet de LPD8 terug
+op het programma en de modus van de proef. Wil je echt een ander programma, draai de proef dan opnieuw en sla alles
+behalve de LPD8-stappen over met `o`; het nieuwe profiel geldt na een herstart van de hub.
+
+**Lang drukken of paniek doet niets** (pad 5–8 laadt altijd, nooit bewaren; pad 1 geen paniek). *Oorzaak:* de pads staan
+in TOGGLE: dan stuurt een pad niets bij loslaten, dus weet de hub niet hoe lang je drukte. Stap 23 van de proef meet dit.
+*Oplossing:* zet in de LPD8 Editor van Akai de pads op MOMENTARY, schrijf het programma naar de LPD8, en kijk opnieuw.
+
+**"poort 7700 is bezet".** *Oorzaak:* er draait al een hub (een ander Terminal-venster, of als dienst via `installeer`),
+of een ander programma gebruikt 7700. De melding zegt welk commando de dienst stopt. *Oplossing:* stop de andere hub
+(Ctrl-C in dat venster, of het commando uit de melding), of start op een andere poort: `npm start -- --poort 7710`
+(apps dan met `?hub=ws://localhost:7710`). Wie de poort heeft: `lsof -i :7700`.
+
+**Chrome blokkeert de verbinding met `ws://`** (een app meldt zich niet bij de hub). Er zijn drie echte oorzaken:
+- *Het adres mist `?hub=ws://localhost:7700`.* Zonder die vlag werkt de app zoals vroeger en opent hij de APC zelf
+  (en dan vechten de lampjes). *Oplossing:* adres met `?hub=…`, of start via een set (die zet het er zelf achter).
+- *De app is geopend als bestand* (dubbelklik op een HTML-bestand, het adres begint met `file://`). De hub weigert die
+  verbinding; in het hubvenster staat `origin geweigerd: null`. *Oplossing:* open de app via zijn eigen server
+  (`http://localhost:<poort>`), zoals de set dat doet.
+- *De app komt van een ander adres* dan `localhost`/`127.0.0.1` (bv. `http://<mac>.local:5174`, of een `https://`-site op
+  internet). De hub weigert onbekende adressen (`origin geweigerd: …` in het hubvenster), en Chrome houdt een
+  `https://`-pagina soms tegen of vraagt toestemming voor je lokale netwerk. *Oplossing:* gebruik de lokale versie op
+  `http://localhost:<poort>`; een eigen adres dat je vertrouwt kun je toevoegen aan `server.origins` in `config.json`
+  (`docs/NETWERK.md`).
+
+**Een fader doet niets.** Waarschijnlijk geen fout: dat is pickup. De clip-stop-lamp van die strip knippert tot de fader
+langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg de fader erlangs.
+
+**Na USB eruit/erin blijven de lampjes uit.** Wacht ±2 seconden (de hub kijkt elke 2 s). Blijft het uit: noteer het
+(`n …` in de proef), stop met Ctrl-C en start opnieuw. Het logboek laat zien wat er misging.
+
+**De kleuren in de terminal kloppen niet of je ziet rare tekens** (stap 15). Sommige Terminal-versies tonen geen echte
+kleuren. Gebruik iTerm2, of beoordeel op het oog: de vraag is alleen of het *ongeveer* klopt.
+
+**De proef blijft hangen bij een stap.** `o` + Enter slaat de stap over; noteer wat er niet werkte. Ctrl-C stopt de
+hele proef; wat tot dan toe gemeten is, staat in het logboek en is net zo goed om te pushen.

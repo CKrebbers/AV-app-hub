@@ -4,8 +4,13 @@
 //   V1 nemen ringknoppen een host-waarde over?   V2 volgen animaties MIDI-clock?
 //   V3 negeert de APC LEDs terwijl je een pad vasthoudt?   V4 geeft het intro-antwoord faderstanden?
 //   V5 welke LPD8, wat zit in de programma's, werken pad-LEDs?
+// Plus drie metingen voor wat de hub sinds golf 1 van de hardware vraagt:
+//   hubtoets-akkoord  BANK vasthouden + Track Select / + Shift + Scene (focus wisselen, snapshot bewaren)
+//   lpd8-vasthouden   sturen de LPD8-pads een loslaat-bericht? (lang drukken P5–P8, paniek P1 1 s)
+//   lpd8-replug       LPD8 eruit en erin: herkent de hub hem daarna nog met het geleerde profiel?
 import * as A from '../devices/apc40mk2.js';
 import * as L from '../devices/lpd8.js';
+import { LANG_MS, PANIEK_MS } from '../core/kern.js';
 
 /** @typedef {import('./runner.js').Hulp} Hulp @typedef {import('./runner.js').Stap} Stap */
 
@@ -59,7 +64,8 @@ const stappen = [
       h.toon([
         '  Nodig: APC40 mkII en LPD8 via USB aangesloten.',
         '  Dicht: Chrome-tabs met Varve DJ / av-kern, Ableton, en een APC-control-surface in Logic.',
-        '  Duur: ±30-40 min. Alles wordt opgenomen in proef/…jsonl — dat bestand push je straks.',
+        '  Ook de hub zelf (npm start, of als dienst na "installeer"): de proef opent de controllers zelf.',
+        '  Duur: ±35-45 min. Alles wordt opgenomen in proef/…jsonl — dat bestand push je straks.',
       ].join('\n'));
       await h.enter('Klaar om te beginnen?');
     },
@@ -201,6 +207,24 @@ const stappen = [
       const fout = uit.filter((x) => x.kreeg && x.kreeg !== x.verwacht);
       h.bevinding('losse-knoppen', { uitslag: uit, verwisseld: fout });
       if (!fout.length) h.toon('  alles klopt met protocol v1.2');
+    },
+  },
+  {
+    id: 'hubtoets-akkoord', titel: 'De hubtoets vasthouden + een andere knop', vereist: ['apc40'],
+    async doe(h) {
+      // De hele hublaag rust hierop: hubtoets (standaard BANK) vast + Track Select = focus, + Shift + Scene = bewaren.
+      // In modus 0x42 hoort elke knop gewoon zijn eigen noot te sturen, ook als er een andere vastgehouden wordt.
+      h.apc.zwart();
+      const ht = hubtoetsId(h.config);
+      const naam = ht === 'bank' ? 'BANK' : ht.toUpperCase();
+      h.toon(`  → Houd ${naam} vast, druk TRACK SELECT 3 (en laat hem los), laat daarna ${naam} los.`);
+      const focus = await akkoord(h, [ht, 'sel3']);
+      h.toon(focus.klopt ? '    ✓' : `    ⚠ binnen kwam: ${focus.volgorde.map((x) => `${x.el} ${x.kind}`).join(', ') || 'niets'}`);
+      h.toon(`  → Houd ${naam} én SHIFT vast, druk SCENE 2 (en laat hem los), laat daarna alles los.`);
+      const bewaren = await akkoord(h, [ht, 'shift', 'scene2']);
+      h.toon(bewaren.klopt ? '    ✓' : `    ⚠ binnen kwam: ${bewaren.volgorde.map((x) => `${x.el} ${x.kind}`).join(', ') || 'niets'}`);
+      h.bevinding('hubtoets-akkoord', { hubtoets: ht, focus, bewaren });
+      if (focus.klopt && bewaren.klopt) h.toon(`  ✓ ${naam} + andere knoppen komen netjes binnen: de hublaag werkt op deze APC`);
     },
   },
   {
@@ -357,6 +381,26 @@ const stappen = [
     },
   },
   {
+    id: 'lpd8-vasthouden', titel: 'LPD8: lang drukken (snapshots P5–P8, paniek P1)', vereist: ['lpd8'],
+    async doe(h) {
+      // Lang drukken (> LANG_MS = bewaren) en paniek (P1 PANIEK_MS vasthouden) werken alleen als een pad bij
+      // het LOSLATEN een bericht stuurt (note-off of CC 0). In TOGGLE- of PC-modus gebeurt dat niet.
+      const lang = await meetDruk(h, 8, 'Houd PAD 8 vast terwijl je rustig tot drie telt, en laat dan los.', 2000);
+      const kort = await meetDruk(h, 5, 'Tik PAD 5 één keer kort aan.', 0);
+      const noteOff = lang.los && kort.los;
+      const losBijLoslaten = noteOff && (lang.ms ?? 0) > LANG_MS * h.schaal;
+      const langDrukkenWerkt = losBijLoslaten && (kort.ms ?? 0) <= LANG_MS * h.schaal;
+      h.bevinding('lpd8-vasthouden', {
+        lang, kort, noteOff, losBijLoslaten, langDrukkenWerkt, paniekGehaald: noteOff && (lang.ms ?? 0) >= PANIEK_MS * h.schaal,
+        langMs: LANG_MS, paniekMs: PANIEK_MS,
+      });
+      if (!lang.gedrukt || !kort.gedrukt) h.toon('  onbeslist (overgeslagen)');
+      else if (!noteOff) h.toon('  ✗ de pads sturen niets bij loslaten → staan ze in TOGGLE- of PC-modus? Zet ze in de LPD8-editor op MOMENTARY\n    (anders werken lang drukken voor snapshots en de paniek op P1 niet).');
+      else if (!losBijLoslaten) h.toon(`  ⚠ het loslaten kwam al na ${Math.round((lang.ms ?? 0) / h.schaal)} ms — hield je echt drie tellen vast? Zo niet: kijk naar de pad-modus.`);
+      else h.toon(`  ✓ loslaten komt binnen (${Math.round((lang.ms ?? 0) / h.schaal)} ms vastgehouden): lang drukken en paniek werken`);
+    },
+  },
+  {
     id: 'lpd8-leds', titel: 'LPD8: pad-lampjes vanuit de hub (V5)', vereist: ['lpd8'],
     async doe(h) {
       const msgs = h.lpd8.profiel.pads.map((p) => L.padLed(p, true)).filter(Boolean);
@@ -368,6 +412,19 @@ const stappen = [
     },
   },
   {
+    id: 'lpd8-replug', titel: 'LPD8: USB eruit en erin (hotplug)', vereist: ['lpd8'],
+    async doe(h) {
+      h.toon('  → Trek de USB-kabel van de LPD8 eruit.');
+      const weg = await h.wachtMelding('lpd8', 'weg', 120000);
+      if (!weg.ok) { h.bevinding('lpd8-replug', { weg }); return; }
+      h.toon('  ✓ weg. → Steek hem er weer in.');
+      const terug = await h.wachtMelding('lpd8', 'verbonden', 120000);
+      if (!terug.ok) { h.bevinding('lpd8-replug', { weg, terug }); return; }
+      const r = await h.wachtOp({ dev: 'lpd8', ids: ['p1', 'k1'], tekst: 'Druk PAD 1 en draai KNOP 1.' });
+      h.bevinding('lpd8-replug', { weg, terug, herkend: !r.overgeslagen && !r.ontbrekend.length, ...r });
+    },
+  },
+  {
     id: 'einde', titel: 'Klaar',
     async doe(h) {
       if (h.apc.verbonden) { regenboog(h); h.apc.teken(); }
@@ -375,6 +432,76 @@ const stappen = [
     },
   },
 ];
+
+/** De control-id van de hubtoets uit config.json, zoals de kern hem leest (naam of nootnummer op kanaal 0). @param {any} config */
+function hubtoetsId(config) {
+  const ht = config?.hubtoets ?? 'bank';
+  if (typeof ht === 'number') return A.CONTROLS.find((c) => c.t === 'note' && c.n === ht && c.ch === 0)?.id ?? 'bank';
+  return A.OP_ID.has(ht) ? ht : 'bank';
+}
+
+/**
+ * Wacht tot de gebruiker een akkoord heeft gespeeld: ids[0] vast, dan de rest, en ids[0] weer los.
+ * Klopt als de laatste knop binnenkwam terwijl alle eerdere nog ingedrukt waren, elk met zijn eigen noot.
+ * @param {Hulp} h @param {string[]} ids
+ */
+async function akkoord(h, ids) {
+  /** @type {{ el: string, kind: string }[]} */
+  const volgorde = [];
+  const laatste = ids[ids.length - 1];
+  const r = await h.eerste({
+    dev: 'apc40', verwacht: { akkoord: ids },
+    filter: (g) => {
+      if (!g.el || (g.kind !== 'druk' && g.kind !== 'los')) return false;
+      volgorde.push({ el: g.el, kind: g.kind });
+      // Klaar zodra de hubtoets loskomt nadat de laatste knop (of een onverwachte) is ingedrukt.
+      return g.el === ids[0] && g.kind === 'los' && volgorde.some((x) => x.kind === 'druk' && (x.el === laatste || !ids.includes(x.el)));
+    },
+  });
+  const vreemd = [...new Set(volgorde.map((x) => x.el).filter((el) => !ids.includes(el)))];
+  return { volgorde, vreemd, klopt: !!r && !vreemd.length && akkoordKlopt(volgorde, ids) };
+}
+
+/** @param {{ el: string, kind: string }[]} volgorde @param {string[]} ids */
+function akkoordKlopt(volgorde, ids) {
+  const laatste = ids[ids.length - 1];
+  let eind = -1;
+  volgorde.forEach((x, i) => { if (x.el === laatste && x.kind === 'druk') eind = i; });
+  if (eind < 0) return false;
+  // Elke eerdere knop: ingedrukt vóór de laatste, en tussen dat indrukken en de laatste niet losgelaten.
+  return ids.slice(0, -1).every((id) => {
+    let druk = -1;
+    for (let i = 0; i < eind; i++) if (volgorde[i].el === id) druk = volgorde[i].kind === 'druk' ? i : -1;
+    return druk >= 0;
+  });
+}
+
+/**
+ * Meet hoe lang een LPD8-pad als ingedrukt binnenkomt: van druk tot het loslaat-bericht.
+ * @param {Hulp} h @param {number} nr @param {string} tekst @param {number} houdMs  hoe lang een mens ongeveer vasthoudt (voor de simulatie)
+ */
+async function meetDruk(h, nr, tekst, houdMs) {
+  const el = `p${nr}`;
+  /** @type {number|null} */
+  let tDruk = null;
+  /** @type {number|null} */
+  let tLos = null;
+  let tussendoor = 0;
+  /** @type {number[]|null} */
+  let voorbeeld = null;
+  // Eén luisteraar voor alles, zodat ook een heel snel loslaten (vóór de tweede wachtstap) niet gemist wordt.
+  const stop = h.lpd8.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => {
+    if (g.el === el && g.kind === 'druk' && tDruk === null) tDruk = h.klok.nu();
+    else if (g.el === el && g.kind === 'los' && tDruk !== null && tLos === null) tLos = h.klok.nu();
+    else if (tDruk !== null && tLos === null) { tussendoor++; voorbeeld ??= [...b]; } // bv. aftertouch van een mk2-pad
+  });
+  h.toon(`  → ${tekst}  (komt er bij loslaten niets binnen, dan gaan we na 10 s vanzelf door)`);
+  const d = await h.eerste({ dev: 'lpd8', filter: (g) => g.el === el && g.kind === 'druk', verwacht: { pad: nr, houdMs } });
+  if (d && tLos === null) await h.eerste({ dev: 'lpd8', filter: (g) => g.el === el && g.kind === 'los', timeoutMs: 10000, verwacht: { pad: nr, loslaten: true } });
+  stop();
+  const los = tDruk !== null && tLos !== null;
+  return { gedrukt: !!d, los, ms: los ? Math.round(/** @type {number} */ (tLos) - /** @type {number} */ (tDruk)) : null, tussendoor, voorbeeld };
+}
 
 /** @param {Hulp} h */
 function tekenAnimaties(h) {
