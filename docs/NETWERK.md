@@ -50,8 +50,8 @@ een open hub op het netwerk kan niet meer per ongeluk.
 Zonder of met een verkeerd token:
 
 - HTTP en de `/cockpit`-upgrade: `401 token nodig`;
-- `/app`: de hub stuurt `welkom`, wacht op `hallo`; zonder geldig token (of een ander bericht eerst, of na 10 s
-  nog geen `hallo` binnen 3 s) volgt `{t:"fout", reden:"token nodig: …"}` en close-code **4003** (PROTOCOL.md §13). Zo'n
+- `/app`: de hub stuurt `welkom`, wacht op `hallo`; zonder geldig token (of een ander bericht eerst, of geen
+  `hallo` binnen 3 s) volgt `{t:"fout", reden:"token nodig: …"}` en close-code **4003** (PROTOCOL.md §13). Zo'n
   verbinding bereikt de kern nooit (geen slot, geen LEDs). Het token zelf gaat nooit naar de kern of een logboek.
 - Er mogen hooguit 16 van zulke verbindingen tegelijk op een `hallo` wachten (4 per adres); daarboven gaat een
   nieuwe meteen dicht. Zo kan een apparaat op je wifi zonder token de hub niet dichttrekken met duizenden

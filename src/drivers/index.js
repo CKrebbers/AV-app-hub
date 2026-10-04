@@ -7,13 +7,13 @@
 //   d.start(kern);   // verbind + hallo + manifest, daarna hartslagen zolang de app bereikbaar lijkt
 //   d.opnieuw();  // nieuwe aanmelding: de kern speelt alle waarden opnieuw af (na een herstart van de app)
 //   d.stop();
-import { readdirSync, readFileSync } from 'node:fs';
+import * as nodeFs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { valideerManifest } from '../protocol/manifest.js';
 import { scheidStatisch } from './basis.js';
 import { MidiDriver } from './midi.js';
-import { HttpDriver } from './http.js';
+import { HttpDriver, maakLezer, leesSpecVan } from './http.js';
 import { TdDriver, TD_PAR, TD_COMP, TD_CHECK_TIMEOUT_MS } from './td.js';
 
 export { MidiDriver, midiBytes } from './midi.js';
@@ -112,6 +112,11 @@ export function valideerStatisch(statisch) {
       if (p && p.soort !== 'trigger' && typeof v.waarde !== 'string') f.push(`driver.verbs.${id}: waarde (naam van het argument) nodig voor een ${p.soort}`);
     }
     for (const id of params.keys()) if (!(id in verbs)) f.push(`param ${id} heeft geen verb in driver.verbs`);
+    // Teruglezen (driver.lees, of STANDAARD_LEES van de app): dezelfde controle als de driver bij het starten
+    // (maakLezer), zodat een fout hier al opvalt en niet pas als één logregel als de driver draait.
+    const ps = [...params.values()].filter((p) => p && typeof p === 'object');
+    const waar = driver.lees === undefined ? `teruglezen (STANDAARD_LEES.${manifest.app} in src/drivers/http.js; eigen regels in driver.lees, of "lees": false = uit): ` : 'driver.';
+    for (const m of maakLezer(leesSpecVan(manifest, driver), { ...manifest, params: ps }, { ...driver, verbs }).fouten) f.push(waar + m);
   }
   if (driver.soort === 'td') f.push(...valideerTd(driver, params, manifest.hb_s));
   if (f.length || !r.ok) return { ok: false, fouten: f };
@@ -183,20 +188,21 @@ function valideerTd(driver, params, hbS) {
 
 /**
  * Lees alle statische manifesten uit een map (standaard apps/). Ongeldige worden overgeslagen
- * en gemeld, nooit gegooid.
+ * en gemeld, nooit gegooid. `fs` is injecteerbaar (varve-hub check leest zo, tests raken niets echts).
  * @param {string} [map]
+ * @param {{ fs?: Pick<typeof nodeFs, 'readdirSync'|'readFileSync'> }} [o]
  * @returns {{ statisch: Record<string, any>[], fouten: { bestand: string, fouten: string[] }[] }}
  */
-export function laadStatisch(map = APPS_MAP) {
+export function laadStatisch(map = APPS_MAP, { fs = nodeFs } = {}) {
   /** @type {Record<string, any>[]} */
   const statisch = [];
   /** @type {{ bestand: string, fouten: string[] }[]} */
   const fouten = [];
   let bestanden = [];
-  try { bestanden = readdirSync(map).filter((n) => n.endsWith('.json')).sort(); } catch (e) { return { statisch, fouten: [{ bestand: map, fouten: [/** @type {Error} */ (e).message] }] }; }
+  try { bestanden = /** @type {string[]} */ (fs.readdirSync(map)).filter((n) => n.endsWith('.json')).sort(); } catch (e) { return { statisch, fouten: [{ bestand: map, fouten: [/** @type {Error} */ (e).message] }] }; }
   for (const bestand of bestanden) {
     try {
-      const x = JSON.parse(readFileSync(join(map, bestand), 'utf8'));
+      const x = JSON.parse(String(fs.readFileSync(join(map, bestand), 'utf8')));
       const r = valideerStatisch(x);
       if (r.ok) statisch.push(x); else fouten.push({ bestand, fouten: r.fouten });
     } catch (e) { fouten.push({ bestand, fouten: [/** @type {Error} */ (e).message] }); }

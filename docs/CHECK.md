@@ -35,6 +35,7 @@ Controllers
 
 Bestanden
   ✓ LPD8-profiel geleerd (mk2, 2026-10-03)
+  ✓ 4 statische manifesten in orde (av-scene-kit, sediment, td-lab, uurwerk)
   ✓ de F0-proef is gedaan (1×, laatst 2026-10-03 22:10)
   ✓ geheugen leesbaar (~/.varve-hub/staat.json)
   ! avondmap ~/Movies/varve-avonden: 1,6 GB vrij (krap)
@@ -60,7 +61,7 @@ Set
 **De hub** — `GET /api/beeld` op de poort uit `config.json` (`poorten.http`, of `--poort N`), op 127.0.0.1; staat
 in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met het token).
 - Draait hij: zijn de APC40 en de LPD8 verbonden (`apparaten` in het beeld)? Niet verbonden = ✗. Het aantal
-  verbonden apps telt alleen apps die zich zelf aanmelden; drivers (MIDI, OSC, HTTP) staan er apart achter.
+  verbonden apps telt alleen apps die zich zelf aanmelden; drivers (MIDI, HTTP, TD) staan er apart achter.
 - Draait hij niet (niemand op de poort): ! met de startregel (met de set als die bestaat, en `--lan` als je check met
   `--lan` draaide), en dan zoals `doctor`: staan de APC40 en de LPD8 als MIDI-poort in de lijst (naam uit
   `config.json` → `apparaten`)? Niet gevonden, of geen MIDI = ✗.
@@ -71,6 +72,11 @@ in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met he
 - `lpd8-profiel.json`: geleerd = ✓ met het model en de datum van het bestand; ontbreekt of `null` = ! (de hub
   gebruikt de standaardnoten; `npm run proef`); kapot = ✗ (dan start de hub niet) en zonder `pads`/`knoppen` = ✗ (dan
   werkt de LPD8 niet), allebei met `mv lpd8-profiel.json lpd8-profiel.json.oud` of de proef opnieuw.
+- De statische manifesten in `apps/` (de driver-apps: Scene Kit, Sediment, td-lab, uurwerk; PROTOCOL.md §2): dezelfde
+  controle als de hub doet voor hij de drivers start (`valideerStatisch` in `src/drivers/index.js`), ook van het
+  teruglezen (`driver.lees`, of de standaard-patchtaal van uurwerk). Een ongeldig bestand = ✗ per bestand met wat er
+  mis is (de hub slaat die driver stil over: de app doet die avond niet mee); allemaal goed = één ✓; geen map
+  `apps/` = !.
 - De F0-proef: een `proef/<stempel>-f0-hardware.jsonl` (de synthetische testfixture telt niet; opnames in dezelfde
   map worden niet gelezen). Hij telt als gedaan als het logboek de slotregel `samenvatting` heeft; een afgebroken
   proef (Ctrl-C) = !. De tijd is lokale tijd (de stempel in de bestandsnaam is UTC). Nooit gedaan = !.
@@ -133,7 +139,7 @@ De namen van de punten (`naam`), per groep:
 |---|---|
 | `hub` | `hub` |
 | `apparaten` | `apc40`, `lpd8`, `midi` (alleen als MIDI zelf niet werkt) |
-| `bestanden` | `lpd8-profiel`, `proef`, `geheugen`, `geheugen-kapot`, `avondmap` |
+| `bestanden` | `lpd8-profiel`, `apps` (of per ongeldig bestand `apps/<bestand>`), `proef`, `geheugen`, `geheugen-kapot`, `avondmap` |
 | `programma` | `chrome` |
 | `netwerk` (met `--lan`) | `token`, `token-map` |
 | `set` | `set`, `paden`, en per app `<app>.hub`, `<app>.map`, `<app>.node_modules`, `<app>.handmatig`, `<app>.poort`, `<app>.koppeling` |

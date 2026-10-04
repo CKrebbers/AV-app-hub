@@ -74,10 +74,10 @@ Gevonden door de repetitie — opgelost in golf 5 (PROTOCOL §14):
 - Waterschaal `tempo`: app-kant op de PR-tak (tempo continu, CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app). Helemaal dicht zodra die PR gemerged is.
 
 ## Oefenruimte ✓
-http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 13 lessen met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
+http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 14 lessen (les 14, glijden zien, kwam erbij in golf 7) met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
 
 Klaar als (op jouw Mac):
-- [ ] alle 13 lessen gehaald met de echte APC40 en LPD8
+- [ ] alle 14 lessen gehaald met de echte APC40 en LPD8
 
 ## Golf 5 — klaar voor de eerste echte avond ✓ (gebouwd en getest zonder hardware)
 6 onderdelen (bouwer + 2 reviewers + verwerker), plus een beveiligingsreview en een review van de oefenruimte; samengevoegd en opnieuw getest.

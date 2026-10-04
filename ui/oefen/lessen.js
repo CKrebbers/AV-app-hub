@@ -9,6 +9,7 @@
 
 import { maakIndeling, controlsVoor } from '../../src/core/indeling.js';
 import { MANIFESTEN, ZON, ZEE } from './apps.js';
+import { slewsVan } from '../opmaak.js';
 
 /**
  * @typedef {{ soort: 'beeld', beeld: any } | { soort: 'invoer', g: any } | { soort: 'app', app: string, b: any } | { soort: 'knop' } | { soort: 'start' }} Gebeurtenis
@@ -403,6 +404,29 @@ export const LESSEN = [
       + 'Met <code>npm run herhaal -- &lt;map&gt;</code> speel je die avond later terug. Hier hoef je het niet te proberen (het schrijft echt naar je schijf).',
     stappen: [{ id: 'begrepen', wijs: () => ['lpd:p4'], knop: 'Begrepen', opdracht: () => 'Lees het even door en druk op <b>Begrepen</b>.', klaar: (c) => c.ev.soort === 'knop' }],
     geleerd: 'Pad 4 = opnemen. Handig om na afloop terug te zien wat je deed, of om een mooie avond te bewaren.',
+  },
+  {
+    // Achteraan, zodat de andere lessen hun nummer houden (docs/OEFENEN.md, de tests).
+    id: 'glijden',
+    titel: 'Glijden zien: waarom het zacht gaat',
+    intro: 'Laad je een snapshot of draai je een LPD8-knop, dan zet niet jouw hand de waarde, maar de <b>hub</b>. '
+      + 'Heeft een app een slew-tijd (de Galm van de Zee: 3 s), dan laat de hub zo\'n waarde naar het nieuwe doel <b>glijden</b>: '
+      + 'een snapshot zet alles tegelijk om zonder klap. Alleen een directe APC-fader of -knop glijdt niet: daar is je hand zelf de overgang. '
+      + 'Bij Zon en Zee (en in de cockpit) zie je het aan het <b>glij-teken</b>: een streep op het doel en <b>→ doel · resttijd</b>.',
+    stappen: [
+      {
+        id: 'glijdt', wijs: () => ['lpd:k3'],
+        opdracht: () => 'Draai <b>K3 (ruimte)</b> snel een flink eind. Kijk bij de <b>Galm</b> van de Zee: het glij-teken toont waar hij heen gaat en hoe lang hij nog glijdt.',
+        klaar: (c) => c.ev.soort === 'beeld' && slewsVan(c.beeld, ZEE).has('galm'),
+        hint: 'Pickup: draai K3 eerst eens helemaal heen en weer, dan een snelle draai.',
+      },
+      {
+        id: 'aangekomen',
+        opdracht: () => 'Laat K3 los en wacht: de resttijd telt af, en zodra de Galm op het doel is, verdwijnt het teken.',
+        klaar: (c) => c.ev.soort === 'beeld' && !!c.beeld?.apps?.length && !slewsVan(c.beeld, ZEE).has('galm'),
+      },
+    ],
+    geleerd: 'Glijdt iets nog, dan staat het doel al vast: de hub is het met je eens, alleen de app is er nog niet. Snapshots, LPD8 en de cockpit glijden; een directe APC-beweging niet.',
   },
 ];
 

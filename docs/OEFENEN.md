@@ -1,6 +1,6 @@
 # Oefenen
 
-Een pagina in de hub om de basis te leren, in 13 korte lessen. Je oefent met twee eenvoudige apps, **Zon** en **Zee**. Die praten met de hub zoals formula-lab of waterschaal dat doen. Zo leer je het echte gedrag: focus, pickup, rollen, slew, snapshots en paniek.
+Een pagina in de hub om de basis te leren, in 14 korte lessen. Je oefent met twee eenvoudige apps, **Zon** en **Zee**. Die praten met de hub zoals formula-lab of waterschaal dat doen. Zo leer je het echte gedrag: focus, pickup, rollen, slew, snapshots en paniek.
 
 ## Starten
 
@@ -14,6 +14,7 @@ Open daarna **http://localhost:7700/oefen**, of klik op "oefenen" in de cockpit.
 - **Zonder controllers:** gebruik de virtuele APC40 en LPD8 onderaan de pagina. Die klappen vanzelf open als er niets is aangesloten.
 - **Wat te doen:** de knop die je moet gebruiken, licht geel op op de virtuele controllers. Scroll je naar beneden, dan blijft de opdracht onderaan in beeld.
 - **Vastgelopen?** Na 20 seconden verschijnt een tip.
+- **Glijdt iets** (slew, PROTOCOL.md §12), dan toont de rij van die parameter bij Zon of Zee een gele streep op het doel en `→ 80% · 2,1 s` (doel en resttijd), net als in de cockpit; de balk zelf is waar de app nu is.
 - **Voortgang:** de pagina onthoudt waar je was. Met de bolletjes bovenaan spring je naar elke les.
 
 ## De lessen
@@ -33,6 +34,7 @@ Open daarna **http://localhost:7700/oefen**, of klik op "oefenen" in de cockpit.
 | 11 | Paniek | pad 1 een seconde vasthouden |
 | 12 | Tempo en adem | pad 2 tappen, K7 draaien |
 | 13 | Opnemen | pad 4 (alleen uitleg) |
+| 14 | Glijden zien | K3: het glij-teken bij de Galm (→ doel · resttijd) verschijnt en verdwijnt; waarom een snapshot of de LPD8 zacht gaat |
 
 ## Goed om te weten
 

@@ -53,6 +53,10 @@ code { font: 13px var(--mono); color: var(--tekst); }
 .oefen-app .p .balk b { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--app); }
 .oefen-app .p .balk .fysiek { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #fff; border-radius: 1px; opacity: .85; }
 .oefen-app .p .balk .fysiek[hidden] { display: none; }
+/* Glij-teken (slew, PROTOCOL.md §12): streep op het doel en "→ doel · resttijd" onder de balk; absoluut, dus de rij verspringt niet. */
+.oefen-app .p .balk .doel { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--let); border-radius: 1px; }
+.oefen-app .p .balk .doel[hidden] { display: none; }
+.oefen-app .p .balk .naar { position: absolute; right: 0; top: calc(100% + 1px); font: 10px/1 var(--mono); color: var(--let); white-space: nowrap; pointer-events: none; }
 .oefen-app .p .w { font: 12px var(--mono); text-align: right; color: var(--tekst); }
 .oefen-app .p.knipper .w { color: var(--app); }
 .oefen-app .p .waar { display: block; font-size: 10px; color: var(--stil); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
