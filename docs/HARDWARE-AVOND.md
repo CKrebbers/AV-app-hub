@@ -310,3 +310,39 @@ kleuren. Gebruik iTerm2, of beoordeel op het oog: de vraag is alleen of het *ong
 **De proef blijft hangen bij een stap.** `o` + Enter slaat de stap over; noteer wat er niet werkte. Ctrl-C stopt de
 hele proef; wat tot dan toe gemeten is, staat in het logboek in `proef/` en is net zo goed om te pushen (alleen
 `lpd8-profiel.json` komt er dan niet bij; `git add proef/` is genoeg, zie blok 6).
+
+### Als de hub omvalt
+
+De hub kan midden in een set wegvallen: een fout in de hub, of een harde stop (`kill -9`, of Activiteitenweergave →
+Forceer stop). **Wat je ziet:** de cockpit toont "geen hub — opnieuw over … s", de APC-lampjes blijven staan zoals ze waren
+(maar doen niets meer), en de apps spelen gewoon door: klank en beeld draaien in hun eigen programma, niet in de hub.
+
+**Wat je doet:** start hem opnieuw met precies hetzelfde commando, bv. `npm start -- meditatie`. Binnen ±5 s:
+
+- In het hubvenster staat `De vorige hub stopte niet netjes — herstart: …`. Apps die de set startte en die nog draaien,
+  start hij **niet** opnieuw (`draait nog sinds vóór de herstart van de hub`); de beginwaarden van de set zet hij dan
+  ook niet (`snapshot …: overgeslagen`): je speelt verder waar je was. De open Chrome-tabs en de cockpit verbinden vanzelf weer.
+- Elke app staat weer in **zijn eigen slot met zijn eigen kleur** (BANK vast: de bovenste rij is zoals daarnet), ook als
+  de apps in een andere volgorde terugkomen. De **focus** gaat terug naar de app die hem had.
+- **Niets springt.** De hub weet niet waar je faders en knoppen nu fysiek staan: de clip-stop-lamp knippert tot je de
+  fader langs de waarde van de app beweegt, en een LPD8-knop doet pas iets als hij langs de huidige waarde komt.
+- **Snapshots** en de onthouden waarden (TD, Sediment, uurwerk) zijn er weer (`~/.varve-hub/staat.json`). Wat je in de
+  laatste seconde vóór het omvallen bewaarde, kan ontbreken.
+- **Opname (pad 4):** liep die, dan loopt hij meteen door in een **nieuwe** avondmap (de cockpit toont weer REC). De
+  afgebroken avond blijft leesbaar en krijgt een `samenvatting.md` met "afgebroken"; de laatste seconde kan ontbreken.
+
+Stopte je de hub zelf (Ctrl-C, ook per ongeluk, of het Terminal-venster dicht), dan is dat geen omvallen: hij ruimt
+netjes op en stopt ook de apps van de set (een lopende opname wordt afgesloten). Een nieuwe start is dan een gewone
+nieuwe avond: de apps starten opnieuw met de beginwaarden van de set; slots en snapshots blijven.
+
+**Vanzelf opnieuw starten:** met `--blijf` erachter (`npm start -- meditatie --blijf`) start de hub zichzelf na een
+crash binnen een seconde opnieuw, met alles hierboven. Valt hij vaker dan 5 keer binnen een minuut om, dan stopt hij
+met `de hub viel … keer om … — gestopt`: dan zit er een echte fout in; lees de melding erboven en start met de hand.
+Ctrl-C stopt alles zoals altijd.
+
+**De Mac sliep even:** dan pauzeren hub en apps samen. Bij het wakker worden kan een app in de BANK-rij kort knipperen
+(even geen hartslag); hij komt vanzelf terug in zijn slot. Je hoeft niets te doen.
+
+**Wat de apps zeggen** (hun uitvoer) staat tijdens een set in `~/.varve-hub/uitvoer/<app>.log` (met `--uitvoer` ook in
+het hubvenster), zodat de apps doordraaien als de hub wegvalt. Lukt het opnieuw starten niet met "poort 7700 is bezet",
+dan draait de oude hub nog half: `lsof -i :7700` laat zien welk proces; stop dat en start opnieuw.

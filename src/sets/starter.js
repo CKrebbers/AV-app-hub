@@ -12,9 +12,17 @@
 //   5. stop(): alleen wat de starter zelf startte gaat dicht (SIGTERM, na STOP_MS SIGKILL); wat al draaide blijft.
 //      Ctrl-C midden in het opstarten: na stop() start er niets meer. stopNu() is de synchrone noodrem (exit).
 //
+// Na een herstart van de hub die midden in de set omviel (`herstart`: het loopbestand van de vorige hub, zie
+// src/opslag.js): een app waarvan het proces van toen nog leeft, start niet opnieuw — de starter neemt dat proces
+// over (Ctrl-C stopt het later gewoon) en wacht tot de app zelf terugkomt. Apps die al draaiden krijgen geen
+// beginsnapshot (ze hebben hun stand nog; de hub zet zijn geheugen terug) en de beginfocus blijft achterwege (de
+// hub geeft de focus terug aan de app die hem had). Een app die opnieuw gestart moest worden, krijgt de snapshot wel.
+//
 // Tijd komt van de geïnjecteerde Klok; processen, Chrome en poortcontrole zijn geïnjecteerd (tests: nep).
+import * as nodeFs from 'node:fs';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { PADEN_PAD, STANDAARD_TIME_OUT_S, thuisPad, toonPad, vulIn } from './set.js';
 
 /** Hoe vaak de starter kijkt (poorten, beeld, processen). */
@@ -58,12 +66,16 @@ const STAART = 12;
  *   poortOpen: (poort: number) => Promise<boolean>, bestaat?: (pad: string) => boolean,
  *   log?: (regel: string) => void, toonUitvoer?: boolean, tikMs?: number, rustMs?: number, stopMs?: number,
  *   herverbindMs?: number, padenPad?: string,
- * }} o
+ *   herstart?: { apps?: Record<string, number> }|null, bestaand?: (pid: number) => Proces,
+ *   bijProces?: (app: string, pid: number) => void, logMap?: string|null,
+ * }} o  logMap: uitvoer van elke gestarte app naar <logMap>/<app>.log in plaats van een pipe (zie naarLogbestand);
+ *       herstart: wat de omgevallen hub achterliet (null = een gewone start); bestaand: een proces van toen
+ *       overnemen (tests: nep); bijProces: de starter startte of nam een proces over (voor het loopbestand)
  */
 export function startSet({
   set, config, paden = {}, hub, hubPoort, klok, startProces, openUrl, poortOpen, bestaat = existsSync,
   log = () => {}, toonUitvoer = false, tikMs = TIK_MS, rustMs = RUST_MS, stopMs = STOP_MS,
-  herverbindMs = HERVERBIND_MS, padenPad = PADEN_PAD,
+  herverbindMs = HERVERBIND_MS, padenPad = PADEN_PAD, herstart = null, bestaand = bestaandProces, bijProces = () => {}, logMap = null,
 }) {
   const padenNaam = toonPad(padenPad);
   const hubUrl = `ws://localhost:${hubPoort}/app`;
@@ -111,8 +123,30 @@ export function startSet({
       .catch((e) => log(`  ${g.id}: kon de URL niet openen (${/** @type {Error} */ (e)?.message ?? e}) — open hem zelf: ${url}`));
   };
 
+  /**
+   * Herstart van de hub: leeft het proces dat de vorige hub voor deze app startte nog? Dan overnemen.
+   * @param {AppGang} g @returns {boolean}
+   */
+  function neemOver(g) {
+    const pid = herstart?.apps?.[g.id];
+    if (!Number.isInteger(pid)) return false;
+    const p = bestaand(/** @type {number} */ (pid));
+    if (!p.leeft()) return false;
+    g.proces = p;
+    g.hoe = 'draaide al';
+    bijProces(g.id, /** @type {number} */ (pid));
+    log(`  ${g.id}: draait nog sinds vóór de herstart van de hub (proces ${pid}) — niet opnieuw gestart`);
+    if (g.url && g.wacht === 'kern') g.urlNa = klok.nu() + herverbindMs;   // de open tab komt vanzelf terug
+    return true;
+  }
+
   /** @param {AppGang} g */
   async function begin(g) {
+    if (neemOver(g)) {
+      if (g.poort !== undefined) g.poortIsOpen = await poortOpen(g.poort);
+      if (inBeeld(g.id)?.status === 'actief') g.urlOpen = true;
+      return;
+    }
     g.poortIsOpen = g.poort !== undefined ? await poortOpen(g.poort) : false;
     if (gestopt) return; // Ctrl-C tijdens het kijken: niets meer starten (stop() heeft zijn lijst al gemaakt)
     const b = inBeeld(g.id);
@@ -164,13 +198,15 @@ export function startSet({
     log(`  ${g.id}: start "${commando}" in ${cwd}`);
     if (gestopt) return;
     try {
-      g.proces = startProces({ commando, cwd, omgeving });
+      const start = logMap ? naarLogbestand({ startProces, pad: join(logMap, `${g.id}.log`), klok, tikMs }) : startProces;
+      g.proces = start({ commando, cwd, omgeving });
     } catch (e) {
       g.hoe = 'niet gestart';
       faal(g, `starten lukt niet: ${/** @type {Error} */ (e).message}`);
       return;
     }
     g.hoe = 'gestart';
+    if (g.proces.pid !== undefined) bijProces(g.id, g.proces.pid);
     g.proces.bij('uitvoer', (/** @type {string} */ t) => {
       for (const r of t.split(/\r?\n/)) {
         if (!r.trim()) continue;
@@ -229,11 +265,12 @@ export function startSet({
     }
   }
 
-  /** Beginsnapshot: alleen voor apps die klaar zijn en die de hub kent. */
+  /** Beginsnapshot: alleen voor apps die klaar zijn en die de hub kent (na een herstart: niet als ze al draaiden). */
   function zetSnapshot() {
     for (const [id, waarden] of Object.entries(set.snapshot ?? {})) {
       const g = gangen.find((x) => x.id === id);
       if (!g?.klaar) { log(`  snapshot ${id}: overgeslagen (app niet klaar)`); continue; }
+      if (herstart && g.hoe !== 'gestart') { log(`  snapshot ${id}: overgeslagen (draaide al vóór de herstart van de hub: houdt zijn stand)`); continue; }
       const b = inBeeld(id);
       if (!b || b.status !== 'actief') { log(`  snapshot ${id}: overgeslagen (de hub kent ${id} niet${g.spec.opmerking ? ` — ${g.spec.opmerking}` : ''})`); continue; }
       const params = new Map((b.params ?? []).map((p) => [p.id, p]));
@@ -252,6 +289,7 @@ export function startSet({
 
   function zetFocus() {
     if (!set.focus) return;
+    if (herstart) { log(`  focus: na een herstart van de hub niet opnieuw gezet — ${hub.beeld().focus ?? 'nog niemand'} heeft hem (de hub geeft hem terug aan de app die hem had)`); return; }
     const g = gangen.find((x) => x.id === set.focus);
     const b = inBeeld(set.focus);
     if (!g?.klaar || b?.status !== 'actief') { log(`  focus: ${set.focus} is niet klaar — focus blijft ${hub.beeld().focus ?? 'leeg'}`); return; }
@@ -324,6 +362,86 @@ export function startSet({
       }
       if (eigen.length) log(`Gestopt: ${eigen.map((g) => g.id).join(', ')}`);
     },
+  };
+}
+
+/**
+ * Een proces dat de vorige hub startte (eigen procesgroep, zie systeem.js startProces) als Proces, zodat de starter
+ * het na een herstart kan overnemen: kijken of de groep nog leeft, en bij stoppen de hele groep een sein geven.
+ * @param {number} pid @param {{ kill?: (pid: number, sein: NodeJS.Signals|0) => unknown }} [o] (tests)
+ * @returns {Proces}
+ */
+export function bestaandProces(pid, { kill = (p, sein) => process.kill(p, sein) } = {}) {
+  let leeg = false;
+  const leeft = () => {
+    if (leeg) return false;
+    try { kill(-pid, 0); return true; } catch { leeg = true; return false; }   // eens leeg = nooit meer (pid-hergebruik)
+  };
+  return {
+    pid,
+    bij: () => {},
+    leeft,
+    stop: (sein = 'SIGTERM') => { if (leeft()) { try { kill(-pid, sein); } catch { /* net weg */ } } },
+  };
+}
+
+/**
+ * Uitvoer van een app naar een logbestand (`pad`, bv. `<map>/<app>.log`) in plaats van een pipe naar de hub. Een pipe gaat
+ * dicht als de hub omvalt (kill -9, crash), en dan stopt een Node-app bij zijn eerstvolgende regel uitvoer
+ * (EPIPE): de app die de set startte, zou de hub-crash niet overleven. Een bestand blijft schrijfbaar, ook
+ * zonder hub. De starter leest het bestand mee (elke `tikMs`), dus de staart bij een fout en `--uitvoer` werken
+ * zoals met een pipe. Elke start begint het bestand opnieuw.
+ * @param {{ startProces: StartProces, pad: string, klok: import('../core/klok.js').Klok, tikMs?: number,
+ *   fs?: Pick<typeof nodeFs, 'mkdirSync'|'writeFileSync'|'openSync'|'readSync'|'fstatSync'|'closeSync'> }} o
+ * @returns {StartProces}
+ */
+export function naarLogbestand({ startProces, pad, klok, tikMs = TIK_MS, fs = nodeFs }) {
+  return (o) => {
+    let fd;
+    try {
+      fs.mkdirSync(dirname(pad), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(pad, '', { mode: 0o600 });
+      fd = fs.openSync(pad, 'r');
+    } catch {
+      return startProces(o);   // geen logbestand mogelijk (schijf, rechten): dan maar via de pipe, zoals vroeger
+    }
+    // `exec >>`: vanaf hier gaat alles van de shell en wat hij start naar het bestand.
+    const p = startProces({ ...o, commando: `exec >>${shellQuote(pad)} 2>&1; ${o.commando}` });
+    /** @type {{ uitvoer: ((x: any) => void)[], einde: ((x: any) => void)[] }} */
+    const l = { uitvoer: [], einde: [] };
+    const decoder = new StringDecoder('utf8');
+    const buf = Buffer.alloc(64 * 1024);
+    let plek = 0, dicht = false, klaar = false;
+    /** @type {any} */ let timer = null;
+    const lees = () => {
+      if (dicht) return;
+      try {
+        if (fs.fstatSync(fd).size < plek) plek = 0;      // van buiten ingekort
+        for (;;) {
+          const n = fs.readSync(fd, buf, 0, buf.length, plek);
+          if (n <= 0) break;
+          plek += n;
+          const t = decoder.write(buf.subarray(0, n));
+          if (t) for (const fn of l.uitvoer) fn(t);
+        }
+      } catch { /* bestand weg: niets meer te lezen */ }
+    };
+    const sluit = () => { if (dicht) return; lees(); dicht = true; try { fs.closeSync(fd); } catch { /* al dicht */ } };
+    // Meelezen zolang er iets in de groep leeft (ook wat het commando op de achtergrond zette, zoals start.sh).
+    const tik = () => { timer = null; lees(); if (klaar && !p.leeft()) sluit(); else if (!dicht) timer = klok.zet(tik, tikMs); };
+    timer = klok.zet(tik, tikMs);
+    p.bij('uitvoer', (x) => { for (const fn of l.uitvoer) fn(x); });   // wat toch nog via de pipe komt
+    p.bij('einde', (x) => { klaar = true; lees(); for (const fn of l.einde) fn(x); });
+    return {
+      pid: p.pid,
+      bij: (naam, fn) => { l[naam].push(fn); },
+      stop: (sein) => p.stop(sein),
+      leeft: () => {
+        const ja = p.leeft();
+        if (!ja && klaar) { if (timer !== null) { klok.wis(timer); timer = null; } sluit(); }
+        return ja;
+      },
+    };
   };
 }
 

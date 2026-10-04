@@ -177,6 +177,19 @@ export class Opnemer extends Zender {
     return s;
   }
 
+  /**
+   * Na een herstart van de hub die midden in een opname omviel: de opname weer aan, alsof LPD8-pad 4 nog aan
+   * stond (de kern meldt 'opname'; een volgende druk op pad 4 stopt hem gewoon). Het wordt een nieuwe avond;
+   * de afgebroken avond herstelt src/opname/herstel.js. Geeft de nieuwe sessie (of null zonder avondmap).
+   */
+  hervat() {
+    if (!this.kern.opname) {
+      this.kern.opname = true;
+      this.kern.meld('opname', true);
+    }
+    return this.huidig;
+  }
+
   /** Map van deze avond maken (bestaat hij al, dan -2, -3, …). @param {Sessie} s */
   async #maakMap(s) {
     const map = /** @type {string} */ (this.map);

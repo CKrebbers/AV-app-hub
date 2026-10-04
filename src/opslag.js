@@ -149,7 +149,9 @@ export function koppelGeheugen({ kern, pad, klok, log = () => {}, schrijfMs = SC
     }
   };
   const plan = () => { if (!gestopt && schrijven && timer === null) timer = klok.zet(schrijf, schrijfMs); };
-  const afmelden = kern.bij('geheugen', plan);
+  // 'geheugen': snapshots en truth:"hub"-waarden. 'beeld' (hooguit 10×/s): ook slots en focus horen erbij (die
+  // melden geen 'geheugen'); schrijf() vergelijkt eerst, dus zonder echte wijziging gaat er niets naar schijf.
+  const afmelden = [kern.bij('geheugen', plan), kern.bij('beeld', plan)];
 
   return {
     pad,
@@ -159,9 +161,79 @@ export function koppelGeheugen({ kern, pad, klok, log = () => {}, schrijfMs = SC
     stop() {
       if (gestopt) return;
       gestopt = true;
-      afmelden();
+      for (const f of afmelden) f();
       if (timer !== null) { klok.wis(timer); timer = null; }
       schrijf();
     },
   };
 }
+
+// ── Loopbestand: viel de vorige hub om? ─────────────────────────────────────────
+// Naast het geheugen staat `<pad>.loopt` zolang de hub draait; bij netjes stoppen (Ctrl-C, SIGTERM, venster
+// dicht) gaat het weg. Staat het er bij de start nog, en leeft dat proces niet meer, dan viel de vorige hub om
+// (kill -9, crash, stroom weg) — midden in een set. Erin: welke set, de processen die de set-starter startte
+// (zodat een herstart ze niet dubbel start en ze bij Ctrl-C toch stopt) en of de opname liep.
+
+/**
+ * @typedef {{ v: 1, pid: number, begon: string, set: string|null, apps: Record<string, number>, opname: boolean }} Loop
+ */
+
+/** Pad van het loopbestand bij een geheugenpad. @param {string} geheugen */
+export const loopPad = (geheugen) => `${geheugen}.loopt`;
+
+/** Leeft proces `pid` nog? (signaal 0 stuurt niets.) @param {number} pid */
+export function procesLeeft(pid) {
+  try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e)?.code === 'EPERM'; }
+}
+
+/**
+ * Lees het vorige loopbestand en schrijf het eigen. `vorige` = wat de omgevallen hub achterliet (of null: de vorige
+ * stopte netjes, of er draait nog een hub met dit geheugen — dan `ander` = zijn pid).
+ * @param {{ pad: string, set?: string|null, pid?: number, datum?: () => Date, leeft?: (pid: number) => boolean, fs?: Bestanden }} o
+ */
+export function openLoopbestand({ pad, set = null, pid = process.pid, datum = () => new Date(), leeft = procesLeeft, fs = nodeFs }) {
+  ruimTmpOp(pad, fs);
+  /** @type {Partial<Loop>|null} */
+  let vorige = null;
+  /** @type {number|null} */
+  let ander = null;
+  try {
+    const d = JSON.parse(fs.readFileSync(pad, 'utf8'));
+    vorige = d && typeof d === 'object' && !Array.isArray(d) ? d : {};
+  } catch (e) {
+    // Weg = de vorige stopte netjes. Er wel maar kapot (half geschreven bij stroomverlies): toch omgevallen.
+    if (/** @type {any} */ (e)?.code !== 'ENOENT') vorige = {};
+  }
+  if (vorige && typeof vorige.pid === 'number' && vorige.pid !== pid && leeft(vorige.pid)) { ander = vorige.pid; vorige = null; }
+  if (vorige) {
+    const apps = /** @type {Record<string, number>} */ ({});
+    for (const [id, p] of Object.entries(isObject(vorige.apps) ? /** @type {object} */ (vorige.apps) : {})) if (Number.isInteger(p) && p > 1) apps[id] = p;
+    vorige = { ...vorige, apps, opname: vorige.opname === true, set: typeof vorige.set === 'string' ? vorige.set : null };
+  }
+  /** @type {Loop} */
+  const nu = { v: 1, pid, begon: datum().toISOString(), set, apps: {}, opname: false };
+  let weg = false;
+  /** @type {string|null} */
+  let fout = null;
+  const schrijf = () => {
+    if (weg) return;
+    try { schrijfGeheugen(pad, nu, fs); fout = null; } catch (e) { fout = /** @type {Error} */ (e).message; }
+  };
+  schrijf();
+  return {
+    pad,
+    /** @type {Partial<Loop>|null} */ vorige,
+    ander,
+    /** Waarom het loopbestand niet geschreven kon worden (of null). */
+    fout: () => fout,
+    /** De set-starter startte (of nam over) proces `pid` voor app `id`. @param {string} id @param {number} p */
+    app(id, p) { if (nu.apps[id] === p) return; nu.apps[id] = p; schrijf(); },
+    /** De opname ging aan of uit. @param {boolean} aan */
+    opname(aan) { if (nu.opname === aan) return; nu.opname = aan; schrijf(); },
+    /** Netjes gestopt: het loopbestand weg. */
+    wis() { weg = true; try { fs.rmSync(pad, { force: true }); } catch { /* dan denkt de volgende start dat we omvielen: onschuldig */ } },
+  };
+}
+
+/** @param {unknown} x */
+const isObject = (x) => !!x && typeof x === 'object' && !Array.isArray(x);
