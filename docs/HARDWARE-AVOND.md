@@ -201,6 +201,13 @@ een virtuele APC en LPD8 die meelopen met de echte.
 - [ ] Faders en knoppen op de app met focus; kijk in de cockpit mee.
 - [ ] LPD8-knoppen K1–K8 werken op alle apps tegelijk (K2 helderheid, K3 ruimte, …).
 - [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek.
+- [ ] **APC kort los** (na stap 20 van de proef, nu met de hub): trek de APC-kabel eruit en steek hem zo snel als je
+  kunt weer in, en wacht dan rustig 1–2 s. Binnen ±2 s is het LED-beeld terug, staat de APC in de cockpit weer op
+  verbonden, en in het hubvenster staat hooguit één regel `APC: sturen mislukt — kabel los? de hub probeert opnieuw`.
+  Blijft hij donker: noteer hoe lang de kabel ongeveer los was (een kabel die korter dan ±0,25 s los is, kan de hub op de
+  Mac niet zien), en trek hem dan een paar seconden los en weer in.
+- [ ] **LPD8 kort los**: hetzelfde met de LPD8-kabel; daarna staat de LPD8 in de cockpit weer op verbonden en doen P1
+  en K1 weer wat ze moeten (hooguit één regel `LPD8: sturen mislukt — …`).
 - [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon. Na 60 s "niet klaar" voor MediSynth of
   Waterschaal: staat die repo op `claude/varve-hub-koppeling` (blok 1)?
 

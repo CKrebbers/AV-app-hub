@@ -166,7 +166,22 @@ export async function check(o) {
       let datum = '';
       try { datum = lokaal(fs.statSync(profiel).mtime).slice(0, 10); } catch { datum = ''; }
       const over = [p.model, datum].filter(Boolean).join(', ');
-      best('ok', 'lpd8-profiel', `LPD8-profiel geleerd${over ? ` (${over})` : ''}`);
+      // P1 (paniek) en P5–P8 (snapshots) werken op het loslaten; in PC-modus stuurt een pad alleen een druk
+      // (src/devices/lpd8.js). Dan begint de paniek na een seconde en eindigt hij nooit, en doen P5–P8 niets
+      // (PROTOCOL.md §11). P2–P4 tellen elke druk en werken ook in PC-modus.
+      const pc = p.pads.flatMap((/** @type {any} */ x, /** @type {number} */ i) => (x?.t === 'pc' && (i === 0 || i >= 4) ? [i + 1] : []));
+      if (pc.length) {
+        const namen = (/** @type {number[]} */ l) => l.map((n) => `P${n}`).join(', ');
+        const snap = pc.filter((/** @type {number} */ n) => n >= 5);
+        const gevolg = [
+          pc.includes(1) ? 'P1-paniek begint dan wel, maar eindigt nooit' : '',
+          snap.length ? `${namen(snap)} ${snap.length === 1 ? 'doet' : 'doen'} niets (geen snapshot)` : '',
+        ].filter(Boolean).join(', en ');
+        const welke = namen(pc);
+        best(pc.includes(1) ? 'fout' : 'let', 'lpd8-profiel',
+          `${welke} van de LPD8 ${pc.length === 1 ? 'staat' : 'staan'} in PC-modus (lpd8-profiel.json${over ? `, ${over}` : ''}): zo'n pad stuurt geen los, dus ${gevolg}`,
+          'zet de pads in de LPD8 Editor van Akai in note-modus (NOTE in plaats van PROG CHNG, en MOMENTARY), schrijf het programma naar de LPD8 en leer het profiel opnieuw (npm run proef)');
+      } else best('ok', 'lpd8-profiel', `LPD8-profiel geleerd${over ? ` (${over})` : ''}`);
     }
   }
 

@@ -10,8 +10,9 @@
 // gezet wordt (tientallen keren sneller dan echt), nep-apps (tools/nep-app.mjs, met de echte manifesten uit
 // test/fixtures/manifesten) en cockpits over echte WebSockets. Een seed bepaalt wat er gebeurt en wanneer
 // (in nep-tijd): draaien aan faders en knoppen, focus wisselen, snapshots, paniek, opname, apps die wegvallen
-// en terugkomen, een tweede tab, cockpits die komen, gaan en traag lezen, een app die rommel stuurt, een
-// controller die eruit getrokken wordt en een uurwerk-brug die even weg is.
+// en terugkomen, een tweede tab, cockpits die komen, abrupt wegvallen en traag lezen, dezelfde toets van de hand
+// én een cockpit, een app die rommel stuurt, een controller die eruit getrokken wordt (ook heel kort) en een
+// uurwerk-brug die even weg is.
 //
 // Gemeten: heap na gc, event-loop-vertraging, open handles en klok-timers, de grootte van alle structuren die
 // kunnen groeien, berichten per seconde, en invarianten (paniek, slews, staat, opruimen). Rapport op stdout en
@@ -251,17 +252,22 @@ class DuurApp extends NepApp {
     const logPaniek = (/** @type {string} */ x) => { this.paniekLog.push(`${Math.round(nu() / 100) / 10} s ${x}`); if (this.paniekLog.length > 6) this.paniekLog.shift(); };
     this.stil = false;
     this.leds = 0;
+    /** Triggers die op deze verbinding nu aan staan (laatste `trig` was aan:true), met sinds wanneer (nep-tijd). Een
+     *  nieuwe verbinding begint leeg: wat de hub losliet terwijl de app weg was, hoort hij niet (PROTOCOL §10). @type {Map<string, number>} */
+    this.trigAan = new Map();
     this.bij('open', () => {
       // NepApp stuurt zijn hartslag op de echte klok; hier volgt hij de nep-klok (hartslag()).
       if (this.hb) clearInterval(this.hb);
       this.hb = null;
       this.verbondenOp = nu();
+      this.trigAan.clear();
       logPaniek('verbonden');
       if (this.manifest.lease) this.#ledBurst(24);
     });
     this.bij('bericht', (/** @type {any} */ b) => {
       teller.app++;
       this.ontvangen.length = 0;
+      if (b.t === 'trig' && typeof b.id === 'string') { if (b.aan) { if (!this.trigAan.has(b.id)) this.trigAan.set(b.id, nu()); } else this.trigAan.delete(b.id); }
       if (b.t === 'trig' && b.id === 'paniek') { if (!b.aan) this.uitOp.trig = nu(); logPaniek(`trig ${b.aan}`); }
       if (b.t === 'globaal' && typeof b.waarden?.paniek === 'number') { if (b.waarden.paniek === 0) this.uitOp.globaal = nu(); logPaniek(`globaal ${b.waarden.paniek}`); }
       // De echte Waterschaal: paniek = volume naar 0, en dat meldt hij terug.
@@ -314,14 +320,15 @@ class DuurCockpit {
     this.stuur({ t: 'zet', app, id, v: aan ? 1 : 0 });
   }
   /**
-   * Weg, zoals een pagina die sluit (ui/cockpit.js laat dan zijn triggers los). Virtueel ingedrukte toetsen niet:
-   * die laat de hub zelf los als de cockpit wegvalt (PROTOCOL §10).
+   * Abrupt weg, zoals een tablet waarvan de wifi uitvalt: geen nette afsluiting en niets losgelaten. Wat de cockpit
+   * vasthield (triggers met `zet v:1`, virtuele toetsen), laat de hub zelf los (PROTOCOL §10, golf 8). Geeft de
+   * triggers terug die hij op dat moment vasthield (app\0id), voor de controle daarna.
    */
   sluit() {
-    if (this.traag) this.verder();
-    for (const k of this.triggers) { const [app, id] = k.split('\u0000'); this.stuur({ t: 'zet', app, id, v: 0 }); }
+    const vast = [...this.triggers];
     this.triggers.clear();
-    this.ws.close();
+    this.ws.terminate();
+    return vast;
   }
 }
 
@@ -419,13 +426,11 @@ const LPD8_PROFIEL = LPD8.standaardProfiel('mk2');
 const FADERS = [...Array.from({ length: 8 }, (_, i) => `fader${i + 1}`), 'master', 'xf'];
 const KNOPPEN = [...Array.from({ length: 8 }, (_, i) => `dk${i + 1}`), ...Array.from({ length: 8 }, (_, i) => `tk${i + 1}`)];
 /**
- * De hub ziet een virtuele toets en dezelfde fysieke toets als één toets. Echt twee keer indrukken zonder loslaten
- * kan met één hand niet; daarom drukt de cockpit virtueel alleen op de onderste twee rijen pads (en LPD8 P7, P8),
- * de "hand" op de APC op de rest (en LPD8 P5, P6). Zie docs/DUURTEST.md (open punt: cockpit + hardware tegelijk).
+ * De toetsen die de hand los indrukt (Bank, Shift en Stop All doet hij in hun eigen reeksen). De cockpits drukken
+ * virtueel op dezelfde toetsen, en op Stop All: dezelfde toets van twee bronnen tegelijk (de APC en een cockpit, of
+ * twee cockpits) is voor de hub één toets die in of uit is; de eerste los laat hem los (PROTOCOL §11, golf 8).
  */
-const VIRTUEEL = new Set(APC.CONTROLS.filter((c) => /^pad[12]-/.test(c.id)).map((c) => c.id));
-const TOETSEN = APC.CONTROLS.filter((c) => c.t === 'note' && !VIRTUEEL.has(c.id) && c.id !== 'bank' && c.id !== 'shift' && c.id !== 'stopall').map((c) => c.id);
-const TOETSEN_VIRTUEEL = [...VIRTUEEL];
+const TOETSEN = APC.CONTROLS.filter((c) => c.t === 'note' && c.id !== 'bank' && c.id !== 'shift' && c.id !== 'stopall').map((c) => c.id);
 
 // ── de duurtest ──────────────────────────────────────────────────────────────
 
@@ -470,10 +475,21 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     if (schendingen.length < 200) schendingen.push({ wat, nepS: rond(klok.nu() / 1000, 1), detail });
     log(`  ✗ ${wat}: ${detail}`);
   };
+  /** Hoe vaak elke invariant van golf 8 echt gecontroleerd werd (een invariant die nooit aan de beurt kwam, zegt niets). */
+  const controles = { 'cockpit.trigger': 0, 'cockpit.weg': 0, 'stopall.los': 0, 'replug.apc': 0, 'replug.lpd8': 0 };
   /** @type {string[]} */
   const meldingen = [];
   let meldingTotaal = 0;
-  const hubLog = (/** @type {unknown[]} */ ...x) => { meldingTotaal++; meldingen.push(x.map(String).join(' ').slice(0, 200)); if (meldingen.length > 30) meldingen.shift(); };
+  /** Logregels 'sturen mislukt' per controller (PROTOCOL §16: één per storing). */
+  const stuurfouten = { APC: 0, LPD8: 0 };
+  const hubLog = (/** @type {unknown[]} */ ...x) => {
+    meldingTotaal++;
+    const regel = x.map(String).join(' ');
+    const m = /^(APC|LPD8): sturen mislukt/.exec(regel);
+    if (m) stuurfouten[/** @type {'APC'|'LPD8'} */ (m[1])]++;
+    meldingen.push(regel.slice(0, 200));
+    if (meldingen.length > 30) meldingen.shift();
+  };
   const handlesVooraf = handles();
 
   /** @type {any} */ let hub = null;
@@ -496,16 +512,39 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
   try {
     // ── hub ────────────────────────────────────────────────────────────────────
     const systeem = new NepSysteem();
-    let apc = systeem.voegToe('APC40 mkII');
-    const voegLpd8 = () => {
-      const p = systeem.voegToe('LPD8 mk2');
-      p.antwoord = (b) => { if (b[1] === 0x7e) agenda.plan(klok.nu() + 5, () => p.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7])); };
-      return p;
-    };
-    let lpd8 = voegLpd8();
     // De avondmap altijd binnen de tijdelijke map, ook als config.json een absoluut pad heeft (een extern volume,
     // docs/OPNAME.md): de duurtest schrijft nooit in het echte avondarchief. Verder is config.json de bron.
     const config = { ...laadConfig(), avondmap: '~/avonden' };
+    /**
+     * Na het insteken (nep-tijd): wanneer de nieuwe nep-poort de intro (APC) of de identiteitsvraag (LPD8) kreeg, en
+     * wanneer zijn antwoord daarop de kern bereikte. Zo is na elke replug te zien dat de hub hem opnieuw initialiseerde
+     * én weer hoort (PROTOCOL §16).
+     */
+    const ingestoken = { apc: { op: 0, init: -Infinity, gehoord: -Infinity }, lpd8: { op: 0, init: -Infinity, gehoord: -Infinity } };
+    const INTRO = APC.intro(config.apparaten.apc40.modus);
+    const voegApc = () => {
+      const p = systeem.voegToe('APC40 mkII');
+      ingestoken.apc = { op: klok.nu(), init: -Infinity, gehoord: -Infinity };
+      // Zoals de echte APC: op de intro antwoordt hij (F0 47 … 29 61 …, met de faderstanden).
+      p.antwoord = (b) => {
+        if (b.length !== INTRO.length || !b.every((x, i) => x === INTRO[i])) return;
+        if (ingestoken.apc.init === -Infinity) ingestoken.apc.init = klok.nu();
+        agenda.plan(klok.nu() + 5, () => p.injecteer([0xf0, 0x47, 0x00, 0x29, 0x61, 0x00, 0x00, 0xf7]));
+      };
+      return p;
+    };
+    const voegLpd8 = () => {
+      const p = systeem.voegToe('LPD8 mk2');
+      ingestoken.lpd8 = { op: klok.nu(), init: -Infinity, gehoord: -Infinity };
+      p.antwoord = (b) => {
+        if (b[1] !== 0x7e) return;
+        if (ingestoken.lpd8.init === -Infinity) ingestoken.lpd8.init = klok.nu();
+        agenda.plan(klok.nu() + 5, () => p.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7]));
+      };
+      return p;
+    };
+    let apc = voegApc();
+    let lpd8 = voegLpd8();
     const T0 = Date.UTC(2026, 9, 4, 19, 0, 0);
     hub = await startHub({
       config, systeem, klok, poort: 0, drivers: false, log: hubLog,
@@ -518,6 +557,11 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     const driverApps = new Set(drivers.map((d) => d.driver.manifest.app));
     const kern = hub.kern;
     kern.bij('naarApp', () => { teller.naarApp++; });
+    // Het antwoord van de controller op de intro / identiteitsvraag bereikte de kern: de hub hoort hem.
+    kern.bij('invoer', (/** @type {any} */ g) => {
+      if (g?.dev === 'apc40' && g.kind === 'intro-antwoord' && ingestoken.apc.gehoord === -Infinity) ingestoken.apc.gehoord = klok.nu();
+      if (g?.dev === 'lpd8' && g.sysex && g.model && ingestoken.lpd8.gehoord === -Infinity) ingestoken.lpd8.gehoord = klok.nu();
+    });
     const appUrl = hub.adres.replace('http', 'ws') + '/app';
     const cockpitUrl = hub.adres.replace('http', 'ws') + '/cockpit';
 
@@ -589,7 +633,7 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     const vingers = new Map();
     const noot = (/** @type {string} */ id, /** @type {boolean} */ aan) => {
       const n = vingers.get(id) ?? 0;
-      if (aan) { vingers.set(id, n + 1); if (n > 0) return; }
+      if (aan) { vingers.set(id, n + 1); if (n > 0) return; if (cockpits.some((c) => c.toetsen.has(id))) tel('dubbeledruk'); }
       else if (n > 1) { vingers.set(id, n - 1); return; }
       else if (n === 1) vingers.delete(id);
       else return;
@@ -663,7 +707,7 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     elke(15000, () => {
       const lang = t.kans(0.3);
       tel(lang ? 'snapshot.lpd8.bewaar' : 'snapshot.lpd8.laad');
-      tikLpd(t.geheel(5, 6), lang ? LANG_MS + 200 : 120);
+      tikLpd(t.geheel(5, 8), lang ? LANG_MS + 200 : 120);
     });
     // Opname: één van het begin tot de afbouw (doorlopend, zoals een echte avond), of aan en uit (wisselend). Ook
     // doorlopend blijft dit gepland (en doet dan niets): zo trekt de avond hetzelfde toeval, welke soort ook.
@@ -695,7 +739,8 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       if (kern.paniekActief || (kern.globaal.paniek ?? 0) !== 0 || kern.p1Timer !== null) schend('na loslaten is de paniek voorbij', `paniekActief ${kern.paniekActief}, globaal.paniek ${kern.globaal.paniek}, p1Timer ${kern.p1Timer}`);
       if (kern.paniekTot !== -Infinity && kern.paniekTot > klok.nu()) schend('na de naloop verplaatst een app het pickup-doel weer', `paniekTot ${kern.paniekTot} > nu ${klok.nu()}`);
       if (stopAllVast) return;
-      for (const [app, tot] of kern.appPaniekTot) if (tot === Infinity) schend('Stop All los = naloop', `${app}: appPaniekTot Infinity`);
+      controles['stopall.los']++;
+      for (const [app, tot] of kern.appPaniekTot) if (tot === Infinity) schend('Stop All los = naloop', `${app}: appPaniekTot Infinity terwijl niemand Stop All vasthoudt`);
       if (!ging) return;
       // Elke app die bij het loslaten verbonden was, hoorde daarna "paniek uit": een app met een paniek-trigger een
       // trig aan:false, de rest globaal paniek 0. (Wat daarna nog komt, een Stop All of een cockpit-trigger, telt hier
@@ -710,13 +755,37 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     };
 
     // Cockpits: komen, gaan, traag lezen, en bedienen.
-    /** Virtuele toetsen: tot wanneer bezet (vastgehouden = Infinity; na loslaten nog even). @type {Map<string, number>} */
-    const virtueelBezet = new Map();
-    /** Een cockpit gaat weg: wat hij virtueel vasthield, laat de hub los; daarna is de toets weer vrij. @param {DuurCockpit} c */
+    /**
+     * Stop All van een cockpit telt mee in stopAllVast (zolang iemand Stop All vasthoudt, mag de paniek van een app
+     * op Infinity staan). Loslaten telt pas een poos later af: het loslaten (of de hub die een weggevallen cockpit
+     * loslaat) gaat over een echte socket en kan nog onderweg zijn als de nep-klok al verder is.
+     */
+    const stopAllLosVirtueel = () => na(2000, () => { stopAllVast--; });
+    /** Een cockpit valt weg (abrupt): wat hij virtueel vasthield en welke triggers hij indrukte, laat de hub los. @param {DuurCockpit} c */
     const cockpitWeg = (c) => {
-      for (const id of c.toetsen) virtueelBezet.set(id, klok.nu() + 1000);
+      if (c.toetsen.has('stopall')) stopAllLosVirtueel();
       c.toetsen.clear();
-      c.sluit();
+      const vast = c.sluit();
+      if (vast.length) { tel('cockpit.weg.trigger'); na(1500, () => controleerTriggersLos(vast, c)); }
+    };
+    /**
+     * Een cockpit die wegviel terwijl hij triggers vasthield: de hub liet ze los (trig aan:false), behalve wat een
+     * ander nog vasthoudt: een andere cockpit, LPD8 P1 (de paniek), Stop All (de paniek-trigger van die app) of een
+     * APC-pad op die trigger (PROTOCOL §10). Alleen bij een app die al vóór het wegvallen op deze verbinding zat.
+     * @param {string[]} vast app\0id @param {DuurCockpit} weg
+     */
+    const controleerTriggersLos = (vast, weg) => {
+      for (const k of vast) {
+        const [app, id] = k.split('\u0000');
+        const a = [...apps.values()].find((x) => x.manifest.app === app);
+        const st = kern.apps.get(app);
+        if (!a?.open || !st?.manifest || a.verbondenOp > klok.nu() - 1500) continue;
+        if (cockpits.some((c) => c !== weg && c.triggers.has(k))) continue;
+        if ((id === 'paniek' && kern.paniekActief) || (st.indeling?.paniek === id && kern.appPaniekTot.get(app) === Infinity) || [...st.vast.values()].includes(id)) continue;
+        controles['cockpit.trigger']++;
+        const sinds = a.trigAan.get(id);
+        if (sinds !== undefined && sinds < klok.nu() - 1500) schend('een cockpit die wegvalt laat zijn triggers los', `${app}.${id} staat nog aan (sinds ${rond(sinds / 1000, 1)} s nep), 1,5 s nadat de cockpit wegviel`);
+      }
     };
     /** Alle (app, parameter) uit de manifesten, om vanuit de cockpit te zetten. */
     const parameters = Object.values(fixtures).flatMap((f) => f.manifest.params.map((/** @type {any} */ p) => ({ app: f.manifest.app, id: p.id, trigger: p.soort === 'trigger' })));
@@ -748,25 +817,27 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       else if (soort === 5) { tel('cockpit.focus'); c.stuur({ t: 'focus', app: focusKeuzes[Math.floor(x * focusKeuzes.length)] }); }
       else if (soort === 6) { tel('cockpit.snapshot'); c.stuur({ t: 'snapshot', nr: y < 0.8 ? 1 + Math.floor(x * 8) : 1 + Math.floor(x * 99), actie: z < 0.3 ? 'bewaar' : 'laad' }); }
       else {
-        // Virtuele APC/LPD8: meestal netjes los, soms blijft de toets hangen tot de cockpit weggaat (dan laat de hub
-        // hem los). Een toets die een andere cockpit vasthoudt (of net losliet, de berichten van twee sockets kunnen
-        // elkaar inhalen) slaat hij over.
+        // Virtuele APC/LPD8 op dezelfde toetsen als de hand (en Stop All, LPD8 P5–P8), ook als de hand of een andere
+        // cockpit hem net vasthoudt: voor de hub één toets, de eerste los laat hem los (§11). Meestal netjes los,
+        // soms blijft de toets hangen tot de cockpit wegvalt (dan laat de hub hem los). Wat deze cockpit al vasthoudt,
+        // drukt hij niet nog eens in (één vinger per toets).
         const lpd = soort === 9;
-        const id = lpd ? `lpd8:p${7 + Math.floor(x * 2)}` : TOETSEN_VIRTUEEL[Math.floor(x * TOETSEN_VIRTUEEL.length)];
-        if ((virtueelBezet.get(id) ?? -Infinity) > klok.nu()) return;
+        const id = lpd ? `lpd8:p${5 + Math.floor(x * 4)}` : z < 0.1 ? 'stopall' : TOETSEN[Math.floor(x * TOETSEN.length)];
+        if (c.toetsen.has(id)) return;
         tel('cockpit.virtueel');
+        if (vingers.has(id) || cockpits.some((o) => o !== c && o.toetsen.has(id))) tel('dubbeledruk');
+        if (id === 'stopall') { tel('cockpit.virtueel.stopall'); stopAllVast++; }
         const c0 = lpd ? null : ctrl(id);
         const n = lpd ? LPD8_PROFIEL.pads[Number(id.slice(-1)) - 1].n : /** @type {any} */ (c0).n;
         const kanaal = lpd ? 9 : /** @type {any} */ (c0).ch;
         const dev = lpd ? 'lpd8' : 'apc40';
         c.stuur({ t: 'virtueel', dev, bytes: [0x90 | kanaal, n, 100] });
-        virtueelBezet.set(id, Infinity);
         c.toetsen.add(id);
         if (y < 0.9) {
           na(dt, () => {
             if (!c.toetsen.delete(id)) return;   // de cockpit is al weg: de hub liet de toets los
             c.stuur({ t: 'virtueel', dev, bytes: [0x80 | kanaal, n, 0] });
-            virtueelBezet.set(id, klok.nu() + 1000);
+            if (id === 'stopall') stopAllLosVirtueel();
           });
         }
       }
@@ -806,23 +877,41 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       na(t.tussen(1000, 20000), () => { ws.close(); halve.splice(halve.indexOf(ws), 1); });
     });
 
-    // Controllers eruit en erin; de uurwerk-brug even weg. Altijd langer dan één hotplug-ronde: een snellere replug
-    // ziet de hub niet (zie docs/DUURTEST.md, open punten).
-    const minWeg = (config.hotplug_ms ?? 2000) + 500;
-    elke(300000, () => {
-      if (apcWeg) return;
-      tel('apc.eruit');
-      apcWeg = true;
-      systeem.verwijder('APC40 mkII');
-      na(t.tussen(minWeg, 10000), () => { apc = systeem.voegToe('APC40 mkII'); apcWeg = false; });
-    });
-    elke(400000, () => {
-      if (lpdWeg || paniekVast) return;
-      tel('lpd8.eruit');
-      lpdWeg = true;
-      systeem.verwijder('LPD8 mk2');
-      na(t.tussen(minWeg, 10000), () => { lpd8 = voegLpd8(); lpdWeg = false; });
-    });
+    // Controllers eruit en erin; de uurwerk-brug even weg. Ook sneller terug dan één tik van de poortlijst (250 ms) of
+    // één hotplug-ronde: de nep-poort meldt dan zelf dat hij niet meer leeft (PROTOCOL §16). Met RtMidi is een kabel
+    // die korter dan 250 ms los is onzichtbaar; dat kan de duurtest niet nabootsen.
+    const minWeg = 100;
+    const hotplugMs = config.hotplug_ms ?? 2000;
+    /**
+     * Na het insteken: binnen hotplug_ms + 300 ms kreeg de nieuwe poort zijn intro (APC) of identiteitsvraag (LPD8)
+     * en bereikte zijn antwoord de kern. Alleen als hij er intussen nog in zit.
+     * @param {'apc'|'lpd8'} dev
+     */
+    const controleerIngestoken = (dev) => {
+      const x = ingestoken[dev], label = dev === 'apc' ? 'APC' : 'LPD8';
+      const nogIn = dev === 'apc' ? !apcWeg : !lpdWeg;
+      if (!nogIn || klok.nu() - x.op < hotplugMs + 300) return;
+      controles[`replug.${dev}`]++;
+      if (x.init === -Infinity) schend('na een replug initialiseert de hub de controller opnieuw', `${label}: ${rond((klok.nu() - x.op) / 1000, 2)} s na het insteken nog geen ${dev === 'apc' ? 'intro (modus)' : 'identiteitsvraag'}`);
+      else if (x.gehoord === -Infinity) schend('na een replug hoort de hub de controller weer', `${label}: zijn antwoord bereikte de kern niet (${dev === 'apc' ? 'intro' : 'identiteitsvraag'} op ${rond((x.init - x.op) / 1000, 2)} s na het insteken)`);
+    };
+    /** Trek een controller eruit en steek hem na `weg` ms weer in. @param {'apc'|'lpd8'} dev @param {number} weg */
+    const replug = (dev, weg) => {
+      tel(`${dev}.eruit`);
+      if (weg < 250) tel(`${dev}.kortlos`);
+      if (dev === 'apc') { apcWeg = true; systeem.verwijder('APC40 mkII'); }
+      else { lpdWeg = true; systeem.verwijder('LPD8 mk2'); }
+      na(weg, () => {
+        if (dev === 'apc') { apc = voegApc(); apcWeg = false; } else { lpd8 = voegLpd8(); lpdWeg = false; }
+        na(hotplugMs + 300, () => controleerIngestoken(dev));
+      });
+    };
+    // Kans 1 op 3 op een kabel die korter los is dan één tik van de poortlijst; anders tot 10 s.
+    elke(300000, () => { const kort = t.kans(1 / 3), weg = kort ? t.tussen(minWeg, 250) : t.tussen(250, 10000); if (!apcWeg) replug('apc', weg); });
+    elke(400000, () => { const kort = t.kans(1 / 3), weg = kort ? t.tussen(minWeg, 250) : t.tussen(250, 10000); if (!lpdWeg && !paniekVast) replug('lpd8', weg); });
+    // Eén keer vroeg in de avond allebei heel kort los (zonder toeval), zodat ook een korte run het oefent.
+    na(40000, () => { if (!apcWeg) replug('apc', 150); });
+    na(70000, () => { if (!lpdWeg && !paniekVast) replug('lpd8', 150); });
     elke(200000, () => { tel('uurwerk.weg'); uurwerk.aan = false; na(t.tussen(5000, 40000), () => { uurwerk.aan = true; }); });
 
     // Slews: geen enkele blijft hangen (na zijn eindtijd hooguit een paar tikken).
@@ -833,7 +922,14 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
         if (x.slew.duurMs > 120000) schend('slew_s ≤ 120', `${x.app}.${x.id}: ${x.slew.duurMs} ms`);
       }
     };
-    elke(5000, controleerSlews);
+    // Een paniek op Infinity hoort bij een Stop All die nu in is, bij de app waar die druk heen ging (§11, §14): niet
+    // bij een eerdere app na een focuswissel (dezelfde toets van twee bronnen).
+    const controleerStopAll = () => {
+      for (const [app, tot] of kern.appPaniekTot) {
+        if (tot === Infinity && kern.routes.get('stopall') !== app) schend('alleen de app van de Stop All die nu in is, heeft een eindeloze paniek', `${app}: appPaniekTot Infinity, Stop All ${kern.routes.has('stopall') ? `gaat naar ${kern.routes.get('stopall')}` : 'is los'}`);
+      }
+    };
+    elke(5000, () => { controleerSlews(); controleerStopAll(); });
     // De NepPoort onthoudt alles wat de hub stuurde (handig in tests): hier tellen en weggooien.
     let naarApparaten = 0;
     const leegPoorten = () => { for (const p of systeem.apparaten.values()) { naarApparaten += p.verstuurd.length; p.verstuurd.length = 0; } na(1000, leegPoorten); };
@@ -918,7 +1014,7 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       // Wat er nog gepland stond (loslaten, terugkomen) eerst afmaken; daarna niets nieuws meer.
       await speel(Math.max(0, Math.min(65000, (agenda.rij.at(-1)?.t ?? klok.nu()) - klok.nu())));
       agenda.leeg();
-      if (apcWeg) { apc = systeem.voegToe('APC40 mkII'); apcWeg = false; }
+      if (apcWeg) { apc = voegApc(); apcWeg = false; }
       if (lpdWeg) { lpd8 = voegLpd8(); lpdWeg = false; }
       uurwerk.aan = true;
       if (paniekVast) { lpdPad(1, false); paniekVast = false; }
@@ -931,6 +1027,9 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       hbRust();
       na(1000, leegPoorten);
       await speel(15000);
+      // De controllers zoals ze nu ingestoken zijn (ook als ze net terugkwamen): opnieuw geïnitialiseerd en gehoord.
+      controleerIngestoken('apc');
+      controleerIngestoken('lpd8');
       await totDat(() => kern.slews.size === 0, 130000);
       await speel(1000);
       await echt(200);
@@ -983,6 +1082,32 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
         }
       }
 
+      // Golf 8: elke cockpit drukt een trigger in en valt dan abrupt weg (de wifi van de tablet): de hub laat ze los,
+      // ook Stop All en wat ze virtueel vasthielden. Daarna staat in geen enkele app nog een trigger aan.
+      log('afbouw: de cockpits drukken een trigger in en vallen weg');
+      const metManifest = [...apps.values()].filter((a) => a.open && kern.apps.get(a.manifest.app)?.manifest);
+      const keuze = parameters.filter((p) => p.trigger && metManifest.some((a) => a.manifest.app === p.app));
+      /** @type {{ a: DuurApp, id: string }[]} */
+      const ingedrukt = [];
+      for (const c of cockpits) {
+        if (!c.open || !keuze.length) continue;
+        const p = t.kies(keuze);
+        c.trigger(p.app, p.id, true);
+        ingedrukt.push({ a: /** @type {DuurApp} */ (metManifest.find((a) => a.manifest.app === p.app)), id: p.id });
+      }
+      const wachtTot = async (/** @type {() => boolean} */ fn) => { for (let i = 0; i < 100 && !fn(); i++) { await echt(10); await speel(stapMs); } return fn(); };
+      if (!await wachtTot(() => ingedrukt.every(({ a, id }) => a.trigAan.has(id)))) schend('een trigger uit de cockpit komt aan', ingedrukt.filter(({ a, id }) => !a.trigAan.has(id)).map(({ a, id }) => `${a.manifest.app}.${id}`).join(', '));
+      for (const c of cockpits.splice(0)) { c.sluit(); controles['cockpit.weg']++; }
+      await wachtTot(() => [...apps.values()].every((a) => !a.open || a.trigAan.size === 0) && !kern.routes.size);
+      await speel(1000);
+      for (const [id, a] of apps) {
+        if (!a.open) continue;
+        controles['cockpit.trigger'] += a.trigAan.size ? 0 : 1;
+        if (a.trigAan.size) schend('na rust en zonder cockpits staat geen trigger meer aan', `${id}: ${[...a.trigAan.keys()].join(', ')} (${a.paniekLog.join(' · ')})`);
+      }
+      for (const [app, tot] of kern.appPaniekTot) if (tot === Infinity) schend('na rust en zonder cockpits loopt geen paniek eindeloos (Stop All)', `${app}: appPaniekTot Infinity`);
+      if (kern.routes.size) schend('na rust en zonder cockpits is geen APC-toets meer in', [...kern.routes.keys()].join(', '));
+
       // Alle clients weg: per-client structuren leeg.
       log('afbouw: alle apps, cockpits en de rommel weg');
       allesDicht();
@@ -999,6 +1124,7 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
         if (a.status !== 'weg') schend('zonder clients is elke app weg', `${a.app}: ${a.status}`);
         if (!a.manifest) schend('een app die nooit een manifest stuurde, wordt vergeten als hij weg is', `${a.app} (status ${a.status})`);
       }
+      for (const [app, tot] of kern.appPaniekTot) if (tot === Infinity) schend('zonder clients loopt geen paniek eindeloos (Stop All)', `${app}: appPaniekTot Infinity`);
       if (naClients['kern.luisteraars'] !== basis.luisteraars) schend('luisteraars op de kern stapelen niet op', `${naClients['kern.luisteraars']} nu, ${basis.luisteraars} bij de start`);
       if (naClients['klok.timers'] !== basis.timers) schend('geen timers die blijven staan', `${naClients['klok.timers']} klok-timers, ${basis.timers} bij de start`);
       handlesNaClients = await stilleHandles(basis.handles);
@@ -1018,6 +1144,9 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
     eld.disable();
     eldTotaal.disable();
     if (klok.timers.size) schend('na stoppen staat er niets meer op de klok', `${klok.timers.size} timers`);
+    for (const [label, dev] of /** @type {const} */ ([['APC', 'apc'], ['LPD8', 'lpd8']])) {
+      if (stuurfouten[label] > (acties[`${dev}.eruit`] ?? 0)) schend('één logregel per storing (sturen mislukt)', `${label}: ${stuurfouten[label]} regels bij ${acties[`${dev}.eruit`] ?? 0} keer eruit`);
+    }
     const handlesNaStop = await stilleHandles(handlesVooraf);
     const echtS = (performance.now() - start) / 1000;
     const nepS = (klok.nu() - nep0) / 1000;
@@ -1050,6 +1179,8 @@ export async function draaiDuurtest({ echtMs = Infinity, nepMs = Infinity, seed 
       afgebroken: !!signaal?.aborted,
       ok: !crash && !lekken.length && !schendingen.length,
       lekken, schendingen,
+      controles,
+      stuurfouten,
       acties,
       berichten: {
         totaal,
@@ -1116,6 +1247,7 @@ export function rapportTekst(r) {
   regels.push(`Berichten per nep-s:   naar apps ${b.perNepS.naarApp}, invoer APC ${b.perNepS.apc} + LPD8 ${b.perNepS.lpd8}, rommel ${b.totaal.rommel} in totaal, fetch ${b.totaal.fetch}`);
   const o = r.opnameUitslag;
   if (o) regels.push(`Opname van de hele avond: ${o.nepMin} min nep, ${o.gebarenKB} kB ${GEBAREN}, ${o.samenvattingKB} kB ${SAMENVATTING}; tellers voor ${o.naarApps} apps en ${o.invoerSleutels} invoerbronnen`);
+  regels.push(`Golf 8 gecontroleerd: cockpit-triggers ${r.controles['cockpit.trigger']}, cockpits weggevallen in de afbouw ${r.controles['cockpit.weg']}, Stop All los ${r.controles['stopall.los']}, replug APC ${r.controles['replug.apc']} en LPD8 ${r.controles['replug.lpd8']}; logregels 'sturen mislukt' APC ${r.stuurfouten.APC}, LPD8 ${r.stuurfouten.LPD8}`);
   regels.push(`Klok-timers: ${r.timers.bijStart} bij de start, ${r.timers.naClients} zonder clients, ${r.timers.naStop} na stoppen`);
   const hs = (/** @type {Record<string, number>} */ h) => Object.entries(h).map(([k, v]) => `${k} ${v}`).join(', ');
   regels.push(`Handles: bij de start ${hs(r.handles.bijStart)}; zonder clients ${hs(r.handles.naClients)}; na stoppen ${hs(r.handles.naStop) || 'geen'}`);

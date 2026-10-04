@@ -2,7 +2,7 @@
 // Duurtest (tools/duurtest.mjs, docs/DUURTEST.md): een korte avond in CI, zodat een grove regressie (een lek, een
 // structuur die groeit, een paniek die blijft hangen, een timer die na stoppen blijft staan) meteen opvalt. De
 // lange run (minuten) draait lokaal. Daarnaast gerichte tests voor de lekken die de duurtest vond.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { draaiDuurtest, rapportTekst, maakToeval, Agenda, groeit, heapOordeel, leesOpties } from '../tools/duurtest.mjs';
 import { opzet, meldAan, nepVerbinding, stuurApp, FL, MS } from './kern-hulp.js';
 import { ApcSessie, maakApparaten } from '../src/apparaten.js';
@@ -12,10 +12,17 @@ import { MAX_PARAMS } from '../src/protocol/manifest.js';
 import { Kern } from '../src/core/kern.js';
 
 describe('duurtest: een korte avond met de hele hub', () => {
-  it('drie minuten nep-tijd (plus afbouw): geen lek, geen geschonden invariant, en er gebeurde van alles', async () => {
+  /** @type {Awaited<ReturnType<typeof draaiDuurtest>>} */
+  let r;
+  beforeAll(async () => {
     // Seed 7 en een vaste nep-duur: elke run precies dezelfde avond, hoe snel de machine ook is.
-    const r = await draaiDuurtest({ nepMs: 3 * 60_000, seed: 7, meetElkeMs: 500, heap: false, opname: 'doorlopend' });
+    r = await draaiDuurtest({ nepMs: 3 * 60_000, seed: 7, meetElkeMs: 500, heap: false, opname: 'doorlopend' });
     if (!r.ok) console.log(rapportTekst(r));
+  }, 180_000);
+  /** Geschonden invarianten waarvan de naam past bij `re`. @param {RegExp} re */
+  const geschonden = (re) => r.schendingen.filter((s) => re.test(s.wat));
+
+  it('drie minuten nep-tijd (plus afbouw): geen lek, geen geschonden invariant, en er gebeurde van alles', () => {
     expect(r.schendingen).toEqual([]);
     expect(r.lekken).toEqual([]);
     expect(r.ok).toBe(true);
@@ -36,7 +43,38 @@ describe('duurtest: een korte avond met de hele hub', () => {
     expect(r.opnameUitslag?.samenvattingKB).toBeGreaterThan(0);
     // Zonder heap-oordeel geen gc(): niet elke meting twee volledige gc's, geen V8-vlaggen in het vitest-proces.
     expect(r.heap.metGc).toBe(false);
-  }, 180_000);
+  });
+
+  // Golf 8 (docs/DUURTEST.md "Gevonden en opgelost (golf 8)"): wat de duurtest eerst omzeilde, oefent hij nu zelf, met
+  // een invariant die een regressie meldt. De gerichte tests staan in test/golf8-cockpit-trigger.test.js,
+  // test/golf8-dubbele-druk.test.js en test/golf8-replug.test.js; hier: de korte avond raakt elk geval echt.
+  it('een cockpit die wegvalt terwijl hij een trigger vasthoudt: de hub laat de trigger los (trig aan:false)', () => {
+    // Midden in de avond (een cockpit valt weg met een trigger vast) en in de afbouw (elke cockpit drukt een trigger
+    // in en valt abrupt weg): daarna staat in geen app nog een trigger aan.
+    expect(r.acties['cockpit.weg.trigger'] ?? 0).toBeGreaterThan(0);
+    expect(r.controles['cockpit.weg']).toBeGreaterThan(0);
+    expect(r.controles['cockpit.trigger']).toBeGreaterThan(0);
+    expect(geschonden(/trigger/)).toEqual([]);
+  });
+  it('dezelfde toets twee keer ingedrukt (APC en cockpit, twee cockpits) met een focuswissel ertussen: de eerste app krijgt zijn los', () => {
+    // De cockpits drukken op dezelfde toetsen als de hand, ook op Stop All; zonder clients en na rust loopt geen paniek
+    // eindeloos, en nooit staat een paniek op Infinity voor een andere app dan die van de Stop All die nu in is.
+    expect(r.acties.dubbeledruk ?? 0).toBeGreaterThan(0);
+    expect(r.acties['cockpit.virtueel.stopall'] ?? 0).toBeGreaterThan(0);
+    expect(r.controles['stopall.los']).toBeGreaterThan(0);
+    expect(geschonden(/Stop All|paniek|APC-toets/)).toEqual([]);
+    expect(r.groottes['kern.routes'].naClients).toBe(0);
+  });
+  it('een controller die sneller terug is dan één hotplug-ronde (en één tik van de poortlijst): de hub initialiseert hem opnieuw', () => {
+    // Na elke replug kreeg de nieuwe nep-poort binnen hotplug_ms + 300 ms zijn intro (APC) of identiteitsvraag (LPD8),
+    // en bereikte zijn antwoord de kern; hooguit één logregel 'sturen mislukt' per keer eruit.
+    expect(r.acties['apc.kortlos'] ?? 0).toBeGreaterThan(0);
+    expect(r.acties['lpd8.kortlos'] ?? 0).toBeGreaterThan(0);
+    expect(r.controles['replug.apc']).toBeGreaterThanOrEqual(r.acties['apc.eruit']);
+    expect(r.controles['replug.lpd8']).toBeGreaterThanOrEqual(r.acties['lpd8.eruit']);
+    expect(geschonden(/replug|logregel/)).toEqual([]);
+    expect(r.stuurfouten.APC).toBeLessThanOrEqual(r.acties['apc.eruit']);
+  });
 });
 
 describe('duurtest: de opdrachtregel', () => {
@@ -233,12 +271,4 @@ describe('lekken die de duurtest vond', () => {
     await stop;
     expect(klok.timers.size).toBe(0);
   });
-});
-
-// Bekende risico's op het podium die de duurtest bewust omzeilt (docs/DUURTEST.md "Open punten", STATUS.md). Zodra
-// ze opgelost zijn: de test hier schrijven en de omweg in tools/duurtest.mjs weghalen.
-describe('open punten (de duurtest omzeilt ze nu)', () => {
-  it.todo('een cockpit die wegvalt terwijl hij een trigger vasthoudt: de hub laat de trigger los (trig aan:false)');
-  it.todo('dezelfde toets twee keer ingedrukt (APC en cockpit) met een focuswissel ertussen: de eerste app krijgt zijn los');
-  it.todo('een controller die sneller terug is dan één hotplug-ronde: de hub initialiseert hem opnieuw');
 });
