@@ -271,16 +271,18 @@ const opdrachten = {
     hub.kern.bij('naarApp', () => {});
     const lokaal = `http://localhost:${hub.server.poort}`;
     console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren; valt de hub om, dan weet hij bij de volgende start niets meer en stoppen de apps van de set mee.');
-    console.log(`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`);
+    // In één keer geschreven: wie op "varve-hub draait" wacht (tests, scripts), ziet de netwerkregels er meteen bij.
+    const klaarRegels = [`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`];
     /** @type {{ stop: () => void } | null} */
     let mdns = null;
     if (lan && token) {
       const adressen = cockpitAdressen({ namen, adressen: lanAdressen(), poort: hub.server.poort, token });
       // Het token alleen op een terminal tonen, niet in een logbestand (launchd/systemd).
-      if (process.stdout.isTTY) console.log(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
-      else console.log(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: node src/cli.js token --poort ${hub.server.poort} (in ${HUB_MAP})`);
-      mdns = kondigAan({ poort: hub.server.poort, log });
+      if (process.stdout.isTTY) klaarRegels.push(`Op het netwerk (met token):\n${adressen.map((a) => `  ${a}`).join('\n')}`);
+      else klaarRegels.push(`Op het netwerk op poort ${hub.server.poort}; cockpit-adressen met token: node src/cli.js token --poort ${hub.server.poort} (in ${HUB_MAP})`);
     }
+    console.log(klaarRegels.join('\n'));
+    if (lan && token) mdns = kondigAan({ poort: hub.server.poort, log });
     if (loop?.ander) console.log(`Let op: er draait nog een hub met hetzelfde geheugen (proces ${loop.ander}). Deze hub laat diens loopbestand staan; valt deze om, dan weet de volgende start dat niet.`);
     if (loop?.verlopen) {
       console.log(`De vorige hub stopte niet netjes${loop.omgevallen?.begon ? ` (gestart ${loop.omgevallen.begon})` : ''}, maar dat was vóór de laatste herstart van de computer — dit is een gewone start.`);
