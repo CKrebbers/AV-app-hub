@@ -50,7 +50,18 @@ export async function laadRtMidi() {
   return { systeem };
 }
 
-/** @param {string} naam @param {any} inn @param {any} uit @returns {Poort} */
+/**
+ * Uittrekken, gelezen in @julusian/midi 3.8 (RtMidi 6.0, vendor/rtmidi/RtMidi.cpp): de poort blijft "open"
+ * (`isPortOpen()` is alleen een vlag van RtMidi zelf) en er komt geen melding (geen notify-proc bij MIDIClientCreate).
+ * `sendMessage` gooit op macOS niet: MIDISend faalt hooguit, en dat is een RtMidiError::WARNING, die alleen op stderr
+ * komt (de binding zet geen error-callback); ALSA idem. De lijst werkt wel bij (getPortCount pompt de run-loop), en
+ * daar verdwijnt het apparaat (te bevestigen op de hardware-avond); een poortindex geldt alleen op het moment van
+ * openen (open() zoekt hem op naam). Er is dus geen `levend()`: met RtMidi ziet alleen de poortlijst dat het
+ * apparaat weg is geweest. Daarom kijkt aansluiting.js elke LIJST_MS (250 ms) in de lijst, los van het openen (elke
+ * `hotplug_ms`); een kabel die korter los is dan dat, blijft onzichtbaar (de APC blijft dan donker in modus 0x40).
+ * Of het apparaat bij kort uittrekken echt uit de lijst verdwijnt, en hoe lang, meten we op de hardware-avond.
+ * @param {string} naam @param {any} inn @param {any} uit @returns {Poort}
+ */
 function maakPoort(naam, inn, uit) {
   /** @type {Set<(b: number[]) => void>} */
   const luisteraars = new Set();
