@@ -34,7 +34,10 @@ export function leesOfMaakToken({ home = os.homedir(), maak = nieuwToken, opnieu
   const pad = tokenPad(home);
   mkdirSync(dirname(pad), { recursive: true, mode: 0o700 });
   // mode werkt alleen bij een nieuwe map; bestond ~/.varve-hub al (bv. van het geheugen), dan alsnog dichtzetten.
-  if (process.platform !== 'win32') { try { chmodSync(dirname(pad), 0o700); } catch { /* niet van ons: laten */ } }
+  // Alleen rechten van anderen weghalen, nooit eigen rechten erbij geven (een bewust alleen-lezen map blijft dat).
+  if (process.platform !== 'win32') {
+    try { const m = statSync(dirname(pad)).mode & 0o777; if (m & 0o077) chmodSync(dirname(pad), m & 0o700); } catch { /* niet van ons: laten */ }
+  }
   if (opnieuw || !existsSync(pad)) {
     const token = maak();
     if (!GELDIG.test(token)) throw new Error('nieuw token is ongeldig');
