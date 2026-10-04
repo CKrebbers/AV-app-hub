@@ -45,13 +45,17 @@ een open hub op het netwerk kan niet meer per ongeluk.
 | cockpit op een tablet | open één keer `http://<mac>.local:7700/?token=…`. De hub geeft de browser een cookie (`HttpOnly`, `SameSite=Strict`) en stuurt hem meteen door naar hetzelfde adres zónder `?token=` (zo blijft het token niet in de adresbalk en de geschiedenis). De scripts en de `/cockpit`-WebSocket gebruiken het cookie vanzelf; zet het adres zonder token als bladwijzer. |
 | apps (WebSocket `/app`) | `?token=…` in de URL: `ws://<mac>.local:7700/app?token=…`, **of** `token` in `hallo`: `{t:"hallo", app, inst, v:1, token}` (PROTOCOL.md §3). |
 | `/cockpit` van een eigen client | `?token=…` in de URL of het cookie `varve_hub_token`. |
+| een pagina van de hub zelf (bv. `/oefen` op de tablet) die `/app` opent | het cookie gaat vanzelf mee; ook `/app` accepteert het cookie. |
 
 Zonder of met een verkeerd token:
 
 - HTTP en de `/cockpit`-upgrade: `401 token nodig`;
 - `/app`: de hub stuurt `welkom`, wacht op `hallo`; zonder geldig token (of een ander bericht eerst, of na 10 s
-  nog geen `hallo`) volgt `{t:"fout", reden:"token nodig: …"}` en close-code **4003** (PROTOCOL.md §13). Zo'n
+  nog geen `hallo` binnen 3 s) volgt `{t:"fout", reden:"token nodig: …"}` en close-code **4003** (PROTOCOL.md §13). Zo'n
   verbinding bereikt de kern nooit (geen slot, geen LEDs). Het token zelf gaat nooit naar de kern of een logboek.
+- Er mogen hooguit 16 van zulke verbindingen tegelijk op een `hallo` wachten (4 per adres); daarboven gaat een
+  nieuwe meteen dicht. Zo kan een apparaat op je wifi zonder token de hub niet dichttrekken met duizenden
+  verbindingen. In totaal neemt de hub hooguit 128 verbindingen (apps + cockpits) tegelijk aan; daarboven `503`.
 
 Wat het token níét afschermt:
 
@@ -60,7 +64,16 @@ Wat het token níét afschermt:
   niets wat je niet vertrouwt, of gebruik `token --nieuw` als je twijfelt.
 - **Lokaal = vertrouwd.** Alles wat via `127.0.0.1` binnenkomt hoeft geen token. Een tunnel of proxy op de Mac
   (`ssh -R`, `tailscale serve`, een reverse proxy) maakt de hub dus zonder token bereikbaar voor wie die tunnel
-  kan gebruiken. Zet zo'n tunnel niet op poort 7700.
+  kan gebruiken. Zet zo'n tunnel niet op poort 7700. Dat geldt ook voor **andere gebruikers op dezelfde Mac**: hun
+  programma's kunnen via `127.0.0.1` alles wat jij kunt (het tokenbestand is wel alleen voor jou leesbaar, maar
+  lokaal is het niet nodig). Deel je de Mac, draai de hub dan niet als je er niet bij bent.
+- **Het verkeer is niet versleuteld.** Token, cookie en alles wat de cockpit doet gaan als gewone HTTP over je
+  wifi. Gebruik `--lan` alleen op een netwerk dat je vertrouwt (thuis, niet op een festivalwifi). Een apparaat
+  dat zich voordoet als `<mac>.local` (mDNS-vervalsing) kan het cookie van de tablet opvangen; zet daarom liever
+  het **IP-adres** van de Mac als bladwijzer dan `<mac>.local`, en maak bij twijfel een nieuw token
+  (`node src/cli.js token --nieuw`).
+- **Bestandsrechten.** `~/.varve-hub` is alleen voor jou (0700), het token en `staat.json` ook (0600). Vindt de
+  hub het token met te ruime rechten, dan zet hij ze terug en raadt hij `token --nieuw` aan (het kan gelezen zijn).
 
 De **Origin- en Host-controle** blijven daarnaast gelden (tegen DNS-rebinding en vreemde websites). Met `--lan`
 zijn de eigen namen van de Mac erbij gekomen: `<hostnaam>` en `<hostnaam>.local` (op poort 7700), zodat de cockpit
@@ -71,8 +84,12 @@ als in Systeeminstellingen → Algemeen → Delen) erbij, ook als de hostnaam ie
 "server": { "host": "127.0.0.1", "origins": [], "lan_namen": ["studio.lan"] }
 ```
 
-Een browser-app op een ándere origin (bv. formula-lab op `http://<mac>.local:5174`) moet, net als lokaal, in
-`server.origins` staan.
+Een browser-app op een ándere origin (bv. formula-lab op `http://<mac>.local:5174`) moet in `server.origins`
+staan. Lokaal mogen apps op elke `localhost`-poort `/app` gebruiken (hun eigen dev-server), maar de **cockpit**
+(`/cockpit`, waarmee je alles bedient) alleen vanaf de hub zelf (`http://localhost:7700`) of vanaf wat in
+`server.origins` staat: een willekeurige pagina op een andere poort (een dev-server, een gedownload HTML-bestand
+in `python -m http.server`) mag de hub niet besturen. De pagina's van de hub zijn ook niet in een frame van een
+andere site te laden (tegen klik-trucs).
 
 ## mDNS
 
@@ -142,9 +159,10 @@ VARVE_HUB='ws://<mac>.local:7700/app?token=…' flux-screensaver
 `node src/cli.js token` op de Mac drukt deze regel kant-en-klaar af. Gecontroleerd in flux
 (tak `claude/varve-hub-koppeling`): de koppeling neemt het pad **met** de query over in de handdruk
 (`GET /app?token=… HTTP/1.1`), stuurt geen `Origin` en geen `token` in `hallo` — het token in de URL is dus
-genoeg. Zet `flux-args` op `chmod 600` als het token erin staat.
+genoeg. Zet `flux-args` op `chmod 600` als het token erin staat. Liever nog `VARVE_HUB` als omgevingsvariabele
+dan `--hub` op de opdrachtregel: argumenten zijn voor iedereen op de machine zichtbaar (`ps`), de omgeving niet.
 
-Zonder (geldig) token sluit de hub de verbinding met 4003; flux probeert het dan rustig opnieuw (0,5 → 5 s) en
+Zonder (geldig) token sluit de hub de verbinding met 4003; flux wacht dan 30 s voor hij het opnieuw probeert, en
 het beeld merkt er niets van.
 
 `<mac>.local` lost op Omarchy (Arch) alleen op met avahi én nss-mdns (`sudo pacman -S avahi nss-mdns`, `mdns_minimal`

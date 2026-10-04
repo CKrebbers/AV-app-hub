@@ -148,21 +148,36 @@ meldt dat, zoals de echte. Elke stap is een eigen test.
 
 Een bekend probleem in de hub staat in `BEKEND` bovenin de test: die controle telt niet mee in de stap, maar heeft
 een eigen `it.fails`. Zolang het probleem er is, is de test groen; wordt de hub gerepareerd, dan slaagt de
-controle en meldt vitest dat het `it.fails` niet meer faalt. Haal de regel dan uit `BEKEND`.
+controle en meldt vitest dat het `it.fails` niet meer faalt. Haal de regel dan uit `BEKEND`. Op dit moment is `BEKEND`
+leeg (de laatste, "K1 na paniek", is in golf 5 opgelost).
 
 Een koppeling veranderd (nieuwe parameter, andere rol)? Draai `node tools/repetitie.mjs --fixtures` en commit de
 nieuwe `test/fixtures/manifesten/*.json` mee; de test speelt dan de avond met het nieuwe manifest.
 
 ## Gevonden en nog open
 
-- **K1 doet niets meer na paniek** (hub, PROTOCOL §10/§11). Waterschaal zet bij paniek zijn volume op 0 en meldt
-  dat terug. De pickup van de LPD8 neemt als doel de waarde van de *eerste* app met de rol (`kern.#macroDoel`),
-  dus 0; K1 staat op 0,283 en doet daarna voor álle apps met `macro.intensiteit` niets meer (ook MediSynth
-  `niveau`) tot hij helemaal dichtgedraaid is. Repro: `npm run repetitie` (stap paniek: "na paniek: K1 twee tikjes
-  verder → … geen zet"), of in CI de `it.fails` in `test/repetitie.test.js`. Open vraag: pickup-doel uit de laatste
-  fysieke stand of de globale waarde, niet uit de eerste app?
-- **Waterschaal: hub en app oneens over `tempo`** (koppeling of terugleesformule, nog uit te zoeken). Na de avond
-  kent de hub `tempo` 0,709, de app leest 0,667 terug. Repro: `npm run repetitie`, stap eindstand.
+Niets: sinds golf 5 is de hele repetitie met de echte koppelingen groen (alleen de verwachte opmerkingen dat apps
+met dezelfde rol na een herstart uiteenlopen).
+
+## Gevonden en opgelost
+
+- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant op de tak van CKrebbers/waterschaal#1,
+  merge met Clay's OK). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
+  Nu past Waterschaal een hub-zet continu toe (de schuif staat op zijn stap, klank en adem volgen precies), meldt hij
+  een klemming (buiten 4–8 /min) pas terug als de hub 300 ms niets meer stuurt (anders wint een oude melding van een
+  nieuwere K7-zet), en volgt de globale adem van de hub een eigen tempowissel van de app (PROTOCOL §14).
+
+- **K1 deed niets meer na paniek** (opgelost in golf 5, PROTOCOL §14). Waterschaal zet bij paniek zijn volume op 0
+  en meldt dat terug; de pickup van de LPD8 volgde de *eerste* app met de rol, dus K1 (op 0,283) deed daarna voor
+  álle apps met `macro.intensiteit` niets meer. Nu verplaatst wat een app zelf verandert tijdens de paniek (en
+  `paniek.naloop_s`, standaard 5 s, daarna) het pickup-doel van een LPD8-macroknop niet: de hub kent volume 0, maar
+  de eerste tik van K1 zet Waterschaal en MediSynth weer. In CI: "na de paniek doen K1 en de apps weer mee" in
+  `test/repetitie.test.js` (was een `it.fails` in `BEKEND`).
+- **Dubbele zets bij een keuze** (opgelost in golf 5, PROTOCOL §14). Een LPD8-macro op een keuze stuurde bij elke
+  knoptik een `zet`, ook als de optie niet veranderde: 186 zets naar formula-lab `palette`, 179 identiek (flux
+  `palet` net zo). Nu gaat een keuze of schakelaar die al op die stand staat niet nog eens naar de app (replay wel).
+  In CI: "een keuze krijgt nooit dezelfde zet nog eens" (kolom "herhaalde zets" in het rapport: `palette` en
+  `palet` staan er niet meer in).
 
 ## Wat de repetitie (nog) niet doet
 

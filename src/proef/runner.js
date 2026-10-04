@@ -5,6 +5,7 @@
 // gesimuleerde gebruiker (tests) dezelfde proef automatisch kan doorlopen.
 import { bronUitBericht } from '../devices/lpd8.js';
 import { Zender } from '../core/zender.js';
+import { laadConfig } from '../config.js';
 
 /**
  * @typedef {{ toon: (t: string) => void, regel: () => { p: Promise<string>, annuleer: () => void } }} IO
@@ -16,12 +17,17 @@ import { Zender } from '../core/zender.js';
 /**
  * @param {Protocol} protocol
  * @param {{ apparaten: ReturnType<typeof import('../apparaten.js').maakApparaten>, io: IO, klok: import('../core/klok.js').Klok,
- *           logboek: import('../core/logboek.js').Logboek, schaal?: number, gebruiker?: Zender, bewaarProfiel?: (p: any) => void }} ctx
+ *           logboek: import('../core/logboek.js').Logboek, schaal?: number, gebruiker?: Zender, bewaarProfiel?: (p: any) => void,
+ *           config?: Record<string, any> }} ctx  config: standaard config.json (voor bv. de hubtoets)
  */
 export async function voerUit(protocol, ctx) {
   const h = maakHulp(ctx);
   ctx.logboek.regel('proef', { naam: protocol.naam, titel: protocol.titel });
   h.toon(`\n━━ ${protocol.titel} ━━  (typ "o" + Enter om een stap over te slaan)\n`);
+  if (h.configFout) {
+    ctx.logboek.regel('waarschuwing', { config: h.configFout });
+    h.toon(`  ⚠ config.json kon niet gelezen worden (${h.configFout}); de proef gebruikt de standaardwaarden. Herstel config.json (of haal hem weg) en draai de proef opnieuw.`);
+  }
   for (const [i, stap] of protocol.stappen.entries()) {
     const ontbreekt = (stap.vereist ?? []).filter((d) => !(d === 'apc40' ? ctx.apparaten.apc : ctx.apparaten.lpd8).verbonden);
     if (ontbreekt.length) {
@@ -50,6 +56,7 @@ function maakHulp(ctx) {
   const { apparaten, io, klok, logboek } = ctx;
   const schaal = ctx.schaal ?? 1;
   const gebruiker = ctx.gebruiker ?? new Zender();
+  const { config, configFout } = ctx.config ? { config: ctx.config, configFout: null } : leesConfig();
   /** @type {Record<string, unknown>} */
   const bevindingen = {};
 
@@ -74,7 +81,15 @@ function maakHulp(ctx) {
     apc: apparaten.apc,
     lpd8: apparaten.lpd8,
     klok,
+    /** Tijdschaal (1 = echt; tests versnellen). Gemeten tijden vergelijk je met `drempel * h.schaal`. */
+    schaal,
+    /** config.json (of wat de aanroeper meegaf): de proef leest bv. de hubtoets, net als de kern. */
+    config,
+    /** Foutmelding als config.json niet te lezen was (dan gelden de standaarden). @type {string|null} */
+    configFout,
     stapId: '',
+    /** Eindigde de laatste `eerste()` doordat de gebruiker "o" typte (en niet door een time-out)? */
+    laatsteOvergeslagen: false,
     bevindingen,
     /** @param {string} t */
     toon: (t) => io.toon(t),
@@ -158,10 +173,12 @@ function maakHulp(ctx) {
         stop = sessie.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { if (filter(g, b)) r({ g, bytes: b }); });
         if (timeoutMs) timer = klok.zet(() => r(null), timeoutMs * schaal);
       });
-      const uit = await Promise.race([treffer, regel.p.then(() => null)]);
+      let overgeslagen = false;
+      const uit = await Promise.race([treffer, regel.p.then(() => { overgeslagen = true; return null; })]);
       regel.annuleer();
       stop();
       if (timer !== null) klok.wis(timer);
+      h.laatsteOvergeslagen = overgeslagen;
       return /** @type {any} */ (uit);
     },
 
@@ -195,6 +212,15 @@ function maakHulp(ctx) {
     },
   };
   return h;
+}
+
+/**
+ * config.json lezen als de aanroeper hem niet meegaf. Kapot: leeg (dan gelden de standaarden, zoals in de kern),
+ * maar met de foutmelding erbij, zodat de proef het zegt in plaats van stil verder te gaan.
+ * @returns {{ config: Record<string, any>, configFout: string|null }}
+ */
+function leesConfig() {
+  try { return { config: laadConfig(), configFout: null }; } catch (e) { return { config: {}, configFout: /** @type {Error} */ (e).message }; }
 }
 
 /** Terminal-IO met readline: één regel tegelijk, annuleerbaar. @param {import('node:readline').Interface} rl @returns {IO} */

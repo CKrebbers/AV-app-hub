@@ -137,7 +137,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 
 | Richting | Bericht |
 |---|---|
-| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}}` — volledig, bij verbinden en max 10×/s bij wijziging |
+| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
 | hub → cockpit | `{t:"leds", dev:"apc40", staat:{<control-id>: LedStaat}}` — alleen gewijzigde |
 | hub → cockpit | `{t:"invoer", g}` — elke controller-gebeurtenis (voor de live-weergave) |
 | cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam |
@@ -152,7 +152,7 @@ Zodat transports, drivers en kern los van elkaar gebouwd kunnen worden. Types in
 - Een **Verbinding** is alles waarlangs de hub met één app praat: `{ app, stuur(bericht), sluit?() }`. De WS-server maakt er één per socket; een driver (MIDI, HTTP) is er zelf één.
 - `kern.verbind(v)` → nieuwe verbinding (app nog onbekend); `kern.ontvang(v, bericht)` voor elk gecontroleerd bericht (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`) — bij `hallo` zet de kern `v.app`; `kern.verbreek(v)` bij sluiten.
 - `kern.invoer(g, bytes)` voor elke gebeurtenis van `ApcSessie`/`Lpd8Sessie` en van de virtuele controllers (ruwe bytes zijn nodig voor lease).
-- `kern.cockpit(b)`, `kern.focus(app)`, `kern.bewaar(nr)`, `kern.laad(nr)`, `kern.herteken()` (na opnieuw aansluiten), `kern.apparaatWeg(dev)`, `kern.zetApparaat(dev, info)`, `kern.beeld()`, `kern.stop()`.
+- `kern.cockpit(b)`, `kern.focus(app)`, `kern.bewaar(nr)`, `kern.laad(nr)`, `kern.herteken()` (na opnieuw aansluiten), `kern.apparaatWeg(dev)`, `kern.zetApparaat(dev, info)`, `kern.zetOpnameInfo({map, melding, fout, sinds})` (alleen de meegegeven velden veranderen; `beeld.opnameInfo`, §8), `kern.beeld()`, `kern.stop()`.
 - `kern.exporteer()` / `kern.importeer(data)`: het geheugen over een herstart heen (§12), puur; `src/opslag.js` schrijft en leest het.
 - De kern schrijft LEDs via een **Oppervlak** `{ zet(id, LedStaat), teken(), stuur(bytes), vergeet() }` (`ApcSessie` voldoet) en stuurt naar apps via `verbinding.stuur()`.
 - Events via `kern.bij(naam, fn)`: `beeld`, `leds`, `invoer`, `opname`, `naarApp`, `geheugen` (snapshots of truth:"hub"-waarden veranderden).
@@ -171,7 +171,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 **Globaal (§6)**
 - Sleutels in `globaal` zijn de rolnamen (`macro.ruimte`, …), plus `adem` (fase 0..1), `klok.adem_periode` (0..1 → `4 + 12·v` seconden), `bpm`, `grondtoon`, `paniek` (1 tijdens paniek, 0 na loslaten van P1).
 - P3 zet `adem` terug op 0 (geen aparte `adem_fase`).
-- LPD8-knoppen werken met pickup tegen de huidige waarde (eerste app met die rol, anders 0,5): er springt nooit iets, ook niet bij de eerste aanraking.
+- LPD8-knoppen werken met pickup tegen de huidige waarde (eerste app met die rol, anders 0,5): er springt nooit iets, ook niet bij de eerste aanraking (uitzondering na een paniek: §14).
 - P5–P8 en Bank+Scene: kort of lang wordt beslist bij loslaten (> 600 ms = bewaren). Snapshots bewaren app-waarden, geen globale macro's.
 
 **APC (§7)**
@@ -182,7 +182,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - Een keuze met meer dan 5 opties: pad stapt door de opties.
 
 **Cockpit (§8)**
-- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`).
+- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`).
 - Bij verbinden krijgt een cockpit `beeld` én een volledig `leds`. Ongeldige cockpitberichten → `{ t:"fout", reden }`.
 - Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
 - Valt een cockpit weg terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los.
@@ -194,7 +194,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - **Driver en echte app met dezelfde id** (bv. uurwerk via HTTP én een uurwerk-tab met `?hub=`): de WebSocket-verbinding wint; valt die weg, dan neemt de driver het weer over (als herstart, met replay).
 - **Slots worden hergebruikt.** Een app die terugkomt krijgt zijn eigen slot. Zijn alle 8 bezet, dan krijgt een nieuwe app het slot van een weggevallen app (liefst niet die met focus).
 - **Lease-LEDs:** alleen geldige berichten (precies één note-on, note-off of CC van 3 bytes) gaan naar de APC — ook verstopte mode-SysEx valt weg, al bij de validatie (`isLedBericht`). Bij een stortvloed lopen lease-LEDs hooguit ±40 ms voor op de APC; de rest wordt per LED samengevoegd (nieuwste wint).
-- **LPD8-pickup volgt de buitenwereld:** verandert de waarde van een macro door een snapshot, de app of de cockpit, dan "wacht" de LPD8-knop weer tot hij die waarde kruist.
+- **LPD8-pickup volgt de buitenwereld:** verandert de waarde van een macro door een snapshot, de app of de cockpit, dan "wacht" de LPD8-knop weer tot hij die waarde kruist (uitzondering: wat een app zelf doet tijdens of vlak na een paniek, §14).
 - **Triggers blijven nooit hangen:** het loslaten gaat altijd naar de trigger waar het indrukken heen ging, ook na een nieuw manifest, een paginawissel of een focuswissel.
 - **Stoppen:** een gestopte kern negeert alles en start geen timers meer; `hub.stop()` sluit eerst de server, schrijft dan het geheugen weg (§12), stopt de kern en sluit de apparaten.
 - **Zonder virtuele MIDI-poorten** (geen RtMidi) starten de MIDI-drivers niet en melden ze dat; TD en Sediment staan dan niet als "actief" in de cockpit.
@@ -211,7 +211,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 **slew_s**
 - `slew_s` geldt voor elke `zet` van de hub zelf: cockpit, snapshot laden, replay na een herstart, LPD8-macro. Niet voor een directe APC-fader of -knop: die is al continu en moet direct voelen; zo'n beweging breekt een lopende slew af.
 - Alleen voor `soort:"waarde"`; een keuze of schakelaar springt.
-- Elke nieuwe `zet` start een nieuwe slew vanaf de huidige (tussen)waarde, met de volle `slew_s`. Een cockpit-schuif die je sleept loopt dus achter; laat je hem los, dan toont de cockpit even de tussenwaarde en glijdt hij daarna naar het doel. Dat is bewust: de app krijgt nooit een sprong.
+- Elke nieuwe `zet` start een nieuwe slew vanaf de huidige (tussen)waarde, met de volle `slew_s`. Een cockpit-schuif die je sleept loopt dus achter; laat je hem los, dan blijft de schuif op het doel staan en toont de cockpit de tussenwaarde als aparte balk met "→ doel" tot de slew klaar is (`beeld.slews`, §8). Dat is bewust: de app krijgt nooit een sprong.
 
 **Apps per monitor**
 - Een app met `per_monitor: true` in `config.json` (flux) meldt zich per monitor aan als `<app>-<monitor>` (`flux-dp-1`). De hub geeft die de kleur van de basis-app en de naam `"<naam> (<monitor>)"`; staat de monitor niet in de naam uit het manifest, dan zet de hub hem erachter.
@@ -221,6 +221,32 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - **Token met `--lan`.** Luistert de hub op het netwerk, dan moet elke verbinding van buiten de eigen machine (niet `127.0.0.1`/`::1`) het token tonen. Lokaal blijft alles zonder token werken.
   - `/app`: `?token=…` in de URL, of `token` in `hallo` (`{t:"hallo", app, inst, v:1, token}`). Het token gaat nooit naar de kern of een logboek.
   - `/cockpit` en HTTP: `?token=…` in de URL of het cookie `varve_hub_token` (dat de hub zet na een `?token=`). Zonder geldig token: HTTP **401**, ook bij de upgrade van `/cockpit`.
-- **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 10 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs).
+- **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 3 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs). Hooguit 16 tegelijk wachtend (4 per adres); daarboven gaat een nieuwe meteen dicht. `/app` accepteert ook het cookie (voor pagina's van de hub zelf, zoals `/oefen`).
 - **Een app die 4003 krijgt** herverbindt met de gewone backoff (0,5 → 5 s); opnieuw proberen helpt pas als het token klopt, dus een app mag ook bewust langzamer gaan of de gebruiker melden dat het token ontbreekt.
+- **Grenzen (golf 5, beveiligingsreview):** hooguit 128 verbindingen tegelijk (daarboven HTTP 503 bij de upgrade); snapshotnummers vanuit de cockpit 1..99; `inst` in `hallo` hooguit 64 tekens.
+- **Origin voor `/cockpit` (golf 5):** alleen same-origin (de pagina's van de hub zelf) of wat in `server.origins` staat; niet meer elke `localhost`-poort. `/app` mag lokaal vanaf `http(s)://localhost` en `127.0.0.1` op elke poort (browser-apps op hun eigen dev-server).
+- **Elk HTTP-antwoord** heeft `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'` en `Referrer-Policy: no-referrer`. Meerdere `varve_hub_token`-cookies: één geldig is genoeg.
 - **Zonder token luistert de hub nooit buiten loopback:** een `host` die niet `127.0.0.1`/`localhost`/`::1` is zonder token wordt geweigerd vóór het luisteren (`start` stopt met exit 4).
+
+## 14. Beslissingen (golf 5)
+
+Uit de generale repetitie (`docs/REPETITIE.md`). Getoetst in `test/kern-golf5.test.js` en `test/repetitie.test.js`.
+
+**Pickup na een paniek** (vult §11 "LPD8-pickup volgt de buitenwereld" aan)
+- Wat een app **zelf** verandert (`zet` of `staat` van de app) terwijl de paniek loopt, of binnen `paniek.naloop_s` seconden daarna (`config.json`, standaard 5; 0 = alleen tijdens de paniek, en dan telt bij Stop All alleen wat binnenkomt terwijl de knop ingedrukt is; geen getal ≥ 0 → melding bij de start en 5), verplaatst het pickup-doel van een **LPD8-macroknop** niet. De knop blijft gevangen; de eerste tik zet weer elke app met die rol. Voorbeeld: Waterschaal zet bij paniek zelf `volume` op 0 en meldt dat; K1 stond op 0,28 en blijft gevangen, dus de volgende tik zet Waterschaal én MediSynth weer op de knopstand.
+- De hub bewaart en toont die waarde gewoon (`waarden`, cockpit, geheugen): alleen het pickup-doel van de LPD8-knop blijft staan. Had de knop nog geen pickup (nog nooit aangeraakt, ook als er geen LPD8 aan hangt), dan geldt als doel de waarde van vóór die zet, niet de paniekwaarde. Dat doel blijft staan tot de knop het oppakt of de buitenwereld het na de naloop verplaatst (cockpit, snapshot, een zet van de app), ook uren later: wie daarna K1 vanaf 0 opendraait, hoort niets tot de knop de oude stand kruist. Bewust zo: na een paniek is de stand van vóór de paniek het referentiepunt, niet de stilte.
+- Dit is een uitzondering op §9 ("er springt nooit iets, ook niet bij de eerste aanraking") en §11: de eerste K1-tik na een paniek zet de app die zichzelf stil zette van 0 terug naar de knopstand. Dat is precies de bedoeling.
+- **K1 werkt ook terwijl de paniek nog loopt** (P1 of Stop All nog vast): draai je K1, dan gaan de apps met die rol meteen naar de knopstand, ook de app die zichzelf net stil zette. Wie P1 vasthoudt en tegelijk aan K1 draait, doet dat met opzet.
+- "De paniek loopt": LPD8-P1 is vastgehouden (vanaf het moment dat de paniek ingaat, na 1 s) tot loslaten, voor alle apps; of **Stop All** van de app met focus is ingedrukt, alleen voor die app. De naloop telt vanaf loslaten. Het loslaten van Stop All telt voor de app waar het indrukken heen ging, ook na een focuswissel, een nieuw manifest (met of zonder paniek-trigger, of een lease), een vergeten app of een APC die wegvalt: een paniek blijft nooit hangen.
+- Alleen wat de app zelf doet. Een zet van de cockpit of een snapshot tijdens de paniek verplaatst het doel wél (zoals §11).
+- **APC-pickups (faders, ringknoppen zonder overname) van de app met focus volgen wél de buitenwereld**, ook tijdens een paniek: zo'n control hoort bij precies één parameter van de app die je ziet, en wat de app daar zelf van maakt is de waarheid. Na `volume` 0 wacht fader 1 dus weer (de clip-stop-LED knippert) tot hij 0 kruist. Een LPD8-knop is een macro over alle apps met die rol: als één app hem tijdens een paniek loskoppelt, doet hij voor alle andere apps ook niets meer.
+
+**Geen dubbele zets bij keuze en schakelaar**
+- Een `zet` op een parameter met `soort` `keuze` of `schakelaar` gaat niet naar de app als de gekwantiseerde waarde gelijk is aan wat de hub al van de app weet. Dat geldt voor elke bron (LPD8-macro, APC-pad of -stap, cockpit, snapshot): dezelfde keuze nog eens sturen heeft nooit zin. LEDs en pickup worden wel bijgewerkt, en `globaal` (de macro zelf) gaat nog steeds bij elke tik naar iedereen.
+- **Replay gaat altijd** (`bron:"replay"`, na een herstart van de app of van de hub): de app weet het dan nog niet.
+- Meldde de app zelf een andere stand (`zet`/`staat`), dan gaat de oude stand daarna gewoon weer.
+- **Bekende grens:** de hub vergelijkt met wat hij zelf het laatst zette of hoorde, niet met wat de app bevestigde. Kruisen een zet van de hub en een eigen zet van de app elkaar, of negeert een app een zet zonder iets terug te melden, dan kan de hub een andere stand denken dan de app heeft; dezelfde keuze nog eens kiezen doet dan niets. Lopen hub en app zo uiteen (de cockpit toont een andere optie dan de app), kies dan even een andere optie en daarna weer de gewenste, of herstart de app: dan meldt hij zijn stand opnieuw (`staat`), of speelt de hub bij `truth:"hub"` alles opnieuw af.
+- Voor `soort:"waarde"` verandert er niets.
+
+**Globale adem volgt de adem-app**
+- Verandert de eerste app met een parameter met rol `klok.adem_periode` die waarde (zelf, of via cockpit/snapshot), dan gaat `globaal['klok.adem_periode']` mee, zonder sprong in de adem-fase. Zo ademen alle apps en de cockpit in de periode van de app die je hoort (bv. Waterschaal na een scène). De LPD8 (K7) zet globaal zoals altijd; een tweede app met dezelfde rol bepaalt de klok niet.

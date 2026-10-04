@@ -39,6 +39,8 @@ import { vindCC } from '../devices/apc40mk2.js';
  */
 
 export const MAX_BERICHT = 256 * 1024;
+/** Hoogste snapshotnummer dat een cockpit mag bewaren of laden (gelijk aan kern.importeer: 1..99). */
+export const MAX_SNAPSHOT = 99;
 export const MAX_ACHTERSTAND = 1024 * 1024;
 
 const MIME = /** @type {Record<string, string>} */ ({
@@ -72,20 +74,23 @@ const lokaleNaam = (h) => h === 'localhost' || isIP(kaal(h)) !== 0;
 
 /**
  * Mag een WebSocket met deze Origin-header verbinden? Geen Origin = Node-client = ja.
- * Toegestaan: http(s)://localhost[:poort], http(s)://127.0.0.1[:poort], exact wat in `origins` staat, en
- * same-origin: de Origin wijst naar dezelfde host:poort als de Host-header én die host is localhost of een
- * IP-adres (zo werkt de cockpit die de hub zelf serveert ook via http://192.168.x.x:7700, maar niet via een
- * domeinnaam die een aanvaller naar 127.0.0.1 laat wijzen).
+ * Toegestaan: exact wat in `origins` staat, en same-origin: de Origin wijst naar dezelfde host:poort als de
+ * Host-header én die host is localhost of een IP-adres (zo werkt de cockpit die de hub zelf serveert ook via
+ * http://192.168.x.x:7700, maar niet via een domeinnaam die een aanvaller naar 127.0.0.1 laat wijzen).
+ * Voor /app daarnaast http(s)://localhost en 127.0.0.1 op elke poort: browser-apps draaien op hun eigen
+ * dev-server (5173, 5174, 8080, …). /cockpit (alles bedienen) niet: een willekeurige pagina op een andere
+ * localhost-poort (een dev-server, een gedownload HTML-bestand) mag de hub niet besturen (golf 5, §13).
  * @param {string|undefined} origin @param {string[]} [origins] @param {string} [hostKop] Host-header van het verzoek
+ * @param {{ cockpit?: boolean }} [o]
  */
-export function originToegestaan(origin, origins = [], hostKop) {
+export function originToegestaan(origin, origins = [], hostKop, { cockpit = false } = {}) {
   if (origin === undefined) return true;
   if (origins.includes(origin)) return true;
   let u;
   try { u = new URL(origin); } catch { return false; }
   if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
   if (u.username || u.password || (u.pathname !== '/' && u.pathname !== '')) return false;
-  if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
+  if (!cockpit && (u.hostname === 'localhost' || u.hostname === '127.0.0.1')) return true;
   return typeof hostKop === 'string' && u.host === hostKop.toLowerCase() && lokaleNaam(u.hostname);
 }
 
@@ -111,7 +116,12 @@ export const TOKEN_COOKIE = 'varve_hub_token';
 export const CLOSE_TOKEN = 4003;
 
 /** Wachttijd voor een /app-verbinding van buiten zonder token: zonder geldige hallo binnen deze tijd → 4003. */
-export const HALLO_MS = 10000;
+export const HALLO_MS = 3000;
+/** Hoeveel /app-verbindingen van buiten tegelijk op een hallo met token mogen wachten: in totaal en per adres.
+ *  Daarboven wordt een nieuwe meteen gesloten, zodat een apparaat zonder token de hub niet kan dichttrekken. */
+export const MAX_WACHTEND = 16, MAX_WACHTEND_PER_ADRES = 4;
+/** Meer verbindingen (apps + cockpits) dan dit tegelijk: nieuwe weigeren (503). */
+export const MAX_KLANTEN = 128;
 
 /** Luistert de server alleen op de eigen machine? @param {string} host */
 export const isLoopbackHost = (host) => host === 'localhost' || host === '::1' || /^(::ffff:)?127\./.test(host);
@@ -131,12 +141,14 @@ export function tokenVanVerzoek(req) {
   let uitUrl = null;
   try { uitUrl = new URL(req.url ?? '/', 'http://hub').searchParams.get('token'); } catch { /* ongeldig pad */ }
   const koekjes = typeof req.headers.cookie === 'string' ? req.headers.cookie : '';
-  let uitKoekje = null;
+  /** Alle cookies met die naam: een andere dienst op dezelfde host kan er een vals naast zetten (dan mag het
+   *  echte nog steeds winnen). @type {string[]} */
+  const uitKoekjes = [];
   for (const deel of koekjes.split(';')) {
     const i = deel.indexOf('=');
-    if (i > 0 && deel.slice(0, i).trim() === TOKEN_COOKIE) { try { uitKoekje = decodeURIComponent(deel.slice(i + 1).trim()); } catch { /* kapot */ } }
+    if (i > 0 && deel.slice(0, i).trim() === TOKEN_COOKIE) { try { uitKoekjes.push(decodeURIComponent(deel.slice(i + 1).trim())); } catch { /* kapot */ } }
   }
-  return { uitUrl, uitKoekje };
+  return { uitUrl, uitKoekje: uitKoekjes.at(-1) ?? null, uitKoekjes };
 }
 
 // ── Statische bestanden ──────────────────────────────────────────────────────
@@ -153,9 +165,15 @@ export function veiligPad(basis, rel) {
   return doel;
 }
 
+/** Op elk antwoord: niet in een frame van een vreemde site (clickjacking), geen Referer naar buiten. */
+const VEILIG_KOP = Object.freeze({
+  'x-content-type-options': 'nosniff', 'x-frame-options': 'DENY',
+  'content-security-policy': "frame-ancestors 'none'", 'referrer-policy': 'no-referrer',
+});
+
 /** @param {import('node:http').ServerResponse} res @param {number} code @param {string} tekst */
 function eindig(res, code, tekst) {
-  res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+  res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8', ...VEILIG_KOP });
   res.end(tekst);
 }
 
@@ -170,7 +188,7 @@ async function stuurBestand(res, bestand, hoofd) {
     const inhoud = hoofd ? null : await readFile(pad);
     res.writeHead(200, {
       'content-type': mimeVan(pad), 'content-length': s.size,
-      'cache-control': 'no-cache', 'x-content-type-options': 'nosniff',
+      'cache-control': 'no-cache', ...VEILIG_KOP,
     });
     res.end(inhoud);
   } catch {
@@ -309,7 +327,7 @@ export function leesVanCockpit(ruw) {
       if (typeof b.app !== 'string' || typeof b.id !== 'string' || typeof b.v !== 'number') return { ok: false, fout: 'zet: app, id en v nodig' };
       return { ok: true, kern: { t: 'zet', app: b.app, id: b.id, v: klem01(b.v) } };
     case 'snapshot':
-      if (!Number.isInteger(b.nr) || b.nr < 1) return { ok: false, fout: 'snapshot: nr (1..) nodig' };
+      if (!Number.isInteger(b.nr) || b.nr < 1 || b.nr > MAX_SNAPSHOT) return { ok: false, fout: `snapshot: nr 1..${MAX_SNAPSHOT} nodig` };
       if (b.actie !== 'laad' && b.actie !== 'bewaar') return { ok: false, fout: 'snapshot: actie laad of bewaar' };
       return { ok: true, kern: { t: 'snapshot', nr: b.nr, actie: b.actie } };
     default:
@@ -323,13 +341,13 @@ export function leesVanCockpit(ruw) {
  * @param {{
  *   poort: number, host?: string, kern: KernVoorServer, uiMap: string, srcMap: string,
  *   opVirtueel?: (dev: 'apc40'|'lpd8', bytes: number[]) => void, origins?: string[],
- *   maxAchterstand?: number, pingMs?: number, token?: string|null, halloMs?: number,
+ *   maxAchterstand?: number, pingMs?: number, token?: string|null, halloMs?: number, maxKlanten?: number,
  * }} o `token`: vereist voor elke verbinding van buiten de eigen machine (zie boven); null = geen controle.
  *   Een `host` die niet loopback is zonder token wordt geweigerd (fout met code 'GEEN_TOKEN'), nog vóór het luisteren.
  *   `halloMs`: zo lang mag een /app-verbinding van buiten zonder token wachten op een hallo met token.
  * @returns {Promise<{ adres: string, poort: number, tokenVereist: boolean, stop: () => Promise<void> }>}
  */
-export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcMap, opVirtueel, origins = [], maxAchterstand = MAX_ACHTERSTAND, pingMs = 15000, token = null, halloMs = HALLO_MS }) {
+export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcMap, opVirtueel, origins = [], maxAchterstand = MAX_ACHTERSTAND, pingMs = 15000, token = null, halloMs = HALLO_MS, maxKlanten = MAX_KLANTEN }) {
   if (token !== null && (typeof token !== 'string' || token.length < 16)) throw new Error('token moet een tekst van minstens 16 tekens zijn');
   if (!token && !isLoopbackHost(host)) {
     // Vangnet: nooit zonder token op het netwerk luisteren, ook niet heel even.
@@ -339,9 +357,9 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
    *  @param {import('node:http').IncomingMessage} req */
   const toegang = (req) => {
     if (!token || isLokaalAdres(req.socket.remoteAddress)) return { ok: true, uitUrl: false };
-    const { uitUrl, uitKoekje } = tokenVanVerzoek(req);
+    const { uitUrl, uitKoekjes } = tokenVanVerzoek(req);
     if (tokenKlopt(uitUrl, token)) return { ok: true, uitUrl: true };
-    return { ok: tokenKlopt(uitKoekje, token), uitUrl: false };
+    return { ok: uitKoekjes.some((k) => tokenKlopt(k, /** @type {string} */ (token))), uitUrl: false };
   };
   const veilig = (/** @type {string} */ wat, /** @type {() => void} */ fn) => {
     try { fn(); } catch (e) { console.error(`[server] fout in ${wat}:`, e); }
@@ -366,7 +384,8 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
       if (req.method === 'GET' && /text\/html/.test(String(req.headers.accept ?? ''))) {
         const u = new URL(req.url ?? '/', 'http://hub');
         u.searchParams.delete('token');
-        res.writeHead(302, { location: u.pathname + u.search, 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8' });
+        // Altijd een pad op deze hub: '//ander.domein/…' zou de browser naar een andere site sturen.
+        res.writeHead(302, { location: '/' + u.pathname.replace(/^[/\\]+/, '') + u.search, 'cache-control': 'no-store', 'content-type': 'text/plain; charset=utf-8', ...VEILIG_KOP });
         res.end('token onthouden');
         return;
       }
@@ -384,7 +403,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     if (pad === '/api/beeld') {
       let tekst;
       try { tekst = JSON.stringify(kern.beeld()); } catch (e) { console.error('[server] kern.beeld() faalde:', e); return eindig(res, 500, 'beeld niet beschikbaar'); }
-      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...VEILIG_KOP });
       return void res.end(hoofd ? undefined : tekst);
     }
     return eindig(res, 404, 'niet gevonden');
@@ -394,6 +413,9 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   const wssCockpit = new WebSocketServer({ noServer: true, maxPayload: MAX_BERICHT });
   /** @type {WeakSet<WebSocket>} */
   const levend = new WeakSet();
+
+  /** /app-verbindingen van buiten die nog op een hallo met token wachten. */
+  const wachtend = { totaal: 0, /** @type {Map<string, number>} */ per: new Map() };
 
   /** Eén keer per origin melden waarom een verbinding geweigerd wordt (begrensd tegen spam). @type {Set<string>} */
   const gemeld = new Set();
@@ -411,8 +433,12 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     pad = pad.replace(/\/+$/, '') || '/app';
     const wss = pad === '/app' ? wssApp : pad === '/cockpit' ? wssCockpit : null;
     if (!wss) { sock.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n'); return; }
+    if (wssApp.clients.size + wssCockpit.clients.size >= maxKlanten) {
+      sock.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\nte veel verbindingen');
+      return;
+    }
     const origin = req.headers.origin;
-    if (!originToegestaan(typeof origin === 'string' ? origin : undefined, origins, req.headers.host)) {
+    if (!originToegestaan(typeof origin === 'string' ? origin : undefined, origins, req.headers.host, { cockpit: wss === wssCockpit })) {
       waarschuwOrigin(String(origin));
       sock.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\norigin niet toegestaan');
       return;
@@ -421,6 +447,24 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
     const t = toegang(req);
     if (!t.ok && wss === wssCockpit) {
       sock.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\ntoken nodig');
+      return;
+    }
+    // /app van buiten zonder token: begrensd aantal tegelijk wachtend op een hallo (anders sockets dichttrekken).
+    if (!t.ok) {
+      const adres = String(req.socket.remoteAddress ?? '?');
+      if (wachtend.totaal >= MAX_WACHTEND || (wachtend.per.get(adres) ?? 0) >= MAX_WACHTEND_PER_ADRES) { sock.destroy(); return; }
+      wachtend.totaal++;
+      wachtend.per.set(adres, (wachtend.per.get(adres) ?? 0) + 1);
+      let telt = true;
+      const klaar = () => {
+        if (!telt) return;
+        telt = false;
+        wachtend.totaal--;
+        const n = (wachtend.per.get(adres) ?? 1) - 1;
+        if (n > 0) wachtend.per.set(adres, n); else wachtend.per.delete(adres);
+      };
+      sock.once('close', klaar);
+      wss.handleUpgrade(req, sock, kop, (ws) => wss.emit('connection', ws, req, false, klaar));
       return;
     }
     wss.handleUpgrade(req, sock, kop, (ws) => wss.emit('connection', ws, req, t.ok));
@@ -449,7 +493,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   const vervangen = new WeakSet();
 
   // /app — één Verbinding per socket.
-  wssApp.on('connection', (ws, _req, /** @type {boolean} */ binnen = true) => {
+  wssApp.on('connection', (ws, _req, /** @type {boolean} */ binnen = true, /** @type {() => void} */ nietMeerWachtend = () => {}) => {
     let welkomGestuurd = false;
     /** Zonder token bij de upgrade (LAN): pas na een hallo met het goede token naar de kern. */
     let bijKern = binnen;
@@ -527,6 +571,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
             return weiger(`token nodig: verbind met ?token=… of stuur token in hallo (${gegeven === undefined ? 'geen token' : 'verkeerd token'})`);
           }
           clearTimeout(halloWacht);
+          nietMeerWachtend();
           bijKern = true;
           veilig('kern.verbind', () => kern.verbind(v));
         }

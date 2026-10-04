@@ -21,7 +21,8 @@ export const tokenPad = (home = os.homedir()) => join(home, '.varve-hub', 'token
 /** Een nieuw token: 32 willekeurige bytes, URL-veilig (mag zo in ?token=). */
 export const nieuwToken = () => randomBytes(32).toString('base64url');
 
-const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
+/** Een geldig token: 16-256 tekens A-Z a-z 0-9 _ - (ook gebruikt door `varve-hub check`). */
+export const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
 
 /**
  * Lees het token, of maak het (eerste keer `--lan`). Map 0700, bestand 0600; te ruime rechten worden
@@ -32,6 +33,11 @@ const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
 export function leesOfMaakToken({ home = os.homedir(), maak = nieuwToken, opnieuw = false } = {}) {
   const pad = tokenPad(home);
   mkdirSync(dirname(pad), { recursive: true, mode: 0o700 });
+  // mode werkt alleen bij een nieuwe map; bestond ~/.varve-hub al (bv. van het geheugen), dan alsnog dichtzetten.
+  // Alleen rechten van anderen weghalen, nooit eigen rechten erbij geven (een bewust alleen-lezen map blijft dat).
+  if (process.platform !== 'win32') {
+    try { const m = statSync(dirname(pad)).mode & 0o777; if (m & 0o077) chmodSync(dirname(pad), m & 0o700); } catch { /* niet van ons: laten */ }
+  }
   if (opnieuw || !existsSync(pad)) {
     const token = maak();
     if (!GELDIG.test(token)) throw new Error('nieuw token is ongeldig');

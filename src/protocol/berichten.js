@@ -35,6 +35,8 @@ export function leesVanApp(ruw) {
     case 'hallo':
       if (typeof b.app !== 'string' || !/^[a-z0-9-]{1,32}$/.test(b.app)) return { ok: false, fout: 'hallo: app ontbreekt of ongeldig' };
       if (typeof b.inst !== 'string' || !b.inst) return { ok: false, fout: 'hallo: inst ontbreekt' };
+      // inst komt in het geheugenbestand (golf 4): begrensd, zodat een client het niet kan opblazen.
+      if (b.inst.length > 64) return { ok: false, fout: 'hallo: inst is te lang (max 64 tekens)' };
       return { ok: true, bericht: { t: 'hallo', app: b.app, inst: b.inst, v: 1, ...(typeof b.token === 'string' ? { token: b.token } : {}) } };
     case 'manifest':
       if (!b.manifest || typeof b.manifest !== 'object') return { ok: false, fout: 'manifest ontbreekt' };

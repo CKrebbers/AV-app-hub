@@ -37,6 +37,7 @@ Open daarna **http://localhost:7700/oefen**, of klik op "oefenen" in de cockpit.
 ## Goed om te weten
 
 - **Andere apps die ook verbonden zijn**, merken het als je oefent. De LPD8, snapshots en paniek werken ook op die apps. De pagina waarschuwt als er andere apps verbonden zijn. Oefen daarom liefst met alleen de hub.
+- **Eén tab tegelijk.** Open je /oefen in een tweede tab of venster, dan neemt die Zon en Zee over; de oude tab zegt dat en probeert het elke 30 s opnieuw.
 - **Na het sluiten van de pagina** staan Zon en Zee als "weg" in de cockpit. Hun slots komen vrij zodra een echte app een slot nodig heeft.
 - **Snapshot 4 en het tempo** blijven na de les staan, net als op een echte avond. De les gebruikt snapshot 4, zodat je snapshots 1–3 heel blijven. Staat er al een snapshot 4, dan waarschuwt de les eerst.
 
