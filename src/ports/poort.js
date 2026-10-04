@@ -4,11 +4,15 @@
 
 /**
  * Een duplex-verbinding met één apparaat (ingang + uitgang met dezelfde naam).
+ * `stuur` mag gooien (apparaat weg, poort kapot); de hub vangt dat af en opent de poort opnieuw (golf 8).
+ * `levend` is optioneel: false = deze poort is stuk of het apparaat erachter is weg (ook als er alweer een apparaat
+ * met dezelfde naam is). De hotplug-ronde opent hem dan opnieuw. Weet een poort het niet (RtMidi), dan ontbreekt hij.
  * @typedef {{
  *   naam: string,
  *   stuur: (bytes: number[]) => void,
  *   bijBericht: (fn: (bytes: number[]) => void) => () => void,
  *   sluit: () => void,
+ *   levend?: () => boolean,
  * }} Poort
  */
 
