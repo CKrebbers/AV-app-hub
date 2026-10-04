@@ -258,3 +258,10 @@ Uit de generale repetitie (`docs/REPETITIE.md`). Getoetst in `test/kern-golf5.te
 
 **uurwerk leest terug (golf 6)**
 - De HTTP-driver van uurwerk leest de tab regelmatig terug (`config.json` → `teruglezen`); een echt verschil komt in de kern als zet van de app (bron `app`, §11 en hierboven), nooit terug naar de tab. Wat de hub net zelf stuurde (2 s) en afrondingsverschillen tellen niet.
+
+## 15. Beslissingen (golf 7 — duurtest, docs/DUURTEST.md)
+
+Uit een avond van uren in een paar minuten. Ze begrenzen wat de hub onthoudt over apps die nooit afmaken wat ze begonnen:
+- **Een app die nooit een geldig manifest stuurde, wordt bij verbreken vergeten**: weg uit de lijst en uit `beeld.apps` (geen status `weg`), zijn slot komt vrij voor een ander (een gat gaat vóór een nieuw slot achteraan), en had hij de focus, dan heeft niemand die (een bewaarde focus van na een herstart van de hub blijft staan). Uitzondering op §11 "Een app die terugkomt krijgt zijn eigen slot": een app zonder manifest is niets kwijt en begint opnieuw. Een app mét manifest blijft zoals altijd bekend met status `weg` en zijn waarden (§3).
+- **Vóór het manifest** bewaart de hub van `zet`/`staat` alleen waarden met een geldige id (`PARAM_ID`, §4), hooguit `MAX_PARAMS` (128) ids; de rest valt stil weg.
+- **Een nieuw manifest ruimt op**: waarden (en lopende slews) van ids die het niet (meer) heeft, vallen weg; bij `truth:"hub"` gaat dat mee naar het geheugen op schijf (§12). Parameters die blijven, houden hun waarde.

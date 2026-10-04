@@ -13,7 +13,7 @@
 // truth:"hub"; het event 'geheugen' meldt dat daar iets aan veranderde (src/opslag.js schrijft het weg).
 import * as APC from '../devices/apc40mk2.js';
 import { klem01 } from '../protocol/berichten.js';
-import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID } from '../protocol/manifest.js';
+import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID, MAX_PARAMS } from '../protocol/manifest.js';
 import { Zender } from './zender.js';
 import { maakIndeling, toewijzingen, controlsVoor } from './indeling.js';
 import { nieuwePickup, beweeg, zetDoel, volg } from './pickup.js';
@@ -255,15 +255,35 @@ export class Kern extends Zender {
     }
   }
 
-  /** Verbinding dicht: app blijft bekend met status 'weg', waarden bewaard. @param {Verbinding} v */
+  /**
+   * Verbinding dicht: app blijft bekend met status 'weg', waarden bewaard. Een app die nooit een (geldig) manifest
+   * stuurde, heeft niets om te bewaren en wordt vergeten: anders groeit de lijst (en elk beeld voor de cockpit) met
+   * elke half afgebouwde app en elke steeds andere naam, een hele avond lang (docs/DUURTEST.md).
+   * @param {Verbinding} v
+   */
   verbreek(v) {
     this.verbindingen.delete(v);
     const a = v.app ? this.apps.get(v.app) : undefined;
     if (!a || a.v !== v) return;
     a.v = null;
     this.#wisHartslag(a);
+    if (!a.manifest) { this.#vergeet(a); return; }
     a.status = 'weg';
     this.#statusGewijzigd(a);
+  }
+
+  /** Een app zonder manifest helemaal vergeten: zijn slot komt vrij, de focus (als hij die had) gaat naar niemand. @param {AppStaat} a */
+  #vergeet(a) {
+    this.apps.delete(a.app);
+    this.appPaniekTot.delete(a.app);
+    if (a.slot !== null && this.slots[a.slot - 1] === a.app) this.slots[a.slot - 1] = null;
+    a.slot = null;
+    // Niet via focus(null): dat is een keuze van Clay (of de set). Hier valt alleen een app weg; wat de hub nog
+    // weet over wie de focus hoort te krijgen (bv. na een herstart midden in de set), blijft staan.
+    const hadFocus = this.focusApp === a.app;
+    if (hadFocus) this.focusApp = null;
+    if (hadFocus || this.hubIn) this.#teken();
+    this.#beeldGewijzigd();
   }
 
   /** @param {Verbinding} v @param {{ app: string, inst: string }} b */
@@ -337,6 +357,10 @@ export class Kern extends Zender {
    */
   #geefSlot(a) {
     if (a.slot !== null) return;
+    // Zijn eigen slot van vóór een herstart van de hub (herstelSlotsEnFocus), of een gat: dat eerst.
+    const eigen = this.slots.indexOf(a.app);
+    const gat = eigen >= 0 ? eigen : this.slots.indexOf(null);
+    if (gat >= 0) { this.slots[gat] = a.app; a.slot = gat + 1; return; }
     if (this.slots.length < SLOTS) { a.slot = this.slots.push(a.app); return; }
     const weg = (/** @type {string|null} */ id) => { const st = this.apps.get(id ?? '')?.status; return st === undefined || st === 'weg'; };
     let i = this.slots.findIndex((id) => weg(id) && id !== this.focusApp);
@@ -385,6 +409,10 @@ export class Kern extends Zender {
     // anders zijn twee monitoren in de cockpit niet uit elkaar te houden.
     a.naam = cfg.monitor && !man.naam.toLowerCase().includes(String(cfg.monitor).toLowerCase()) ? `${man.naam} (${cfg.monitor})` : man.naam;
     this.#zetKleur(a, man.kleur ?? cfg.kleur);
+    // Alleen waarden (en slews) van de eigen parameters: wat een vorig manifest of een staat vóór het manifest
+    // achterliet, valt weg. Anders groeit dit met elk ander manifest en elke onbekende id (en elk beeld mee).
+    const eigen = new Set(man.params.filter((p) => p.soort !== 'trigger').map((p) => p.id));
+    for (const id of Object.keys(a.waarden)) if (!eigen.has(id)) { delete a.waarden[id]; this.slews.delete(`${a.app}\u0000${id}`); }
     for (const p of man.params) if (p.soort !== 'trigger' && !(p.id in a.waarden)) a.waarden[p.id] = p.standaard ?? 0;
     // Waarden van schijf (vorige hub-sessie) voor een truth:"hub"-app: nu pas weten we dat hij ze wil.
     // Komt hij nu als truth:"app", dan zijn ze niet meer nodig: niet eeuwig in het geheugen laten staan.
@@ -462,6 +490,8 @@ export class Kern extends Zender {
   #zetWaarde(a, id, v, { naarApp, bron, slew = false, ctrl: van = undefined }) {
     const p = this.#param(a, id);
     if (a.manifest && (!p || p.soort === 'trigger')) return;
+    // Nog geen manifest: alleen geldige ids, en niet meer dan een manifest kan hebben (het manifest ruimt op).
+    if (!a.manifest && !(id in a.waarden) && (!PARAM_ID.test(id) || Object.keys(a.waarden).length >= MAX_PARAMS)) return;
     const w = kwantiseer(p, v);
     if (!slew) this.slews.delete(`${a.app}\u0000${id}`);
     const was = a.waarden[id];
