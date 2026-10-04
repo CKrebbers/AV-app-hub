@@ -79,7 +79,7 @@ describe('set-starter na een herstart van de hub', () => {
     /** @type {[number, string|number][]} */
     const seinen = [];
     let levend = true;
-    const p = bestaandProces(4321, { kill: (pid, sein) => { seinen.push([pid, sein]); if (!levend) throw Object.assign(new Error('weg'), { code: 'ESRCH' }); } });
+    const p = bestaandProces(4321, { kill: (pid, sein) => { seinen.push([pid, sein]); if (!levend) throw Object.assign(new Error('weg'), { code: 'ESRCH' }); }, groep: () => true });
     expect(p.leeft()).toBe(true);
     p.stop('SIGTERM');
     expect(seinen).toContainEqual([-4321, 'SIGTERM']);

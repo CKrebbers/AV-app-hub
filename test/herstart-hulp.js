@@ -1,12 +1,13 @@
 // @ts-check
 // Hulp voor de herstart-tests (test/herstart*.test.js): de echte hub als proces (`node src/cli.js start`),
 // een cockpit over WebSocket, en opruimen van alles wat de test zelf startte (alleen via de eigen pid's).
-// Hermetisch: een eigen tijdelijke map voor geheugen, config en avondmap; nooit ~/.varve-hub of de echte apps.
-import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+// Hermetisch: een eigen tijdelijke map voor geheugen, config en avondmap; nooit ~/.varve-hub, de echte avondmap
+// (~/Movies/varve-avonden) of de echte apps. De tijdelijke mappen gaan weg in ruimProcessenOp.
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import WebSocket from 'ws';
 import { laadConfig } from '../src/config.js';
 
@@ -31,8 +32,11 @@ export function vrijePoort() {
   });
 }
 
+/** Tijdelijke mappen van deze tests (weg in ruimProcessenOp). @type {string[]} */
+const mappen = [];
+
 /** Tijdelijke map. */
-export const maakMap = () => mkdtempSync(join(tmpdir(), 'varve-herstart-'));
+export const maakMap = () => { const m = mkdtempSync(join(tmpdir(), 'varve-herstart-')); mappen.push(m); return m; };
 
 /**
  * Een config.json in de tijdelijke map: de echte, met `extra` eroverheen (geen avondmap tenzij gevraagd).
@@ -95,15 +99,18 @@ export async function startCli({ args, staat = null, config, env = {}, klaar = /
 
 /**
  * De hub zelf: zonder MIDI, zonder drivers (geen /home/user/av-scene-kit enz. nodig), op een vaste poort.
+ * Zonder `config`: een eigen config.json naast het geheugen, zonder avondmap.
  * @param {{ poort: number, staat: string|null, config?: string, extra?: string[], env?: Record<string, string>, klaar?: RegExp|null }} o
  */
 export function startHubProces({ poort, staat, config, extra = [], env, klaar }) {
-  return startCli({ args: ['start', '--zonder-midi', '--geen-drivers', '--poort', String(poort), ...extra], staat, config, env, klaar });
+  const cfg = config ?? maakConfig(staat ? dirname(staat) : maakMap());
+  return startCli({ args: ['start', '--zonder-midi', '--geen-drivers', '--poort', String(poort), ...extra], staat, config: cfg, env, klaar });
 }
 
-/** Ruim op wat nog leeft (alleen eigen processen, via hun pid). */
+/** Ruim op wat nog leeft (alleen eigen processen, via hun pid), en de tijdelijke mappen. */
 export async function ruimProcessenOp() {
   for (const h of [...levend]) { h.sein('SIGKILL'); await h.einde; }
+  for (const m of mappen.splice(0)) rmSync(m, { recursive: true, force: true });
 }
 
 /**
@@ -128,4 +135,34 @@ export function cockpit(poort) {
     });
     ws.on('error', fout);
   });
+}
+
+/**
+ * Een set met één nep-app (tools/nep-app.mjs) die de set zelf start, zonder poort (alleen te herkennen aan zijn
+ * proces), met een beginsnapshot en focus. Alles in `map`.
+ * @param {string} map @param {number} poort
+ */
+export function nepSet(map, poort) {
+  const config = maakConfig(map, { apps: { 'nep-a': { naam: 'Nep A', kleur: '#ff00ff', repo: 'hub' } } });
+  const paden = join(map, 'paden.json');
+  writeFileSync(paden, JSON.stringify({ hub: HUB_MAP }));
+  const setPad = join(map, 'herstartproef.json');
+  writeFileSync(setPad, JSON.stringify({
+    naam: 'Herstartproef',
+    apps: { 'nep-a': { start: { commando: `${JSON.stringify(process.execPath)} tools/nep-app.mjs --url {hub} --app nep-a` }, time_out_s: 20 } },
+    snapshot: { 'nep-a': { helder: 0.2 } },
+    focus: 'nep-a',
+  }));
+  return {
+    config, staat: join(map, 'staat.json'), env: { VARVE_HUB_PADEN: paden },
+    args: ['start', setPad, '--zonder-midi', '--geen-drivers', '--zonder-chrome', '--poort', String(poort)],
+    klaar: /Set "Herstartproef": 1\/1 klaar/,
+  };
+}
+
+/** Leeft procesgroep `pgid` nog (zonder zombies mee te tellen: die zijn gestopt, alleen nog niet opgeruimd)? @param {number} pgid */
+export function groepLeeft(pgid) {
+  try { process.kill(-pgid, 0); } catch { return false; }
+  const ps = execFileSync('ps', ['-A', '-o', 'pgid=,stat='], { encoding: 'utf8' });
+  return ps.split('\n').some((r) => { const [g, st] = r.trim().split(/\s+/); return Number(g) === pgid && !!st && !st.startsWith('Z'); });
 }

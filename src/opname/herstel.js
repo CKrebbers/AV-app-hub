@@ -56,12 +56,13 @@ export function laatsteVolledige(tekst) {
  * Zoek in de avondmap naar avonden zonder samenvatting.md (niet afgesloten) en herstel ze. Gooit nooit:
  * wat niet lukt, komt als melding terug. Geeft per herstelde avond de map en wat er gedaan is.
  * `voor`: alleen avonden die vóór dit moment begonnen (kop.begon) — nooit een avond die deze hub zelf al opneemt.
- * Roep het pas aan als deze hub zijn poort heeft: anders zou een tweede `start` naast een draaiende hub diens
- * lopende avond voor afgebroken aanzien.
- * @param {{ map: string|null, voor: Date, fs?: HerstelBestanden, log?: (tekst: string) => void }} o
+ * `na`: alleen avonden die op of na dit moment begonnen — de start van de omgevallen hub (uit zijn loopbestand), zodat
+ * alleen zíjn avond hersteld wordt en nooit een die een andere hub (andere poort, zelfde avondmap) nu nog opneemt.
+ * `varve-hub start` roept dit alleen aan als het loopbestand zegt dat de vorige hub omviel.
+ * @param {{ map: string|null, voor: Date, na?: Date|null, fs?: HerstelBestanden, log?: (tekst: string) => void }} o
  * @returns {Promise<{ map: string, regels: number, weg: number, duur_ms: number }[]>}
  */
-export async function herstelAvonden({ map, voor, fs = echteHerstelBestanden, log = () => {} }) {
+export async function herstelAvonden({ map, voor, na = null, fs = echteHerstelBestanden, log = () => {} }) {
   if (!map) return [];
   let namen;
   try { namen = (await fs.readdir(map)).sort(); } catch { return []; }   // nog geen avondmap: niets te doen
@@ -77,6 +78,7 @@ export async function herstelAvonden({ map, voor, fs = echteHerstelBestanden, lo
       if (r.kop?.soort !== 'avond') continue;                            // geen avond van de hub: niet aankomen
       const begon = Date.parse(r.kop?.begon);
       if (!(begon < voor.getTime())) continue;                           // van nu (of onbekend): niet aankomen
+      if (na && !(begon >= na.getTime())) continue;                      // van vóór de omgevallen hub: niet van hem
       if (r.weg > 0) await fs.truncate(gebaren, r.lengte);
       await fs.writeFile(join(avond, SAMENVATTING), samenvattingAfgebroken(naam, avond, r));
       hersteld.push({ map: avond, regels: r.regels, weg: r.weg, duur_ms: r.ms });

@@ -11,6 +11,7 @@
 //
 // Geheugen: `exporteer()`/`importeer(data)` (puur) geven en nemen de snapshots en de waarden van apps met
 // truth:"hub"; het event 'geheugen' meldt dat daar iets aan veranderde (src/opslag.js schrijft het weg).
+// Slots en focus alleen na een herstart midden in de set: `slotsEnFocus()`/`herstelSlotsEnFocus(d)` (loopbestand).
 import * as APC from '../devices/apc40mk2.js';
 import { klem01 } from '../protocol/berichten.js';
 import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID } from '../protocol/manifest.js';
@@ -43,6 +44,8 @@ export const LANG_MS = 600;
 export const TAP_RESET_MS = 2000;
 /** Hoe ver (in tijd) de wachtrij van het oppervlak hooguit vooruit mag lopen met LEDs van een lease-app. */
 export const LEASE_ACHTERSTAND_MS = 40;
+/** Na een herstart midden in de set (herstelSlotsEnFocus): zo lang mag de focus-app van toen de focus terugpakken. */
+export const FOCUS_TERUG_MS = 60_000;
 const WIT = 3;
 const SLOTS = 8;
 const OVERLAY = Object.freeze([
@@ -177,8 +180,9 @@ export class Kern extends Zender {
     this.bewaard = new Map();
     /** De `inst` waarmee zo'n app zich de vorige hub-sessie het laatst aanmeldde (zie #manifest). @type {Map<string, string>} */
     this.bewaardInst = new Map();
-    /** De app die vóór een herstart van de hub de focus had en nog niet terug is (geheugen, zie #hallo). @type {string|null} */
+    /** Na een herstart midden in de set: de focus-app van toen, tot hij terug is (of tot bewaardFocusTot). @type {string|null} */
     this.bewaardFocus = null;
+    this.bewaardFocusTot = -Infinity;
     /** @type {Map<number, Record<string, Record<string, number>>>} */
     this.snapshots = new Map();
     /** @type {Map<string, LedStaat>} wat er nu op het oppervlak staat (volgens de kern) */
@@ -314,7 +318,7 @@ export class Kern extends Zender {
     }
     // Had deze app de focus vóór een herstart van de hub, dan krijgt hij hem terug (ook als een andere app eerder
     // terugkwam en de focus tijdelijk kreeg), tenzij Clay intussen zelf een focus koos (focus() wist bewaardFocus).
-    const terug = this.bewaardFocus === a.app;
+    const terug = this.#bewaardeFocus() === a.app;
     if (terug) this.bewaardFocus = null;
     if (this.focusApp === null || (terug && this.focusApp !== a.app)) this.#zetFocus(a.app);
     else if (this.focusApp === a.app) { this.#naar(a, { t: 'focus', aan: true }); this.#teken(); }
@@ -343,13 +347,14 @@ export class Kern extends Zender {
    */
   #geefSlot(a) {
     if (a.slot !== null) return;
-    // Zijn eigen slot van vóór een herstart van de hub (geheugen), of een gat: dat eerst.
+    // Zijn eigen slot van vóór een herstart van de hub (herstelSlotsEnFocus), of een gat: dat eerst.
     const eigen = this.slots.indexOf(a.app);
     const gat = eigen >= 0 ? eigen : this.slots.indexOf(null);
     if (gat >= 0) { this.slots[gat] = a.app; a.slot = gat + 1; return; }
     if (this.slots.length < SLOTS) { a.slot = this.slots.push(a.app); return; }
     const weg = (/** @type {string|null} */ id) => { const st = this.apps.get(id ?? '')?.status; return st === undefined || st === 'weg'; };
-    let i = this.slots.findIndex((id) => weg(id) && id !== this.focusApp && id !== this.bewaardFocus);
+    const bewaard = this.#bewaardeFocus();
+    let i = this.slots.findIndex((id) => weg(id) && id !== this.focusApp && id !== bewaard);
     if (i < 0) i = this.slots.findIndex((id) => weg(id));
     if (i < 0) return;
     const oud = this.apps.get(this.slots[i] ?? '');
@@ -549,16 +554,8 @@ export class Kern extends Zender {
 
   // ── focus ──────────────────────────────────────────────────────────────────
 
-  /**
-   * Focus naar app (id) of null, gekozen door Clay of de set. Geeft false als de app onbekend is.
-   * Een bewuste keuze wint van de focus van vóór een herstart van de hub (bewaardFocus).
-   * @param {string|null} app
-   */
-  focus(app) {
-    const ok = this.#zetFocus(app);
-    if (ok) this.bewaardFocus = null;
-    return ok;
-  }
+  /** Focus naar app (id) of null, gekozen door Clay of de set (wint van bewaardFocus); false als de app onbekend is. @param {string|null} app */
+  focus(app) { const ok = this.#zetFocus(app); if (ok) this.bewaardFocus = null; return ok; }
 
   /** @param {string|null} app */
   #zetFocus(app) {
@@ -907,8 +904,8 @@ export class Kern extends Zender {
   /**
    * Wat de hub over een herstart heen onthoudt: de snapshots en de waarden van apps met truth:"hub"
    * (een lopende slew telt met zijn doel), plus per zo'n app zijn laatste `inst`. Puur; src/opslag.js schrijft het weg.
-   * Ook de slots (app per slot, `null` = leeg) en de app met focus, als die er zijn.
-   * @returns {{ v: 1, snapshots: Record<string, Record<string, Record<string, number>>>, waarden: Record<string, Record<string, number>>, inst: Record<string, string>, slots?: (string|null)[], focus?: string }}
+   * Slots en focus horen er niet bij: die gelden alleen bij een herstart midden in de set (slotsEnFocus/herstelSlotsEnFocus).
+   * @returns {{ v: 1, snapshots: Record<string, Record<string, Record<string, number>>>, waarden: Record<string, Record<string, number>>, inst: Record<string, string> }}
    */
   exporteer() {
     /** @type {Record<string, Record<string, number>>} */
@@ -930,12 +927,58 @@ export class Kern extends Zender {
       const s = /** @type {Record<string, Record<string, number>>} */ (this.snapshots.get(nr));
       snapshots[nr] = Object.fromEntries(Object.entries(s).map(([app, w]) => [app, { ...w }]));
     }
-    // Slots en focus (sinds golf 7): na een herstart van de hub komt elke app in zijn eigen slot, en de focus
-    // terug waar hij was. Alleen als er iets is, zodat een leeg geheugen hetzelfde blijft.
+    return { v: 1, snapshots, waarden, inst };
+  }
+
+  /**
+   * Welke app in welk slot (`null` = leeg) en wie de focus heeft (of, vlak na een herstart, de app die hem
+   * terugkrijgt zodra hij er is). Geen I/O. `varve-hub start` schrijft dit in het loopbestand
+   * (src/opslag.js), zodat een herstart midden in de set (de hub viel om) elke app zijn eigen slot teruggeeft. Bij een
+   * gewone start (de vorige stopte netjes) begint de indeling leeg: een nieuwe avond, een nieuwe BANK-rij.
+   * @returns {{ slots: (string|null)[], focus: string|null }}
+   */
+  slotsEnFocus() {
     const slots = this.slots.slice(0, SLOTS);
     while (slots.length && slots[slots.length - 1] === null) slots.pop();
-    const focus = this.bewaardFocus ?? this.focusApp;
-    return { v: 1, snapshots, waarden, inst, ...(slots.length ? { slots } : {}), ...(focus ? { focus } : {}) };
+    return { slots, focus: this.#bewaardeFocus() ?? this.focusApp };
+  }
+
+  /**
+   * Na een herstart midden in de set: de indeling van de omgevallen hub terug (zie slotsEnFocus()). Een app die terugkomt
+   * krijgt zijn eigen slot; de slots van apps die nog niet terug zijn blijven vrij (tot alle 8 vol zijn); de focus-app
+   * van toen pakt de focus terug als hij binnen FOCUS_TERUG_MS terugkomt, tenzij Clay of de set intussen koos.
+   * Alleen zolang er nog geen app een slot heeft (vlak na de start); anders verschuift er niets. Geen I/O.
+   * Ongeldige onderdelen vallen weg (geteld).
+   * @param {unknown} data @returns {{ ok: boolean, overgeslagen: number }}
+   */
+  herstelSlotsEnFocus(data) {
+    const d = /** @type {any} */ (data);
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return { ok: false, overgeslagen: 0 };
+    if (this.slots.some((x) => x !== null)) return { ok: false, overgeslagen: 0 };
+    let overgeslagen = 0;
+    if (Array.isArray(d.slots)) {
+      /** @type {(string|null)[]} */
+      const slots = [];
+      for (const id of d.slots.slice(0, SLOTS)) {
+        const goed = typeof id === 'string' && APP_ID.test(id) && !slots.includes(id);
+        if (!goed && id !== null) overgeslagen++;
+        slots.push(goed ? id : null);
+      }
+      while (slots.length && slots[slots.length - 1] === null) slots.pop();
+      this.slots = slots;
+    } else if (d.slots !== undefined) overgeslagen++;
+    if (typeof d.focus === 'string' && APP_ID.test(d.focus)) {
+      if (this.focusApp === null) { this.bewaardFocus = d.focus; this.bewaardFocusTot = this.klok.nu() + FOCUS_TERUG_MS; }
+    } else if (d.focus !== undefined && d.focus !== null) overgeslagen++;
+    if (this.hubIn) this.#teken();
+    this.#beeldGewijzigd();
+    return { ok: true, overgeslagen };
+  }
+
+  /** De focus-app van vóór de herstart, zolang hij hem nog terug mag pakken (anders null, en dan vergeten). */
+  #bewaardeFocus() {
+    if (this.bewaardFocus !== null && this.klok.nu() > this.bewaardFocusTot) this.bewaardFocus = null;
+    return this.bewaardFocus;
   }
 
   /**
@@ -998,20 +1041,6 @@ export class Kern extends Zender {
         for (const p of a.manifest.params) if (p.soort !== 'trigger' && p.id in w) a.waarden[p.id] = kwantiseer(p, w[p.id]);
       }
     }
-    // Slots en focus: alleen als er nog niemand een slot heeft (bij de start), anders niets verschuiven.
-    if (Array.isArray(d.slots) && this.slots.every((x) => x === null)) {
-      /** @type {(string|null)[]} */
-      const slots = [];
-      for (const id of d.slots.slice(0, SLOTS)) {
-        const goed = typeof id === 'string' && APP_ID.test(id) && !slots.includes(id);
-        if (!goed && id !== null) overgeslagen++;
-        slots.push(goed ? id : null);
-      }
-      while (slots.length && slots[slots.length - 1] === null) slots.pop();
-      this.slots = slots;
-    } else if (d.slots !== undefined && !Array.isArray(d.slots)) overgeslagen++;
-    if (typeof d.focus === 'string' && APP_ID.test(d.focus)) { if (this.focusApp === null) this.bewaardFocus = d.focus; }
-    else if (d.focus !== undefined && d.focus !== null) overgeslagen++;
     if (this.hubIn) this.#teken();
     this.#beeldGewijzigd();
     return { ok: true, overgeslagen };

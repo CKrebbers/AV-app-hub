@@ -57,6 +57,17 @@ describe('start --blijf (echt proces)', () => {
   }, 40000);
 });
 
+describe('start --blijf met een set die niet bestaat (echt proces)', () => {
+  it('meldt het één keer en stopt meteen (exit 1), zonder de hub te starten of het een crash-lus te noemen', async () => {
+    const poort = await vrijePoort();
+    const b = await startHubProces({ poort, staat: join(maakMap(), 'staat.json'), extra: ['bestaatniet', '--blijf'], klaar: null });
+    const e = await b.einde;
+    expect(e.code).toBe(1);
+    expect(b.uitvoer().match(/onbekende set "bestaatniet"/g)).toHaveLength(1);
+    expect(b.uitvoer()).not.toMatch(/bewaker:/);
+  }, 20000);
+});
+
 /** Nep-kinderen: elke start geeft een kind dat de test laat eindigen. */
 function nepWereld() {
   const klok = new NepKlok();

@@ -35,6 +35,9 @@ const allemaalActief = (c, ids) => ids.every((id) => inBeeld(c, id)?.status === 
 /** Slot, kleur en focus per app, zoals de cockpit ze ziet. @param {any} c */
 const indeling = (c) => Object.fromEntries(c.beeld.apps.map((/** @type {any} */ x) => [x.app, { slot: x.slot, kleur: x.kleur, focus: x.focus }]));
 
+/** De hoofdlaag van de APC (zonder Bank): elke LED die iets toont. @param {any} c */
+const hoofdLeds = (c) => Object.fromEntries(Object.entries(c.leds).filter(([, v]) => Object.keys(v ?? {}).length).sort(([x], [y]) => x.localeCompare(y)));
+
 /** De bovenste padrij met Bank ingedrukt (app-slots, PROTOCOL §7). @param {any} c */
 const slotLeds = (c) => Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`pad5-${i + 1}`, c.leds[`pad5-${i + 1}`] ?? {}]));
 const BANK_IN = [0x90, 103, 127], BANK_UIT = [0x80, 103, 0];
@@ -59,6 +62,8 @@ describe('herstart van de hub (kill -9, opnieuw starten)', () => {
     const voor = { indeling: indeling(c), leds: slotLeds(c) };
     c.virtueel('apc40', BANK_UIT);
     await wacht(1300);                       // geheugen: hooguit eens per seconde naar schijf
+    const hoofd = hoofdLeds(c);
+    expect(Object.keys(hoofd).length).toBeGreaterThan(0);
     c.sluit();
     for (const a of eerst) a.stop();
 
@@ -73,6 +78,9 @@ describe('herstart van de hub (kill -9, opnieuw starten)', () => {
     }
     await tot(() => c.beeld.focus === 'app-b');
     expect(indeling(c)).toEqual(voor.indeling);
+    // De hoofdlaag (ringen, clip-LED's van de focus-app) is meteen weer zoals vóór het omvallen.
+    await tot(() => JSON.stringify(hoofdLeds(c)) === JSON.stringify(hoofd));
+    expect(hoofdLeds(c)).toEqual(hoofd);
     c.virtueel('apc40', BANK_IN);
     await tot(() => JSON.stringify(slotLeds(c)) === JSON.stringify(voor.leds));
     expect(slotLeds(c)).toEqual(voor.leds);
