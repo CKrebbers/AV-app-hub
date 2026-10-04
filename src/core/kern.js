@@ -7,7 +7,7 @@
 //   1. LPD8 → globale laag (altijd, los van focus)
 //   2. hubtoets ingedrukt → hublaag (focus, hub-snapshots); niets gaat naar een app
 //   3. anders → app met focus: lease (ruwe bytes) of manifest-indeling
-// Een 'los' gaat altijd naar waar de bijbehorende 'druk' heen ging (geen hangende triggers).
+// Een 'los' gaat altijd naar waar de bijbehorende 'druk' heen ging; een toets is in of uit, ook van twee bronnen (§11).
 //
 // Geheugen: `exporteer()`/`importeer(data)` (puur) geven en nemen de snapshots en de waarden van apps met
 // truth:"hub"; het event 'geheugen' meldt dat daar iets aan veranderde (src/opslag.js schrijft het weg).
@@ -627,13 +627,13 @@ export class Kern extends Zender {
       return;
     }
 
-    if (g.kind === 'los' && this.routes.has(el)) {
-      const r = this.routes.get(el);
-      this.routes.delete(el);
-      if (el === 'stopall' && r && r !== 'hub') this.#stopAllLos(r);
-      const a = r && r !== 'hub' ? this.apps.get(r) : undefined;
-      if (a) this.#naarAppInvoer(a, g, bytes, vorig);
-      return;
+    // §11: een toets is in of uit, hoeveel bronnen (APC, cockpits) hem ook indrukken. De los gaat naar waar de druk
+    // heen ging; een los op een toets die al los is, gaat nergens heen. Een druk op een toets die al in is: dezelfde
+    // bestemming → niets (hij is al in), een andere (focus of Bank wisselde) → eerst de los naar de eerste.
+    if (g.kind === 'los') { if (this.routes.has(el)) this.#laatLos(el, bytes); return; }
+    if (g.kind === 'druk' && this.routes.has(el)) {
+      if (this.routes.get(el) === (this.hubIn ? 'hub' : this.focusApp)) return;
+      this.#laatLos(el);
     }
 
     if (this.hubIn) {
@@ -775,7 +775,8 @@ export class Kern extends Zender {
     const nr = Number(pad[1]);
     const nu = this.klok.nu();
     if (g.kind === 'druk') {
-      if (nr === 1) { if (this.p1Timer === null) this.p1Timer = this.klok.zet(() => { this.p1Timer = null; this.#paniek(true); }, PANIEK_MS); }
+      // §11: P1 van twee bronnen (echte en virtuele LPD8): een druk terwijl de paniek loopt of telt, start geen tweede.
+      if (nr === 1) { if (this.p1Timer === null && !this.paniekActief) this.p1Timer = this.klok.zet(() => { this.p1Timer = null; this.#paniek(true); }, PANIEK_MS); }
       else if (nr === 2) this.#tap(nu);
       else if (nr === 3) this.#ademOpnieuw();
       else if (nr === 4) { this.opname = !this.opname; this.meld('opname', this.opname); this.#beeldGewijzigd(); }
@@ -1113,18 +1114,9 @@ export class Kern extends Zender {
    */
   apparaatWeg(dev) {
     if (dev === 'apc40') {
-      const routes = [...this.routes];
-      this.routes.clear();
       this.hubIn = false;
       this.shiftIn = false;
-      for (const [el, r] of routes) {
-        if (el === 'stopall' && r !== 'hub') this.#stopAllLos(r);
-        const a = r !== 'hub' ? this.apps.get(r) : undefined;
-        const c = APC.OP_ID.get(el);
-        if (!a || !c) continue;
-        const bytes = [(c.t === 'cc' ? 0xb0 : 0x80) | c.ch, c.n, 0];
-        this.#naarAppInvoer(a, { dev: 'apc40', el, kind: 'los' }, bytes, undefined);
-      }
+      for (const el of [...this.routes.keys()]) this.#laatLos(el);
       for (const c of RINGEN) this.fysiek.delete(c.id);
       this.#teken(); // het model klopt weer zodra hij terugkomt (ApcSessie.init tekent het)
     } else if (dev === 'lpd8') {
@@ -1134,6 +1126,22 @@ export class Kern extends Zender {
       this.lpdPickups.clear();
       for (const k of [...this.fysiek.keys()]) if (k.startsWith('lpd8:')) this.fysiek.delete(k);
     }
+  }
+
+  /**
+   * Laat een ingedrukte APC-toets los bij de bestemming van zijn druk (§11): de route verdwijnt, Stop All gaat over in de
+   * naloop, en de app (lease of manifest) krijgt zijn los. Zonder `bytes` (de APC viel weg, of een tweede druk van
+   * een andere bron na een focuswissel) maakt de kern de note-off zelf.
+   * @param {string} el @param {number[]} [bytes]
+   */
+  #laatLos(el, bytes) {
+    const r = this.routes.get(el);
+    this.routes.delete(el);
+    if (r === undefined || r === 'hub') return;
+    if (el === 'stopall') this.#stopAllLos(r);
+    const a = this.apps.get(r), c = APC.OP_ID.get(el);
+    if (!a || !c) return;
+    this.#naarAppInvoer(a, { dev: 'apc40', el, kind: 'los' }, bytes ?? [(c.t === 'cc' ? 0xb0 : 0x80) | c.ch, c.n, 0], undefined);
   }
 
   #teken() {
