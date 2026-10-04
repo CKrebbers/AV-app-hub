@@ -257,10 +257,16 @@ const opdrachten = {
   },
 
   async check() {
-    const poort = optie('--poort') ? Number(optie('--poort')) : undefined;
+    const ruw = optie('--poort');
+    const poort = args.includes('--poort') ? Number(ruw) : undefined;
+    if (poort !== undefined && !(Number.isInteger(poort) && poort > 0 && poort < 65536)) {
+      console.error(`--poort moet een poortnummer zijn (1-65535), niet "${ruw ?? ''}"`);
+      process.exit(2);
+    }
     const r = await check({ config, laadMidi: laadRtMidi, set: setNaam() ?? null, lan: args.includes('--lan'), ...(poort ? { poort } : {}) });
+    // Geen process.exit hier: een pipe naar stdout (check --json | script) is op macOS asynchroon en kan nog vol zitten.
     console.log(args.includes('--json') ? JSON.stringify(jsonVan(r), null, 2) : tekstVan(r));
-    process.exit(r.code);
+    process.exitCode = r.code;
   },
 
   async proef() {

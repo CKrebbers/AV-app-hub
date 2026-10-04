@@ -4,11 +4,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import * as nodeFs from 'node:fs';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, symlinkSync } from 'node:fs';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { check, tekstVan, jsonVan, TEKEN } from '../src/check/index.js';
+import { check, tekstVan, jsonVan, TEKEN, lokaal, hubAdres } from '../src/check/index.js';
 import { laadConfig } from '../src/config.js';
 import { NepKlok } from '../src/core/klok.js';
 import { NepSysteem } from '../src/ports/nep.js';
@@ -43,13 +43,18 @@ function nepSpawn(/** @type {(args: string[]) => string|null} */ antwoord) {
   return { spawn, aanroepen };
 }
 
+/** Een afgemaakte F0-proef: kop met begon, en aan het eind de samenvatting. @param {string} begon */
+const F0_AF = (begon) => `{"v":1,"soort":"proef","naam":"f0-hardware","begon":"${begon}"}\n{"ms":1,"e":"stap","id":"welkom","status":"begin"}\n{"ms":9,"e":"samenvatting","bevindingen":{}}\n`;
+
 /** Tijdelijke hub-map + thuismap met standaard alles goed (MIDI, profiel, F0, ruimte, Chrome). */
 function opzet() {
   const root = mkdtempSync(join(tmpdir(), 'varve-check-'));
+  lopend.push(() => rmSync(root, { recursive: true, force: true }));
   const hubMap = join(root, 'hub'), thuis = join(root, 'thuis'), bin = join(root, 'bin');
   for (const m of [hubMap, join(hubMap, 'proef'), join(hubMap, 'sets'), thuis, bin]) mkdirSync(m, { recursive: true });
-  writeFileSync(join(hubMap, 'lpd8-profiel.json'), JSON.stringify({ bron: 'proef 2026-10-03', pads: [] }));
-  writeFileSync(join(hubMap, 'proef', '20261003-2010-f0-hardware.jsonl'), '{"v":1,"soort":"proef","naam":"f0-hardware"}\n');
+  // Zoals de proef ze schrijft (src/proef/f0-hardware.js, src/cli.js nieuwLogboek, src/proef/runner.js).
+  writeFileSync(join(hubMap, 'lpd8-profiel.json'), JSON.stringify({ model: 'mk2', bron: 'geleerd', pads: [], knoppen: [] }));
+  writeFileSync(join(hubMap, 'proef', '20261003-2010-f0-hardware.jsonl'), F0_AF('2026-10-03T20:10:00.000Z'));
   writeFileSync(join(bin, 'chromium'), '#!/bin/sh\n'); chmodSync(join(bin, 'chromium'), 0o755);
   const config = { ...laadConfig(), avondmap: '~/avonden', geheugen: { pad: '~/.varve-hub/staat.json' } };
   /** @type {any} */
@@ -108,6 +113,27 @@ describe('check: de hub en de controllers', () => {
     expect(r.code).toBe(1);
   });
 
+  it('het adres van de hub: 127.0.0.1 bij loopback of 0.0.0.0; een eigen LAN-adres uit server.host met het token', () => {
+    const token = () => 'a'.repeat(20);
+    for (const host of [undefined, '127.0.0.1', 'localhost', '0.0.0.0', '::']) expect(hubAdres({ server: { host } }, token)).toEqual({ host: '127.0.0.1', metToken: '' });
+    expect(hubAdres({ server: { host: '192.168.1.20' } }, token)).toEqual({ host: '192.168.1.20', metToken: `?token=${'a'.repeat(20)}` });
+    expect(hubAdres({ server: { host: '192.168.1.20' } }, () => null)).toEqual({ host: '192.168.1.20', metToken: '' });
+  });
+
+  it('server.host is een LAN-adres: check vraagt de hub daar (met token), niet op 127.0.0.1', async () => {
+    const { opties, config } = opzet();
+    /** @type {string[]} */
+    const gevraagd = [];
+    await check({ ...opties, config: { ...config, server: { ...config.server, host: '192.168.1.20' } }, fetch: /** @type {any} */ (async (/** @type {string} */ u) => { gevraagd.push(u); return dicht(); }) });
+    expect(gevraagd).toEqual(['http://192.168.1.20:7700/api/beeld']);
+  });
+
+  it('op de poort luistert iets dat geen HTTP spreekt: ✗ met het lsof-commando (niet: start de hub opnieuw)', async () => {
+    const { opties } = opzet();
+    const r = await check({ ...opties, fetch: /** @type {any} */ (async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'UND_ERR_SOCKET', message: 'other side closed' } }); }) });
+    expect(punt(r, 'hub')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/geen HTTP spreekt \(other side closed\)/), doen: expect.stringMatching(/lsof -nP -iTCP:7700/) });
+  });
+
   it('op de poort draait iets anders dan de hub: ✗', async () => {
     const { opties } = opzet();
     const server = http.createServer((_q, s) => { s.writeHead(404); s.end('nee'); });
@@ -131,11 +157,19 @@ describe('check: de hub en de controllers', () => {
 });
 
 describe('check: bestanden van de hub', () => {
-  it('LPD8-profiel: ontbreekt = !, kapot = ✗ (de hub start dan niet), geleerd = ✓', async () => {
+  it('LPD8-profiel: ontbreekt = !, kapot = ✗ (de hub start dan niet), geleerd = ✓ met model en datum', async () => {
     const { opties, hubMap } = opzet();
-    expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/proef 2026-10-03/) });
+    const vandaag = lokaal(nodeFs.statSync(join(hubMap, 'lpd8-profiel.json')).mtime).slice(0, 10);
+    expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'ok', uitleg: `LPD8-profiel geleerd (mk2, ${vandaag})` });
     writeFileSync(join(hubMap, 'lpd8-profiel.json'), '{kapot');
-    expect(punt(await check(opties), 'lpd8-profiel').status).toBe('fout');
+    // git checkout werkt niet voor een bestand dat nooit gecommit is: opzij zetten wel
+    expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'fout', doen: expect.stringMatching(/^zet het opzij \(mv lpd8-profiel\.json/) });
+    // geldige JSON maar geen profiel: de ontleder zoekt in pads en knoppen
+    writeFileSync(join(hubMap, 'lpd8-profiel.json'), '{}');
+    expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/niet de vorm van een profiel/) });
+    // null: de hub valt terug op de standaardnoten
+    writeFileSync(join(hubMap, 'lpd8-profiel.json'), 'null');
+    expect(punt(await check(opties), 'lpd8-profiel').status).toBe('let');
     nodeFs.rmSync(join(hubMap, 'lpd8-profiel.json'));
     expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'let', doen: expect.stringMatching(/npm run proef/) });
   });
@@ -146,8 +180,29 @@ describe('check: bestanden van de hub', () => {
     writeFileSync(join(hubMap, 'proef', 'synthetisch-f0.jsonl'), '{"v":1,"soort":"proef","naam":"f0-hardware","synthetisch":true}\n');
     writeFileSync(join(hubMap, 'proef', '20261001-1200-opname-sessie.jsonl'), '{"v":1,"soort":"opname","naam":"opname-sessie"}\n');
     expect(punt(await check(opties), 'proef').status).toBe('let');
-    writeFileSync(join(hubMap, 'proef', '20261004-2130-f0-hardware.jsonl'), '{"v":1,"soort":"proef","naam":"f0-hardware"}\n');
-    expect(punt(await check(opties), 'proef')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/laatst 2026-10-04 21:30/) });
+    writeFileSync(join(hubMap, 'proef', '20261004-2130-f0-hardware.jsonl'), F0_AF('2026-10-04T21:30:00.000Z'));
+    // De stempel is UTC; check toont lokale tijd.
+    expect(punt(await check(opties), 'proef')).toMatchObject({ status: 'ok', uitleg: `de F0-proef is gedaan (1×, laatst ${lokaal(new Date('2026-10-04T21:30:00.000Z'))})` });
+  });
+
+  it('F0-proef afgebroken (geen samenvatting): ! begonnen maar niet afgemaakt; telt niet mee bij een afgemaakte', async () => {
+    const { opties, hubMap } = opzet();
+    const afgebroken = '{"v":1,"soort":"proef","naam":"f0-hardware","begon":"2026-10-04T08:00:00.000Z"}\n{"ms":1,"e":"stap","id":"welkom","status":"begin"}\n';
+    writeFileSync(join(hubMap, 'proef', '20261004-0800-f0-hardware.jsonl'), afgebroken);
+    // naast de afgemaakte van 3 okt: 1×, laatst 3 okt
+    expect(punt(await check(opties), 'proef').uitleg).toBe(`de F0-proef is gedaan (1×, laatst ${lokaal(new Date('2026-10-03T20:10:00.000Z'))})`);
+    nodeFs.rmSync(join(hubMap, 'proef', '20261003-2010-f0-hardware.jsonl'));
+    expect(punt(await check(opties), 'proef')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/begonnen maar niet afgemaakt/) });
+  });
+
+  it('F0-proef: opnames in de proefmap worden niet gelezen', async () => {
+    const { opties, hubMap, fs } = opzet();
+    writeFileSync(join(hubMap, 'proef', '20261004-2200-speelsessie.jsonl'), '{"v":1,"soort":"opname"}\n');
+    /** @type {string[]} */
+    const gelezen = [];
+    const r = await check({ ...opties, fs: { ...fs, readFileSync: /** @type {any} */ ((/** @type {string} */ p, /** @type {any} */ o) => { gelezen.push(String(p)); return nodeFs.readFileSync(p, o); }) } });
+    expect(punt(r, 'proef').status).toBe('ok');
+    expect(gelezen.some((p) => p.includes('speelsessie'))).toBe(false);
   });
 
   it('geheugen: afwezig of leesbaar = ✓; kapot = ✗ en het bestand blijft staan (check verandert niets); .kapot = !', async () => {
@@ -168,6 +223,17 @@ describe('check: bestanden van de hub', () => {
     expect(punt(await check(opties), 'geheugen-kapot').status).toBe('let');
   });
 
+  it('geheugen onleesbaar: een map = ✗ met eigen uitleg; geen rechten = ✗ met ls -l; geen geheugen.pad = !', async () => {
+    const { opties, thuis, config } = opzet();
+    mkdirSync(join(thuis, '.varve-hub', 'staat.json'), { recursive: true });
+    expect(punt(await check(opties), 'geheugen')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/geheugen\.pad wijst naar een map/) });
+    const fsGeenRechten = { ...opties.fs, readFileSync: /** @type {any} */ ((/** @type {string} */ p, /** @type {any} */ o) => { if (String(p).endsWith('staat.json')) throw Object.assign(new Error('EACCES'), { code: 'EACCES' }); return nodeFs.readFileSync(p, o); }) };
+    expect(punt(await check({ ...opties, fs: /** @type {any} */ (fsGeenRechten) }), 'geheugen')).toMatchObject({
+      status: 'fout', uitleg: expect.stringMatching(/niet te lezen \(EACCES\): de hub begint leeg en zet het opzij als \.kapot/), doen: expect.stringMatching(/ls -l ~\/\.varve-hub\/staat\.json/),
+    });
+    expect(punt(await check({ ...opties, config: { ...config, geheugen: {} } }), 'geheugen')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/geheugen\.pad/) });
+  });
+
   it('$VARVE_HUB_STAAT gaat voor (zoals in de hub)', async () => {
     const { opties, root } = opzet();
     const eigen = join(root, 'elders.json');
@@ -184,7 +250,24 @@ describe('check: bestanden van de hub', () => {
     expect(punt(r, 'avondmap').status).toBe(status);
     // De map bestaat nog niet: de schijf van de map erboven telt (de thuismap).
     expect(gevraagd).toEqual([opties.thuis]);
-    expect(punt(r, 'avondmap').uitleg).toMatch(/~\/avonden \(wordt aangemaakt\)/);
+    expect(punt(r, 'avondmap').uitleg).toMatch(/~\/avonden \(wordt aangemaakt in ~\)/);
+  });
+
+  it('avondmap: een bestand = ✗; meer dan één map ontbreekt = !; een schijf die niet is aangesloten = !; geen avondmap = !', async () => {
+    const { opties, thuis, config } = opzet();
+    writeFileSync(join(thuis, 'avonden'), 'geen map');
+    expect(punt(await check(opties), 'avondmap')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/is een bestand, geen map/) });
+    const diep = await check({ ...opties, config: { ...config, avondmap: '~/Fims/varve/avonden' } });
+    expect(punt(diep, 'avondmap')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/~\/Fims\/varve ook niet \(wel ~\)/), doen: expect.stringMatching(/kijk het pad na/) });
+    const schijf = await check({ ...opties, config: { ...config, avondmap: '/Volumes/Extern-varve-check/avonden' }, fs: { ...opties.fs, existsSync: (/** @type {string} */ p) => p === '/Volumes' || p === '/' } });
+    expect(punt(schijf, 'avondmap')).toMatchObject({ status: 'let', doen: expect.stringMatching(/sluit de schijf aan/) });
+    expect(punt(await check({ ...opties, config: { ...config, avondmap: undefined } }), 'avondmap')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/geen avondmap in config\.json/) });
+  });
+
+  it('avondmap: de vrije ruimte niet na te gaan (statfs faalt) = !', async () => {
+    const { opties, fs } = opzet();
+    const r = await check({ ...opties, fs: { ...fs, statfsSync: () => { throw new Error('ENOSYS'); } } });
+    expect(punt(r, 'avondmap')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/niet na te gaan \(ENOSYS\)/) });
   });
 
   it('avondmap niet schrijfbaar: ✗', async () => {
@@ -201,6 +284,9 @@ describe('check: Chrome', () => {
     expect(punt(met, 'chrome').status).toBe('ok');
     const zonder = await check({ ...opties, platform: 'darwin', fs: { ...fs, existsSync: (/** @type {string} */ p) => !p.includes('Google Chrome') && nodeFs.existsSync(p) } });
     expect(punt(zonder, 'chrome')).toMatchObject({ status: 'fout' });
+    const thuisApp = join(opties.thuis ?? '', 'Applications', 'Google Chrome.app');
+    const inThuis = await check({ ...opties, platform: 'darwin', fs: { ...fs, existsSync: (/** @type {string} */ p) => p === thuisApp || (!p.includes('Google Chrome') && nodeFs.existsSync(p)) } });
+    expect(punt(inThuis, 'chrome')).toMatchObject({ status: 'ok', uitleg: 'Chrome aanwezig (~/Applications/Google Chrome.app)' });
   });
 
   it('Linux: chromium in PATH = ✓, niets in PATH = !', async () => {
@@ -219,13 +305,18 @@ describe('check --lan: het token', () => {
     const pad = join(thuis, '.varve-hub', 'token');
     mkdirSync(join(thuis, '.varve-hub'), { recursive: true });
     writeFileSync(pad, 'a'.repeat(43) + '\n', { mode: 0o644 }); chmodSync(pad, 0o644);
-    expect(punt(await check(lan), 'token')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/644/) });
+    expect(punt(await check(lan), 'token')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/644/), doen: expect.stringMatching(/chmod 600 .* token --nieuw/) });
     chmodSync(pad, 0o600);
     expect(punt(await check(lan), 'token')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/600/) });
     writeFileSync(pad, 'kort\n');
     expect(punt(await check(lan), 'token').status).toBe('fout');
     // check maakt of herstelt niets
     expect((nodeFs.statSync(pad).mode & 0o777).toString(8)).toBe('600');
+    // de map ~/.varve-hub: ruimer dan 700 = !
+    chmodSync(join(thuis, '.varve-hub'), 0o755);
+    expect(punt(await check(lan), 'token-map')).toMatchObject({ status: 'let', doen: 'chmod 700 ~/.varve-hub' });
+    chmodSync(join(thuis, '.varve-hub'), 0o700);
+    expect(punt(await check(lan), 'token-map')).toBeUndefined();
   });
 });
 
@@ -322,6 +413,39 @@ describe('check met een set', () => {
     expect(punt(await check(opties), 'waterschaal.map')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/geen map voor repo "waterschaal"/) });
   });
 
+  it('poort bezet door de app zelf, ook met een slash achter het pad in paden.json of via een symlink: ✓', async () => {
+    const { opties, map, root } = metSet();
+    const bezet = async (/** @type {number} */ p) => p === 5174;
+    const lsof = (/** @type {string} */ cwd) => nepSpawn((args) => (args.includes('-iTCP:5174') ? 'p4242\ncnode\n' : args.includes('4242') ? `p4242\nfcwd\nn${cwd}\n` : ''));
+    writeFileSync(opties.padenPad ?? '', JSON.stringify({ 'formula-lab': '~/Projects/formula-lab/' }));
+    const slash = await check({ ...opties, poortOpen: bezet, spawn: lsof(map('formula-lab')).spawn });
+    expect(punt(slash, 'formula-lab.poort')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/al door Formula Lab bezet/) });
+    // paden.json wijst via een symlink; lsof geeft het echte pad
+    symlinkSync(map('formula-lab'), join(root, 'fl-link'));
+    writeFileSync(opties.padenPad ?? '', JSON.stringify({ 'formula-lab': join(root, 'fl-link') }));
+    const link = await check({ ...opties, poortOpen: bezet, spawn: lsof(nodeFs.realpathSync(map('formula-lab'))).spawn });
+    expect(punt(link, 'formula-lab.poort')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/al door Formula Lab bezet/) });
+    // macOS: hoofdletters tellen niet; Linux wel
+    const anders = lsof(map('formula-lab').replace('formula-lab', 'Formula-Lab'));
+    writeFileSync(opties.padenPad ?? '', JSON.stringify({ 'formula-lab': '~/Projects/formula-lab' }));
+    expect(punt(await check({ ...opties, platform: 'darwin', poortOpen: bezet, spawn: anders.spawn, fs: { ...opties.fs, existsSync: (/** @type {string} */ p) => p === '/Applications/Google Chrome.app' || nodeFs.existsSync(p) } }), 'formula-lab.poort').status).toBe('ok');
+    expect(punt(await check({ ...opties, poortOpen: bezet, spawn: anders.spawn }), 'formula-lab.poort').status).toBe('fout');
+  });
+
+  it('python3 naast een package.json mét dependencies: geen node_modules-punt (alleen npm/node/vite hebben het nodig)', async () => {
+    const { opties, map } = metSet();
+    writeFileSync(join(map('waterschaal'), 'package.json'), JSON.stringify({ devDependencies: { vite: '^5' } }));
+    expect(punt(await check(opties), 'waterschaal.node_modules')).toBeUndefined();
+  });
+
+  it('de hub draait niet: de startregel noemt de set (als die bestaat) en --lan', async () => {
+    const { opties } = metSet();
+    expect(punt(await check({ ...opties, lan: true }), 'hub').doen).toBe('start hem straks met npm start -- avond --lan');
+    const r = await check({ ...opties, set: 'bestaatniet' });
+    expect(punt(r, 'hub').doen).toBe('start hem straks met npm start');
+    expect(punt(r, 'set').doen).toMatch(/kijk de naam na: de sets die er zijn staan hierboven/);
+  });
+
   it('poort bezet: door de app zelf = ✓, door iets anders = ✗ met pid, zonder lsof = !', async () => {
     const { opties, map } = metSet();
     const bezet = async (/** @type {number} */ p) => p === 5174;
@@ -335,14 +459,62 @@ describe('check met een set', () => {
     expect(punt(geenLsof, 'formula-lab.poort')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/geen lsof/) });
   });
 
-  it('een app die al verbonden is met de draaiende hub: één ✓, verder niets nagegaan', async () => {
+  /** Een nep-hub die dit beeld geeft. @param {any[]} apps */
+  const hubMet = (apps) => /** @type {any} */ (async () => new Response(JSON.stringify({ apps, apparaten: { apc40: { verbonden: true }, lpd8: { verbonden: true } } }), { status: 200 }));
+
+  it('een app die al verbonden is met de draaiende hub én zijn poort open heeft: één ✓, verder niets nagegaan', async () => {
     const { opties, map } = metSet();
     nodeFs.rmSync(map('formula-lab'), { recursive: true });
-    const beeld = { apps: [{ app: 'formula-lab', status: 'actief' }], apparaten: { apc40: { verbonden: true }, lpd8: { verbonden: true } } };
-    const r = await check({ ...opties, fetch: /** @type {any} */ (async () => new Response(JSON.stringify(beeld), { status: 200 })) });
+    const r = await check({ ...opties, fetch: hubMet([{ app: 'formula-lab', status: 'actief' }]), poortOpen: async (p) => p === 5174 });
     expect(punt(r, 'formula-lab.hub')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/verbonden met de hub/) });
     expect(punt(r, 'formula-lab.map')).toBeUndefined();
-    expect(punt(r, 'hub').uitleg).toMatch(/1 app\(s\) verbonden/);
+    expect(punt(r, 'hub').uitleg).toMatch(/1 app\(s\) verbonden\)/);
+  });
+
+  it('zoals de starter: actief maar de poort dicht telt niet als verbonden; een andere id met hetzelfde begin ook niet', async () => {
+    const { opties } = metSet();
+    const r = await check({ ...opties, fetch: hubMet([{ app: 'formula-lab', status: 'actief' }, { app: 'waterschaal-oud', status: 'actief' }]) });
+    expect(punt(r, 'formula-lab.hub')).toBeUndefined();
+    expect(punt(r, 'formula-lab.poort')).toMatchObject({ status: 'ok', uitleg: 'formula-lab: poort 5174 vrij' });
+    expect(punt(r, 'waterschaal.hub')).toBeUndefined();
+  });
+
+  it('per_monitor (flux): flux-<monitor> telt wel als flux', async () => {
+    const { opties, hubMap } = metSet();
+    writeFileSync(join(hubMap, 'sets', 'flux.json'), JSON.stringify({ naam: 'Flux', apps: { flux: { start: null, handmatig: 'start de screensaver' } } }));
+    const r = await check({ ...opties, set: 'flux', fetch: hubMet([{ app: 'flux-dp-1', status: 'actief' }]) });
+    expect(punt(r, 'flux.hub')).toMatchObject({ status: 'ok' });
+  });
+
+  it('uurwerk (HTTP-driver): actief in het beeld maar de brug draait niet (poort dicht) = geen ✓, de gewone punten', async () => {
+    const { opties, hubMap, thuis } = metSet();
+    writeFileSync(join(hubMap, 'sets', 'klok.json'), JSON.stringify({ naam: 'Klok', apps: { uurwerk: { start: { commando: './start.sh' }, url: null } } }));
+    writeFileSync(opties.padenPad ?? '', JSON.stringify({ uurwerk: '~/Projects/uurwerk' }));
+    mkdirSync(join(thuis, 'Projects', 'uurwerk'), { recursive: true });
+    const r = await check({ ...opties, set: 'klok', fetch: hubMet([{ app: 'uurwerk', status: 'actief' }]) });
+    expect(punt(r, 'uurwerk.hub')).toBeUndefined();
+    expect(punt(r, 'uurwerk.map').status).toBe('ok');
+    expect(punt(r, 'uurwerk.poort')).toMatchObject({ status: 'ok', uitleg: 'uurwerk: poort 8766 vrij' });
+    // een driver telt niet als verbonden app
+    expect(punt(r, 'hub').uitleg).toMatch(/\(0 app\(s\) verbonden, 1 driver\(s\)\)/);
+  });
+
+  it('echte startHub met drivers en de set scene-kit: av-scene-kit houdt de ! voor handmatig (TD kan dicht zijn)', async () => {
+    const { opties, thuis } = metSet();
+    writeFileSync(opties.padenPad ?? '', JSON.stringify({ 'av-scene-kit': '~/Projects/av-scene-kit', 'youtube-mixer': '~/Projects/youtube-mixer' }));
+    mkdirSync(join(thuis, 'Projects', 'av-scene-kit', 'td'), { recursive: true });
+    writeFileSync(join(thuis, 'Projects', 'av-scene-kit', 'td', 'td_build_hub.py'), '# koppeling');
+    const systeem = new NepSysteem();
+    const geenNet = /** @type {any} */ (async () => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } }); });
+    const hub = await startHub({ config: { ...opties.config, drivers: { uitstel_ms: 0 } }, systeem, poort: 0, fetch: geenNet });
+    lopend.push(() => hub.stop());
+    for (let i = 0; i < 100 && hub.kern.beeld().apps.find((a) => a.app === 'av-scene-kit')?.status !== 'actief'; i++) await new Promise((r) => setTimeout(r, 10));
+    expect(hub.kern.beeld().apps.find((a) => a.app === 'av-scene-kit')?.status).toBe('actief');
+    const { setsMap: _weg, ...zonderSets } = /** @type {any} */ (opties);
+    const r = await check({ ...zonderSets, setsMap: join(import.meta.dirname, '..', 'sets'), set: 'scene-kit', fetch, poort: hub.server.poort });
+    expect(punt(r, 'av-scene-kit.hub')).toBeUndefined();
+    expect(punt(r, 'av-scene-kit.handmatig')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/start je zelf \(de hub ziet alleen zijn eigen driver/), doen: expect.stringMatching(/TouchDesigner/) });
+    expect(punt(r, 'hub').uitleg).toMatch(/\(0 app\(s\) verbonden, \d+ driver\(s\)\)/);
   });
 
   it('onbekende set: ✗ met de sets die er wel zijn', async () => {

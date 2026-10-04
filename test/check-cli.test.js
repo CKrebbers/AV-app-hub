@@ -1,14 +1,17 @@
 // @ts-check
 // `node src/cli.js check` als echt proces: met een eigen HOME, config en paden in een tijdelijke map (nooit de
 // echte thuismap), op een poort waar geen hub draait.
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const HUB_MAP = join(import.meta.dirname, '..');
+
+const opruimen = /** @type {(() => void)[]} */ ([]);
+afterEach(() => { for (const x of opruimen.splice(0)) x(); });
 
 /** Een poort waar zeker niemand luistert. */
 const vrijePoort = () => new Promise((goed) => {
@@ -16,9 +19,13 @@ const vrijePoort = () => new Promise((goed) => {
   s.listen(0, '127.0.0.1', () => { const p = /** @type {import('node:net').AddressInfo} */ (s.address()).port; s.close(() => goed(p)); });
 });
 
-/** @param {string[]} args @returns {Promise<{ code: number|null, uit: string }>} */
-async function draai(args) {
+/**
+ * @param {string[]} args @param {string[]} [via] standaard node src/cli.js check; of bv. ['npm', 'run', '-s', 'check', '--']
+ * @returns {Promise<{ code: number|null, uit: string, fout: string }>}
+ */
+async function draai(args, via = [process.execPath, 'src/cli.js', 'check']) {
   const tmp = mkdtempSync(join(tmpdir(), 'varve-check-cli-'));
+  opruimen.push(() => rmSync(tmp, { recursive: true, force: true }));
   const config = JSON.parse(readFileSync(join(HUB_MAP, 'config.json'), 'utf8'));
   config.avondmap = join(tmp, 'avonden');
   config.geheugen = { pad: join(tmp, 'staat.json') };
@@ -26,10 +33,11 @@ async function draai(args) {
   const env = { ...process.env, HOME: tmp, VARVE_HUB_CONFIG: join(tmp, 'config.json'), VARVE_HUB_PADEN: join(tmp, 'paden.json') };
   delete env.VARVE_HUB_STAAT;
   return new Promise((goed) => {
-    const p = spawn(process.execPath, ['src/cli.js', 'check', ...args], { cwd: HUB_MAP, env });
-    let uit = '';
+    const p = spawn(via[0], [...via.slice(1), ...args], { cwd: HUB_MAP, env });
+    let uit = '', fout = '';
     p.stdout.on('data', (b) => { uit += b; });
-    p.on('close', (code) => goed({ code, uit }));
+    p.stderr.on('data', (b) => { fout += b; });
+    p.on('close', (code) => goed({ code, uit, fout }));
   });
 }
 
@@ -44,6 +52,19 @@ describe('cli check', () => {
     expect(j.punten.find((/** @type {any} */ p) => p.naam === 'token')).toMatchObject({ status: 'fout' });
     expect(j.ok).toBe(false);
     expect(code).toBe(1);
+  }, 15000);
+
+  it('npm run -s check -- --json (zoals docs/CHECK.md het voor scripts geeft): stdout is alleen JSON', async () => {
+    const { uit } = await draai(['--json', '--poort', String(await vrijePoort())], ['npm', 'run', '-s', 'check', '--']);
+    expect(JSON.parse(uit).punten.find((/** @type {any} */ p) => p.naam === 'hub').status).toBe('let');
+    expect(readFileSync(join(HUB_MAP, 'docs', 'CHECK.md'), 'utf8')).toContain('npm run -s check -- dj --json');
+  }, 30000);
+
+  it('een ongeldige --poort: melding en exitcode 2 (niet stilletjes 7700)', async () => {
+    const { code, uit, fout } = await draai(['--poort', 'abc']);
+    expect(code).toBe(2);
+    expect(uit).toBe('');
+    expect(fout).toMatch(/--poort moet een poortnummer zijn \(1-65535\), niet "abc"/);
   }, 15000);
 
   it('tekst zonder set: koppen en een slotregel; de hulp en npm run check kennen de opdracht', async () => {
