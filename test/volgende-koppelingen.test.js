@@ -149,7 +149,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   /** @type {{ pad: string, regel: number, bevat: string }[]} */
   const hubClaims = [
     { pad: 'src/core/kern.js', regel: 727, bevat: '#paniek(' },
-    { pad: 'src/core/kern.js', regel: 642, bevat: "'stopall'" },
+    { pad: 'src/core/kern.js', regel: 689, bevat: "'stopall'" },
     { pad: 'src/drivers/midi.js', regel: 138, bevat: '#uit(a)' },
     { pad: 'src/drivers/midi.js', regel: 185, bevat: '#meldPreset' },
     { pad: 'src/drivers/midi.js', regel: 209, bevat: 'globaal' },
@@ -162,7 +162,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/http.js', regel: 182, bevat: 'tabs:' },
     { pad: 'src/drivers/index.js', regel: 26, bevat: 'DRIVER_SOORTEN' },
     { pad: 'src/doctor.js', regel: 91, bevat: "'osc'" },
-    { pad: 'src/transports/server.js', regel: 81, bevat: 'originToegestaan' },
+    { pad: 'src/transports/server.js', regel: 86, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 110, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 358, bevat: 'alle 22 parameters op eigen CC' },
     { pad: 'test/drivers.test.js', regel: 715, bevat: 'actueel t.o.v. de bronnen' },
