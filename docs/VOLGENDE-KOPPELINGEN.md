@@ -46,7 +46,7 @@ Nieuwe driver-soorten komen bij `src/drivers/index.js:26` (`DRIVER_SOORTEN`) en 
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
-manifest hebben (`src/core/kern.js:727-732`; Stop All: `src/core/kern.js:689`). Geen enkele driver-app heeft die nu
+manifest hebben (`src/core/kern.js:734-739`; Stop All: `src/core/kern.js:696`). Geen enkele driver-app heeft die nu
 (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:156`).
 **LPD8-P1 doet nu dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder.
 

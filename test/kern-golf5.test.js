@@ -371,3 +371,27 @@ describe('§14 config', () => {
     }
   });
 });
+
+describe('§14 globale adem volgt de adem-app', () => {
+  const ADEM = { v: 1, app: 'waterschaal', naam: 'Waterschaal', params: [{ id: 'tempo', naam: 'Tempo', soort: 'waarde', rol: 'klok.adem_periode', standaard: 0.5 }] };
+  const ANDER = { v: 1, app: 'medisynth', naam: 'MediSynth', params: [{ id: 'adem', naam: 'Adem', soort: 'waarde', rol: 'klok.adem_periode', standaard: 0.5 }] };
+  it('een eigen tempowissel van de eerste app met klok.adem_periode zet globaal mee (zonder sprong in de fase)', () => {
+    const { kern, klok } = opzet();
+    const w = meldAan(kern, ADEM);
+    const m = meldAan(kern, ANDER);
+    klok.loop(2500);
+    const faseVoor = kern.beeld().globaal.adem;
+    stuurApp(kern, w, { t: 'zet', id: 'tempo', v: 2 / 3 });
+    expect(kern.beeld().globaal['klok.adem_periode']).toBeCloseTo(2 / 3, 9);
+    expect(van(m, 'globaal').some((b) => Math.abs(b.waarden['klok.adem_periode'] - 2 / 3) < 1e-9)).toBe(true);
+    klok.loop(1);
+    expect(Math.abs(kern.beeld().globaal.adem - faseVoor)).toBeLessThan(0.05);
+  });
+  it('een tweede app met dezelfde rol bepaalt de globale klok niet (de eerste is de klok)', () => {
+    const { kern } = opzet();
+    meldAan(kern, ADEM);
+    const m = meldAan(kern, ANDER);
+    stuurApp(kern, m, { t: 'zet', id: 'adem', v: 0.9 });
+    expect(kern.beeld().globaal['klok.adem_periode']).toBe(0.5);
+  });
+});

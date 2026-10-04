@@ -156,10 +156,16 @@ nieuwe `test/fixtures/manifesten/*.json` mee; de test speelt dan de avond met he
 
 ## Gevonden en nog open
 
-- **Waterschaal: hub en app oneens over `tempo`** (koppeling of terugleesformule, nog uit te zoeken). Na de avond
-  kent de hub `tempo` 0,709, de app leest 0,667 terug. Repro: `npm run repetitie`, stap eindstand.
+Niets: sinds golf 5 is de hele repetitie met de echte koppelingen groen (alleen de verwachte opmerkingen dat apps
+met dezelfde rol na een herstart uiteenlopen).
 
 ## Gevonden en opgelost
+
+- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant op de tak van CKrebbers/waterschaal#1,
+  merge met Clay's OK). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
+  Nu past Waterschaal een hub-zet continu toe (de schuif staat op zijn stap, klank en adem volgen precies), meldt hij
+  een klemming (buiten 4–8 /min) pas terug als de hub 300 ms niets meer stuurt (anders wint een oude melding van een
+  nieuwere K7-zet), en volgt de globale adem van de hub een eigen tempowissel van de app (PROTOCOL §14).
 
 - **K1 deed niets meer na paniek** (opgelost in golf 5, PROTOCOL §14). Waterschaal zet bij paniek zijn volume op 0
   en meldt dat terug; de pickup van de LPD8 volgde de *eerste* app met de rol, dus K1 (op 0,283) deed daarna voor

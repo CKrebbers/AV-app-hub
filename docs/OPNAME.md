@@ -12,7 +12,7 @@ een draaiende hub — met dezelfde timing of sneller — en de hub controleert o
    schrijven*, dan wordt er niets bewaard (zie hieronder). Nog een keer pad 4 = stoppen.
 3. Klaar. Bij stoppen schrijft de hub een `samenvatting.md` naast de opname.
 
-De cockpit laat de opname-stand (nog) niet zien: kijk in het hubvenster (zie `IDEEEN.md`).
+In de cockpit staat dan bovenin een rode **● REC** met de mapnaam en de looptijd, en P4 van de virtuele LPD8 is rood. De laatste opname-melding staat ernaast (rood = fout) en blijft staan tot er een nieuwe komt. Staat er "REC — niets bewaard" (doorgestreept), dan wordt er niets opgeslagen: lees de melding.
 
 Waar: `config.json` → `"avondmap"` (`~/Movies/varve-avonden`; `~` is je thuismap). Een relatief pad geldt vanaf
 de AV-app-hub-map (zoals `proefmap`), niet vanaf waar je `npm start` typte. Zonder `"avondmap"` neemt de hub

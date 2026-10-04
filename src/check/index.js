@@ -15,7 +15,7 @@ import { echteKlok } from '../core/klok.js';
 import { zoekNaam } from '../ports/poort.js';
 import { geheugenPad } from '../opslag.js';
 import { avondmapPad } from '../opname/opnemer.js';
-import { tokenPad, isLoopbackHost } from '../lan.js';
+import { tokenPad, isLoopbackHost, GELDIG } from '../lan.js';
 import { laadSet as echteLaadSet, laadPaden as echteLaadPaden, poortOpen as echtePoortOpen, PADEN_PAD, toonPad } from '../sets/index.js';
 import { controleerSet, isDriver } from './set.js';
 import { haal } from './systeem.js';
@@ -324,13 +324,13 @@ export function avondmapPunt(fs, avond, toon) {
 }
 
 /**
- * Een geldig token uit het bestand, of null (ontbreekt, onleesbaar of ongeldig). Dezelfde regel als src/lan.js.
+ * Een geldig token uit het bestand, of null (ontbreekt, onleesbaar of ongeldig). Dezelfde regel als src/lan.js (GELDIG).
  * @param {Bestanden} fs @param {string} pad @returns {string|null}
  */
 export function leesToken(fs, pad) {
   try {
     const t = String(fs.readFileSync(pad, 'utf8')).trim();
-    return /^[A-Za-z0-9_-]{16,256}$/.test(t) ? t : null;
+    return GELDIG.test(t) ? t : null;
   } catch { return null; }
 }
 

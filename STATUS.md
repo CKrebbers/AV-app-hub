@@ -11,7 +11,7 @@
 - [x] `doctor`, `proef f0-hardware`, `testpatroon`, `opname`
 - [x] Volledige F0-proef doorloopbaar door een gesimuleerde gebruiker (CI)
 
-**Op hardware (Clay — hardware-avond 1):** `node src/cli.js proef`, daarna pushen.
+**Op hardware (Clay — hardware-avond 1):** volg `docs/HARDWARE-AVOND.md` (`node src/cli.js proef`, daarna pushen).
 
 Klaar als:
 - [ ] elke APC-control staat in de proeflog met de juiste control-id
@@ -68,10 +68,10 @@ Klaar als (op jouw Mac):
 - [ ] `npm start -- --lan` → cockpit op de tablet via het adres uit `node src/cli.js token`
 - [ ] `dns-sd -R` en CoreMIDI werken ook onder launchd (`node src/cli.js installeer`)
 
-Gevonden door de repetitie, nog open (beslissing nodig):
-- Na een paniek doet LPD8-K1 niets meer: waterschaal zet `volume` op 0, en de pickup van K1 volgt de eerste app met `macro.intensiteit`. Staat als `it.fails` in `test/repetitie.test.js`.
-- Waterschaal `tempo` stapt per 0,5/min; hub (0,709) en app (0,667) blijven het oneens, en de globale adem loopt mee uit de pas.
-- Een LPD8-macro op een keuze stuurt bij elke tik een `zet`, ook als de keuze niet verandert (179 van 186 dubbel naar formula-lab `palette`).
+Gevonden door de repetitie — opgelost in golf 5 (PROTOCOL §14):
+- ~~Na een paniek doet LPD8-K1 niets meer~~ → wat een app zelf verandert tijdens of vlak na een paniek (`paniek.naloop_s`, standaard 5) verplaatst de LPD8-pickup niet meer.
+- ~~Een LPD8-macro op een keuze stuurt bij elke tik een `zet`~~ → een gelijke keuze/schakelaar gaat niet nog eens (179 → 0).
+- Waterschaal `tempo`: app-kant op de PR-tak (tempo continu, CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app). Helemaal dicht zodra die PR gemerged is.
 
 ## Oefenruimte ✓
 http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 13 lessen met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
@@ -79,6 +79,27 @@ http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 13 lessen met twe
 Klaar als (op jouw Mac):
 - [ ] alle 13 lessen gehaald met de echte APC40 en LPD8
 
+## Golf 5 — klaar voor de eerste echte avond ✓ (gebouwd en getest zonder hardware)
+6 onderdelen (bouwer + 2 reviewers + verwerker), plus een beveiligingsreview en een review van de oefenruimte; samengevoegd en opnieuw getest.
+- [x] **Kern-fixes** — K1 na paniek, geen dubbele keuze-zets, globale adem volgt de adem-app (PROTOCOL §14)
+- [x] **Cockpit** — rode REC met map en looptijd tijdens een opname, opname-meldingen (fout in rood), glijdende parameters tonen hun doel "→ 80%"
+- [x] **`npm run check -- [set]`** — alles nalopen vlak vóór een optreden (`docs/CHECK.md`)
+- [x] **Draaiboek hardware-avond** — `docs/HARDWARE-AVOND.md`; de F0-proef meet nu ook het hubtoets-akkoord, de loslaat-berichten van de LPD8-pads en LPD8-hotplug
+- [x] **Onderzoek volgende koppelingen** — `docs/VOLGENDE-KOPPELINGEN.md` (varve-radio, uurwerk, av-scene-kit, Sediment, td-lab, anbernic-cam, musicgen-video-glitch; volgorde in §9)
+- [x] **Beveiliging** — grenzen tegen overvallen zonder token, cockpit alleen same-origin, geen framen, bestandsrechten (PROTOCOL §13, `docs/NETWERK.md`)
+- [x] **Oefenruimte** — review verwerkt (herladen, twee tabs, tempo/adem zichtbaar, lang drukken ruimer)
+- [ ] Waterschaal: tempo continu op de PR-tak (wacht op Clay's OK om te mergen)
+
+Klaar als (op jouw Mac):
+- [ ] `npm run check -- meditatie` geeft alleen ✓ en !
+- [ ] F0-proef ook: hubtoets-akkoord (Bank + Track Select, Bank + Shift + Scene) komt netjes binnen; LPD8-pads sturen een loslaat-bericht (lang drukken P5–P8, paniek P1); LPD8 eruit/erin → vanzelf terug met profiel
+- [ ] cockpit toont REC tijdens een opname met P4
+
+Open vragen voor Clay (uit golf 5):
+- De paniek-naloop geldt ook voor Stop All van de app met focus — goed zo?
+- Paniek per app voor TD, Sediment en uurwerk: voorstellen in `docs/VOLGENDE-KOPPELINGEN.md` §3–§5.
+- varve-radio: het "lek" is geen MIDI maar het overnemen van de zender via Supabase-broadcast; een klein herstel staat klaar in §2.3 (eigen deploy, jouw OK nodig).
+
 ## Volgende
-- Hardware-avond 1 (F0-proef), daarna de koppelings-PR's mergen en een echte avond spelen
+- Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten

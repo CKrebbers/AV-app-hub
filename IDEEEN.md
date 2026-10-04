@@ -2,7 +2,7 @@
 
 Niet in de lopende fase. Pas oppakken als een speelavond laat zien dat het nodig is.
 
-- Anbernic-handheld als extra bron voor de hub (gamepad → hub-acties) via usb0 10.42.0.x.
+- Anbernic-handheld als extra bron voor de hub (gamepad → hub-acties); onderzoek en ontwerp in `docs/VOLGENDE-KOPPELINGEN.md` §7 (usb0 is onbewezen, wifi werkt).
 - Open Stage Control als extra touch-UI (client van de hub via OSCQuery).
 - Gebarenlog als conditionering voor musicgen-video-glitch.
-- Cockpit: opname-stand tonen (`beeld.opname` bestaat al): een rode REC met de mapnaam en de laatste opname-melding (schijf vol, map niet schrijfbaar). Nu is LPD8-pad 4 in de cockpit een blinde toggle; meldingen staan alleen in het hubvenster.
+- Cockpit-telefoonstand (staand op een iPhone): focus-app, LPD8 en snapshots bovenaan, de APC inklapbaar. Clay: "misschien later".

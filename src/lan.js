@@ -21,7 +21,8 @@ export const tokenPad = (home = os.homedir()) => join(home, '.varve-hub', 'token
 /** Een nieuw token: 32 willekeurige bytes, URL-veilig (mag zo in ?token=). */
 export const nieuwToken = () => randomBytes(32).toString('base64url');
 
-const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
+/** Een geldig token: 16-256 tekens A-Z a-z 0-9 _ - (ook gebruikt door `varve-hub check`). */
+export const GELDIG = /^[A-Za-z0-9_-]{16,256}$/;
 
 /**
  * Lees het token, of maak het (eerste keer `--lan`). Map 0700, bestand 0600; te ruime rechten worden

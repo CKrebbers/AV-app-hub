@@ -491,6 +491,13 @@ export class Kern extends Zender {
       if (!vasthouden) this.lpdPickups.set(knop, zetDoel(/** @type {Pickup} */ (lpk), w));
       else if (!lpk) this.lpdPickups.set(knop, nieuwePickup(was ?? p.standaard ?? 0, this.fysiek.get(`lpd8:${knop}`) ?? null));
     }
+    // §14: verandert de adem-app zelf (of via cockpit/snapshot) zijn tempo, dan gaat de globale adem-klok mee, zodat
+    // alle apps en de cockpit dezelfde periode hebben als de app die je hoort. De LPD8 (K7) zet globaal al in #macro.
+    if (p?.rol === 'klok.adem_periode' && bron !== 'lpd8' && this.#rolParam(p.rol)?.a === a
+      && Math.abs(Number(this.globaal['klok.adem_periode']) - w) > 1e-9) {
+      this.adem = { t: this.klok.nu(), fase: this.#ademFase() };
+      this.#globaal({ 'klok.adem_periode': w });
+    }
     if (a.manifest?.truth === 'hub') this.meld('geheugen');
     this.#beeldGewijzigd();
   }

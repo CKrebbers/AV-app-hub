@@ -24,7 +24,7 @@ import { laadRtMidi } from './ports/rtmidi.js';
 import { maakApparaten } from './apparaten.js';
 import { echteKlok } from './core/klok.js';
 import { Logboek } from './core/logboek.js';
-import { doctor } from './doctor.js';
+import { doctor, tcpOpen } from './doctor.js';
 import { voerUit, terminalIO } from './proef/runner.js';
 import { PROTOCOLLEN } from './proef/index.js';
 import * as A from './devices/apc40mk2.js';
@@ -130,6 +130,20 @@ function setNaam() {
 /** Hoe je de hub stopt die als dienst draait (voor de melding 'poort bezet'), of null op een ander platform. */
 function stopDienstRegel() {
   try { return dienstVoor({ hubMap: HUB_MAP }).ontlaad; } catch { return null; }
+}
+
+/**
+ * Draait er al een hub (poort uit config.json bezet)? Dan openen twee processen de APC en vechten de lampjes:
+ * proef en opname stoppen dan met een duidelijke melding. Zelfde poortcheck als doctor.
+ * @param {string} wat
+ */
+async function geenHubErnaast(wat) {
+  const poort = config.poorten.http;
+  if (!(await tcpOpen(poort))) return;
+  console.error(`Er draait al iets op poort ${poort} — waarschijnlijk de hub (in een ander venster, of als dienst na 'installeer').`
+    + ` Stop die eerst: de ${wat} opent de APC40 en LPD8 zelf, en twee programma's tegelijk laten de lampjes vechten.`
+    + (process.platform === 'darwin' ? ' Als dienst: launchctl bootout gui/$(id -u)/nl.varve.hub' : ''));
+  process.exit(3);
 }
 
 /**
@@ -273,6 +287,7 @@ const opdrachten = {
     const naam = args[0] ?? 'f0-hardware';
     const protocol = PROTOCOLLEN[naam];
     if (!protocol) { console.error(`Onbekende proef "${naam}". Beschikbaar: ${Object.keys(PROTOCOLLEN).join(', ')}`); process.exit(1); }
+    await geenHubErnaast('proef');
     const systeem = await midiOfStop();
     const { pad, logboek, sluit } = nieuwLogboek('proef', naam);
     const apparaten = maakApparaten({ systeem, klok: echteKlok, config, logboek, lpd8Profiel: laadLpd8Profiel() });
@@ -280,7 +295,7 @@ const opdrachten = {
     const opruimen = async () => { await apparaten.stop(); rl.close(); await sluit(); console.log(`\nLogboek: ${pad}`); };
     bijStoppen(opruimen);
     apparaten.start();
-    const bevindingen = await voerUit(protocol, { apparaten, io: terminalIO(rl), klok: echteKlok, logboek });
+    const bevindingen = await voerUit(protocol, { apparaten, io: terminalIO(rl), klok: echteKlok, logboek, config });
     const prof = /** @type {any} */ (bevindingen['lpd8-profiel'])?.profiel;
     if (prof && !prof.pads.some((/** @type {any} */ p) => p.n < 0)) {
       writeFileSync(LPD8_PROFIEL_PAD, JSON.stringify(prof, null, 2) + '\n');
@@ -288,8 +303,8 @@ const opdrachten = {
     }
     console.log('\nSamenvatting:\n' + JSON.stringify(bevindingen, null, 2));
     await opruimen();
-    console.log('\nPush dit bestand zodat Claude het kan verwerken:\n' +
-      `  git add proef/ lpd8-profiel.json 2>/dev/null; git commit -m "proef ${naam}" && git push`);
+    console.log('\nPush dit bestand zodat Claude het kan verwerken (zie ook docs/HARDWARE-AVOND.md, blok 6):\n' +
+      `  git add proef/\n  git add lpd8-profiel.json   # als dat bestand er is\n  git commit -m "proef ${naam}" && git push`);
     process.exit(0);
   },
 
@@ -323,9 +338,13 @@ const opdrachten = {
 
   async opname() {
     const naam = `opname-${args[0] ?? 'sessie'}`;
+    await geenHubErnaast('opname');
     const systeem = await midiOfStop();
     const { pad, logboek, sluit } = nieuwLogboek('opname', naam);
-    const apparaten = maakApparaten({ systeem, klok: echteKlok, config, logboek, lpd8Profiel: laadLpd8Profiel() });
+    const lpd8Profiel = laadLpd8Profiel();
+    // Het profiel in het logboek, zodat de golden test de LPD8-bytes van deze opname met hetzelfde profiel leest.
+    if (lpd8Profiel) logboek.regel('bevinding', { id: 'lpd8-profiel', data: { profiel: lpd8Profiel } });
+    const apparaten = maakApparaten({ systeem, klok: echteKlok, config, logboek, lpd8Profiel });
     let n = 0;
     for (const s of [apparaten.apc, apparaten.lpd8]) s.bij('gebeurtenis', () => { n++; if (n % 50 === 0) process.stdout.write(`\r${n} gebeurtenissen`); });
     bijStoppen(async () => { await apparaten.stop(); await sluit(); console.log(`\nOpname: ${pad}`); });
