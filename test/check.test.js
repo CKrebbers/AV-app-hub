@@ -556,3 +556,13 @@ describe('check: uitvoer', () => {
     expect(j.punten.find((p) => p.naam === 'hub')).toMatchObject({ status: 'let', teken: '!' });
   });
 });
+
+describe('check: driver-apps uit de echte config (golf 6)', () => {
+  it('td-lab (koppeling td), Sediment/Scene Kit (midi) en uurwerk (http) zijn drivers; formula-lab niet', async () => {
+    const { isDriver } = await import('../src/check/set.js');
+    const { laadConfig } = await import('../src/config.js');
+    const c = laadConfig();
+    for (const id of ['td-lab', 'sediment', 'av-scene-kit', 'uurwerk']) expect(isDriver(c, id), id).toBe(true);
+    expect(isDriver(c, 'formula-lab')).toBe(false);
+  });
+});

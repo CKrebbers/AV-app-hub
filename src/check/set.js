@@ -17,7 +17,9 @@ const NODE_COMMANDO = /(^|[\s;&|(])(npm|npx|node|vite|yarn|pnpm)(\s|$)/;
  * Koppelingen waarbij de hub zelf een driver draait (src/drivers): zo'n app staat als 'actief' in het beeld zodra de
  * driver er is (een MIDI-driver zodra zijn virtuele poort bestaat), ook als TouchDesigner, Logic of de brug dicht is.
  */
-export const DRIVER_KOPPELINGEN = Object.freeze(['midi', 'osc', 'http']);
+// td (golf 6): die driver meldt zich pas actief als de td-lab-COMP antwoordt, maar ook dan start check niets zelf.
+// Er bestaat geen OSC-transport meer (PROTOCOL §2).
+export const DRIVER_KOPPELINGEN = Object.freeze(['midi', 'http', 'td']);
 
 /** Praat de hub via een eigen driver met deze app? @param {any} config @param {string} id */
 export const isDriver = (config, id) => DRIVER_KOPPELINGEN.includes(config?.apps?.[id]?.koppeling);

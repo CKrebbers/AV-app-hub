@@ -31,7 +31,9 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 
 **LPD8-pad 4** = de avond opnemen naar `~/Movies/varve-avonden/<datum-tijd>/` (sleutel `avondmap` in `config.json`), terwijl de hub draait; de cockpit toont dan een rode REC. Zie `docs/OPNAME.md`.
 
-**Paniek** (LPD8-pad 1 een seconde vasthouden): wat een app daarna zelf verandert (bv. volume naar 0) koppelt de LPD8-knoppen niet los; `paniek.naloop_s` in `config.json` (standaard 5) bepaalt hoe lang na het loslaten (PROTOCOL §14).
+**Paniek** (LPD8-pad 1 een seconde vasthouden): wat een app daarna zelf verandert (bv. volume naar 0) koppelt de LPD8-knoppen niet los; `paniek.naloop_s` in `config.json` (standaard 5) bepaalt hoe lang na het loslaten (PROTOCOL §14). Ook de driver-apps doen mee: uurwerk zet het volume op 0 (terug met de trigger `master_terug`), Sediment zet alle noten uit (CC 123), Scene Kit zet de master dicht (na de TD-patch in `koppelingen/av-scene-kit/`).
+
+**td-lab** doet mee als driver over zijn eigen bridge, standaard uit: zie `docs/TDLAB.md`.
 
 **Geheugen.** De hub onthoudt de snapshots en de waarden van TD, Sediment en andere `truth:"hub"`-apps over een herstart heen, in `~/.varve-hub/staat.json` (bij de start staat in de terminal waar). Leeg beginnen: gooi dat bestand weg terwijl de hub uit staat, of start met `--zonder-geheugen`. Een `staat.json.kapot` is een oud bestand dat de hub niet kon lezen; je kunt het weggooien. Een ander pad: `geheugen.pad` in `config.json`, of `VARVE_HUB_STAAT=/pad/naar/staat.json npm start`.
 

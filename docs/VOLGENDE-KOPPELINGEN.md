@@ -13,6 +13,11 @@ staan, anders "overgeslagen").*
 
 ---
 
+> **Stand na golf 6:** paniek voor uurwerk, Sediment en Scene Kit (TD-kant als patch, `koppelingen/av-scene-kit/`),
+> uurwerk teruglezen en de td-lab-driver (`src/drivers/td.js`, `docs/TDLAB.md`) zijn gebouwd. Het varve-radio-herstel
+> (§2.3) en Varve Eye als app (§7.3 fase A) staan op een tak in hun eigen repo, met een PR die op Clay wacht. Waar
+> hieronder "voorstel" staat, is dat de stand van golf 5.
+
 ## 0. In het kort
 
 | Project | Nu in de hub | Beste koppelvorm | Code in de app? | Werk | Eerst nodig |
