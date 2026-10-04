@@ -32,7 +32,17 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
   - [ ] Chrome-tabs met Varve DJ of av-kern (zonder `?hub=` in het adres openen die de APC zelf).
   - [ ] Ableton Live.
   - [ ] Logic: haal de APC40 weg als bedieningsoppervlak (Logic Pro → Bedieningsoppervlakken → Configuratie, de APC40 selecteren en verwijderen). Alleen Logic sluiten is ook goed.
-  - [ ] Een hub die al draait: een ander Terminal-venster met `npm start` (Ctrl-C), of de hub als dienst als je ooit `node src/cli.js installeer` deed (`node src/cli.js installeer --weg`).
+  - [ ] Een hub die al draait: een ander Terminal-venster met `npm start` (Ctrl-C), of de hub als dienst als je ooit
+    `node src/cli.js installeer` deed. Die zet je voor vanavond uit met `node src/cli.js installeer --weg`, en ná de
+    avond weer aan met `node src/cli.js installeer`. (Start je toch per ongeluk een tweede hub, dan noemt de melding
+    "poort 7700 is bezet" ook de opdracht die de dienst alleen tijdelijk stopt.)
+- [ ] **Voor blok 4 (de set):** de hub-koppeling van MediSynth en Waterschaal staat nog op een eigen tak (de PR's
+  wachten op jouw OK). Zet die twee repo's daarop, anders worden ze in de set "niet klaar":
+  ```bash
+  cd <map van medisynth>  && git fetch && git checkout claude/varve-hub-koppeling
+  cd <map van waterschaal> && git fetch && git checkout claude/varve-hub-koppeling
+  ```
+  (Of keur eerst die twee PR's goed en zet ze op main.)
 - [ ] **Sluit de APC40 en de LPD8 aan** via USB, het liefst rechtstreeks op de Mac.
 - [ ] **Kijk of de hub ze ziet:**
   ```bash
@@ -60,7 +70,7 @@ in een logboek. Tijdens de proef:
 | **Enter** | ja / klopt / door |
 | **n** + notitie + Enter | klopt niet, bv. `n pad 2-3 werd blauw` |
 | **o** + Enter | deze stap overslaan (bv. geen footswitch) |
-| **Ctrl-C** | stoppen; wat tot dan toe gemeten is, blijft bewaard |
+| **Ctrl-C** | stoppen; wat tot dan toe gemeten is, blijft in het logboek bewaard (behalve `lpd8-profiel.json`: dat komt alleen als de proef tot het einde loopt) |
 
 Wat er gebeurt, stap voor stap:
 
@@ -129,10 +139,14 @@ gebruiken (bv. pad 4 laten branden tijdens een opname) of dat alles via de cockp
 ### Drie extra metingen (wat de hub sinds golf 1 van de hardware vraagt)
 
 - **De hubtoets (stap 12).** Focus wisselen is BANK vasthouden + Track Select; een hub-snapshot bewaren is BANK +
-  SHIFT + Scene. Dat werkt alleen als de APC elke knop gewoon doorgeeft terwijl je er een andere vasthoudt.
+  SHIFT + Scene. Dat werkt alleen als de APC elke knop gewoon doorgeeft terwijl je er een andere vasthoudt. Laat je
+  BANK te vroeg los, dan zegt de proef dat en mag je het nog een keer doen.
 - **Lang drukken op de LPD8 (stap 23).** Pad 5–8: kort = snapshot laden, langer dan 0,6 s = bewaren. Pad 1 een seconde
-  vasthouden = paniek. Dat kan de hub alleen zien als de pad ook iets stuurt bij het *loslaten*. In de TOGGLE-modus van
-  de LPD8 gebeurt dat niet; dan zegt de proef dat, en dan zet je de pads op MOMENTARY (zie blok 7).
+  vasthouden = paniek. Dat kan de hub alleen goed zien als de pad bij het *loslaten* meteen iets stuurt (MOMENTARY).
+  In de TOGGLE-modus van de LPD8 zet de eerste tik een pad aan en pas de volgende tik weer uit. De hub denkt dan dat
+  je de pad al die tijd vasthield: één tik op pad 1 geeft paniek die blijft hangen tot je nog eens tikt, en pad 5–8
+  *bewaart* bij de tweede tik (je snapshot wordt overschreven). De proef herkent dat; dan zet je de pads op MOMENTARY
+  (zie blok 7).
 - **LPD8 eruit en erin (stap 25).** Of de hub de LPD8 na opnieuw aansluiten zelf terugvindt, met het geleerde profiel.
 
 ---
@@ -174,14 +188,20 @@ npm start -- meditatie
 ```
 
 De hub start MediSynth, Waterschaal, Uurwerk en av-kern, opent ze in Chrome met `?hub=` erachter, zet de beginwaarden
-en geeft Waterschaal de focus. De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
+en geeft Waterschaal de focus. MediSynth en Waterschaal praten alleen met de hub als ze op de tak
+`claude/varve-hub-koppeling` staan (blok 1).
+
+> **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling komt na 25 oktober). Klik in av-kern
+> **niet** op "Verbind APC40": dan opent av-kern de APC zelf en vechten de lampjes.
+ De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
 een virtuele APC en LPD8 die meelopen met de echte.
 
 - [ ] Wisselen van app: BANK vast + Track Select. Kloppen de kleuren in de bovenste rij (zolang BANK vast is) met de apps?
 - [ ] Faders en knoppen op de app met focus; kijk in de cockpit mee.
 - [ ] LPD8-knoppen K1–K8 werken op alle apps tegelijk (K2 helderheid, K3 ruimte, …).
 - [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek.
-- [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon.
+- [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon. Na 60 s "niet klaar" voor MediSynth of
+  Waterschaal: staat die repo op `claude/varve-hub-koppeling` (blok 1)?
 
 Ctrl-C stopt alles wat de set zelf startte, en dan de hub.
 
@@ -198,26 +218,33 @@ Terwijl de hub draait (blok 3 of 4):
 Die avond staat in `~/Movies/varve-avonden/<datum-tijd>/` (zie `docs/OPNAME.md`) en blijft op je Mac; je kunt hem
 later opnieuw afspelen met `npm run herhaal -- <map>`.
 
-*(Optioneel, voor extra vaste tests)* Met de hub **uit** neemt `node src/cli.js opname eerste-avond` ruw op wat je
-controllers sturen, in `proef/`. Speel vijf minuten vrij (faders, knoppen, BANK-akkoorden, LPD8 lang en kort) en stop met
-Ctrl-C. Ook dat bestand wordt een vaste test.
+*(Optioneel)* Met de hub **uit** neemt `node src/cli.js opname eerste-avond` ruw op wat je controllers sturen, in
+`proef/`. Speel vijf minuten vrij (faders, knoppen, BANK-akkoorden, LPD8 lang en kort) en stop met Ctrl-C. Claude kijkt
+ernaar. Een vaste test wordt het voorlopig alleen als je LPD8 op het fabrieksprogramma staat (de opname onthoudt nog niet
+welk LPD8-profiel er gold); doe het dus gerust, maar het is niet erg als het een keer niet lukt.
 
 ---
 
 ## 6. Pushen (±5 min)
 
 ```bash
-git add proef/ lpd8-profiel.json
+git add proef/
+git add lpd8-profiel.json      # alleen als dat bestand er is; "did not match" mag je negeren
+git status                     # onder "Changes to be committed" moet minstens één proef/…jsonl staan (groen)
 git commit -m "proef f0-hardware"
 git push
 ```
+
+Staat er bij `git status` niets groen, dan is er niets om te pushen: kijk of de proef een logboek in `proef/` schreef
+(de laatste regel van de proef noemt het pad).
 
 Wat Claude daarmee doet:
 
 - Elk bestand in `proef/` wordt een *golden test*: dezelfde ruwe MIDI moet voortaan altijd hetzelfde betekenen.
   Verandert de hub ooit hoe hij jouw hardware leest, dan valt die test om.
 - De antwoorden op V1–V5 en de drie extra metingen gaan naar `STATUS.md`, en waar nodig naar `config.json`
-  (bv. `ringen_nemen_waarde_over`) of naar de kern (bv. kleur opnieuw sturen bij loslaten als V3 "ja" is).
+  (bv. `ringen_nemen_waarde_over`) of naar de kern (bv. de kleur opnieuw sturen bij loslaten, als de APC een
+  kleurwissel negeert terwijl je de pad vasthoudt).
 - `lpd8-profiel.json` wordt het profiel waar de virtuele en echte LPD8 mee getest worden.
 
 Zet een avondmap uit blok 5 **niet** los in `proef/` (de golden test leest elk `.jsonl` daar als proeflog). Wil je dat
@@ -229,8 +256,10 @@ Claude er een kijkt, zet hem dan in een eigen submap, bv. `proef/avonden/<datum-
 
 **De lampjes van de APC vechten** (flikkeren, verkeerde kleuren, dingen gaan aan die de hub niet aanzette).
 *Oorzaak:* een ander programma schrijft ook naar de APC; macOS mengt dat. Meestal een Chrome-tab met Varve DJ of av-kern
-*zonder* `?hub=`, Ableton, een APC-bedieningsoppervlak in Logic, of twee hubs tegelijk (bv. de proef terwijl de hub als
-dienst draait). *Oplossing:* sluit die (blok 1), `node src/cli.js doctor` toont wat er draait, en trek daarna de APC
+*zonder* `?hub=`, av-kern waarin op "Verbind APC40" is geklikt (av-kern heeft nog geen hub-koppeling, zie blok 4),
+Ableton, een APC-bedieningsoppervlak in Logic, of twee hubs tegelijk (bv. de proef terwijl de hub als dienst draait).
+*Oplossing:* sluit die (blok 1; `node src/cli.js doctor` laat zien of er al een hub draait: "poort 7700 BEZET"; Chrome-tabs,
+Ableton en Logic moet je zelf nalopen), en trek daarna de APC
 één keer los en weer vast: de hub zet hem binnen ±2 s zelf weer goed (de APC vergeet bij elke herstart zijn modus; de
 hub stuurt hem opnieuw en tekent alles opnieuw).
 
@@ -243,11 +272,14 @@ namen van alle MIDI-poorten. Staat de APC er onder een andere naam, zet dan een 
 een ander programma dan tijdens de proef, of op een andere padmodus (de knoppen linksboven: CC of PROG CHNG in plaats
 van de noten-stand). De hub kent alleen wat hij in de proef leerde (`lpd8-profiel.json`). *Oplossing:* zet de LPD8 terug
 op het programma en de modus van de proef. Wil je echt een ander programma, draai de proef dan opnieuw en sla alles
-behalve de LPD8-stappen over met `o`; het nieuwe profiel geldt na een herstart van de hub.
+behalve de LPD8-stappen over met `o` (dat zijn veel `o`'s; een korte proef alleen voor de LPD8 is een idee voor
+later); het nieuwe profiel geldt na een herstart van de hub.
 
-**Lang drukken of paniek doet niets** (pad 5–8 laadt altijd, nooit bewaren; pad 1 geen paniek). *Oorzaak:* de pads staan
-in TOGGLE: dan stuurt een pad niets bij loslaten, dus weet de hub niet hoe lang je drukte. Stap 23 van de proef meet dit.
-*Oplossing:* zet in de LPD8 Editor van Akai de pads op MOMENTARY, schrijf het programma naar de LPD8, en kijk opnieuw.
+**Paniek blijft hangen na één tik op pad 1, of pad 5–8 doet bij de eerste tik niets en BEWAART bij de tweede tik**
+(je snapshot wordt overschreven in plaats van geladen). *Oorzaak:* de pads staan in TOGGLE: de eerste tik zet een pad
+"aan", pas de volgende tik zet hem "uit". De hub denkt dan dat je de pad al die tijd vasthield. Stap 23 van de proef
+meet dit. *Oplossing:* zet in de LPD8 Editor van Akai de pads op MOMENTARY, schrijf het programma naar de LPD8, en kijk
+opnieuw. Hangt de paniek nu: tik pad 1 nog één keer.
 
 **"poort 7700 is bezet".** *Oorzaak:* er draait al een hub (een ander Terminal-venster, of als dienst via `installeer`),
 of een ander programma gebruikt 7700. De melding zegt welk commando de dienst stopt. *Oplossing:* stop de andere hub
@@ -276,4 +308,5 @@ langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg 
 kleuren. Gebruik iTerm2, of beoordeel op het oog: de vraag is alleen of het *ongeveer* klopt.
 
 **De proef blijft hangen bij een stap.** `o` + Enter slaat de stap over; noteer wat er niet werkte. Ctrl-C stopt de
-hele proef; wat tot dan toe gemeten is, staat in het logboek en is net zo goed om te pushen.
+hele proef; wat tot dan toe gemeten is, staat in het logboek in `proef/` en is net zo goed om te pushen (alleen
+`lpd8-profiel.json` komt er dan niet bij; `git add proef/` is genoeg, zie blok 6).
