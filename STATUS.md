@@ -116,3 +116,10 @@ Klaar als (op jouw Mac):
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
+
+## Bekende risico's (gevonden door de duurtest, golf 7 — werk voor de volgende golf)
+De duurtest (`docs/DUURTEST.md`, "Open punten") omzeilt ze bewust, dus hij meldt ze niet; elk heeft een `it.todo` in `test/duurtest.test.js`.
+- [ ] **Tablet-cockpit verliest wifi terwijl hij een trigger vasthoudt**: de app houdt `trig aan:true` (bv. de paniek-trigger van Waterschaal: volume blijft 0) tot iemand hem opnieuw indrukt en loslaat. Herstel in `src/transports/server.js` (ingedrukte triggers per cockpit-socket, bij sluiten loslaten).
+- [ ] **Dezelfde toets twee keer ingedrukt** (APC én cockpit, of twee cockpits) met een focuswissel ertussen: de eerste app krijgt zijn `los` nooit; bij Stop All eindigt de paniek van die app niet. Herstel in `src/core/kern.js` (`invoer`).
+- [ ] **Kabel korter los dan één hotplug-ronde** (2 s): de hub ziet geen `weg`/`verbonden`, de APC blijft donker in modus 0x40 en de hub hoort hem niet meer. Herstel in de hotplug (`src/core/aansluiting.js`).
+- [ ] Mislukt sturen naar de APC/LPD8 (`fout` op de apparaten) komt nog nergens in beeld: `src/hub.js` luistert er niet naar. Eén logregel met advies ("APC: sturen mislukt — kabel los? de hub probeert opnieuw").

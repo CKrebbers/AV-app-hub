@@ -6,8 +6,8 @@ Maps, wachtrijen, timers, sockets), of de event-loop het bijhoudt, en of na pani
 staat nog klopt.
 
 - `tools/duurtest.mjs` — het script (en de functie `draaiDuurtest`, die de test ook gebruikt).
-- `test/duurtest.test.js` — een korte versie in CI (drie minuten nep-tijd plus afbouw, seed 7, ±10 s echt), plus gerichte tests
-  voor elk lek dat de duurtest vond.
+- `test/duurtest.test.js` — een korte versie in CI (drie minuten nep-tijd plus afbouw, seed 7, één opname de hele
+  avond, ±10 s echt), de opdrachtregel, plus gerichte tests voor elk lek dat de duurtest vond.
 - Rapporten: `tools/uitvoer/duurtest-<datum>-seed<seed>.json` (`tools/uitvoer/` staat in `.gitignore`; een rapport
   dat je bewust meelevert, voeg je toe met `git add -f`).
 
@@ -20,8 +20,9 @@ node --expose-gc tools/duurtest.mjs --minuten 3 --seed 7
 | optie | |
 |---|---|
 | `--minuten 3` | zo lang (echte tijd) spelen; standaard 3 |
-| `--nep-minuten 30` | of: tot de nep-klok zo ver is (dezelfde seed = precies dezelfde avond, ook op een tragere machine) |
+| `--nep-minuten 30` | of: tot de nep-klok zo ver is. Dezelfde seed geeft dan dezelfde reeks handelingen op APC en LPD8 op dezelfde nep-tijden, ook op een tragere machine; de tellingen (berichten naar apps, cockpit-zets, rommelberichten) kunnen een fractie verschillen, want wanneer een echte socket opengaat of iets aankomt, bepaalt mee wat er gebeurt |
 | `--seed 7` | welke avond: elke seed is een andere, maar dezelfde seed is altijd dezelfde reeks handelingen |
+| `--opname doorlopend` | `doorlopend` (standaard): één opname van het begin tot de afbouw, zoals een echte avond; `wisselend`: LPD8 P4 gemiddeld elke 150 s nep (aan, uit, aan, …). Beide trekken hetzelfde toeval |
 | `--stap 50` | hoeveel nep-ms de klok per ronde vooruit gaat (groter = sneller, maar grover) |
 | `--meet-s 2` | om de hoeveel echte seconden er gemeten wordt |
 | `--uit <map>` | waar het JSON-rapport komt (standaard `tools/uitvoer`) |
@@ -29,14 +30,23 @@ node --expose-gc tools/duurtest.mjs --minuten 3 --seed 7
 | `--bewaar` | de tijdelijke map (avondmap met opnames, geheugenbestand) niet opruimen; het pad staat in het rapport |
 
 Zonder `--expose-gc` zet het script gc zelf aan (via V8); dat werkt in Node 22, maar `--expose-gc` is de nette
-weg. Exitcode **0** = goed, **1** = een lek of een geschonden invariant, **2** = de duurtest zelf crashte.
+weg. (De korte versie in vitest meet zonder gc en laat V8 met rust: `heap: false`.) Exitcode **0** = goed, **1** =
+een lek of een geschonden invariant, **2** = een verkeerde optie (een onbekende optie, een ontbrekende waarde, een
+getal dat geen getal of niet groter dan 0 is: het script zegt wat er mis is en geeft een voorbeeld) of de duurtest
+zelf crashte.
+
+**Ctrl-C** stopt de avond: de afbouw loopt nog (hub stoppen, tijdelijke map weg) en het rapport van wat er tot dan
+gemeten is, komt er met `AFGEBROKEN` erboven. Nog eens Ctrl-C stopt meteen, zonder op te ruimen. Gaat de opbouw of de
+afbouw mis, dan worden drivers en hub toch gestopt en verdwijnt de tijdelijke map (tenzij `--bewaar`).
 
 Er is geen hardware, browser of andere repo nodig: alles draait in één Node-proces (CI-veilig).
 
 ## Wat er draait
 
 - **De hub zoals `varve-hub start` hem start**: `startHub` (apparaten, kern, server, opname naar een avondmap,
-  geheugen naar een bestand), met `config.json` zoals hij is. De drivers via `startDrivers`, precies wat de hub
+  geheugen naar een bestand), met `config.json` zoals hij is, op één ding na: `avondmap` wijst altijd naar een map
+  binnen de tijdelijke map. Ook als je avondmap een absoluut pad is (een extern volume), komen de nep-avonden nooit
+  in je echte avondarchief. De drivers via `startDrivers`, precies wat de hub
   zelf doet, maar van buitenaf gestart zodat hun interne structuren te meten zijn: Scene Kit en Sediment (MIDI,
   op virtuele nep-poorten) en uurwerk (HTTP, tegen een nep-brug die ook even weg kan zijn). td-lab staat in
   `config.json` uit en blijft uit.
@@ -74,7 +84,7 @@ Er is geen hardware, browser of andere repo nodig: alles draait in één Node-pr
 | LPD8-macroknop draaien | elke 1,5 s |
 | LPD8 P2 tap tempo, P3 adem, P5–P6 snapshot kort/lang | elke 30 s, 60 s, 15 s |
 | LPD8 P1 paniek vasthouden (kort, of 1,3–5 s) | elke 90 s |
-| LPD8 P4 opname aan/uit | elke 150 s |
+| LPD8 P4: één opname van het begin tot de afbouw (`--opname doorlopend`), of aan/uit (`wisselend`) | eenmaal; of elke 150 s |
 | cockpit: zet (een trigger: indrukken en weer los) / focus / snapshot / virtuele toets | elke 0,4 s |
 | cockpit erbij of weg; een cockpit 2–12 s traag | elke 20 s; elke 30 s |
 | een app: netwerkhapering, herstart (nieuwe inst), stil (geen hartslag), lang weg, of een tweede tab | elke 20 s |
@@ -92,7 +102,8 @@ Op stdout (en hetzelfde, plus alle metingen, in de JSON):
 - **UITSLAG** — goed, of de lekken en geschonden invarianten met hun nep-tijd.
 - **Heap** — `heapUsed` direct na `gc()` (twee keer), min–max over de run. Het oordeel: na het opwarmen (eerste
   20% van de metingen) het **minimum** van het eerste en het laatste derde. Een lek duwt ook het minimum na gc
-  omhoog; ruis en pieken niet. Lek = meer dan 6 MB of 15% gegroeid. Alleen meegeteld bij een run met gc.
+  omhoog; ruis en pieken niet. Lek = meer dan 6 MB én meer dan 15% gegroeid (de grootste van de twee drempels
+  telt; bij een heap van ±13 MB is dat gewoon 6 MB). Alleen meegeteld bij een run met gc.
 - **Event-loop-vertraging** — `monitorEventLoopDelay` (p50/p99/max), min de resolutie (5 ms). Let op: in
   versneld tempo doet de hub per echte seconde ±25× het werk van een echte seconde; dit is dus een bovengrens.
   De eigen `gc()` van de meting (`gcMsMax`) zit in de max.
@@ -105,12 +116,17 @@ Op stdout (en hetzelfde, plus alle metingen, in de JSON):
   (apps, verbindingen, slews, routes, padDruk, pickups, paniek, LED-wachtrij, snapshots, …), per app opgeteld
   (waarden, LED-kaart, pickups, ingedrukte triggers, ringknoppen), de wachtrijen naar de APC en LPD8, de opname
   (lopende afsluitingen, buffer in KB), de drivers (verstuurd, interne Maps, timers, open POSTs), en het aantal
-  luisteraars op kern, apparaten en opnemer. Een structuur met een vaste grens (bv. snapshots ≤ 99) moet
+  luisteraars op kern, apparaten en opnemer. Bij de opname ook de tellers per app en per soort bericht
+  (`opname.naarSleutels`) en per invoerbron (`opname.invoerSleutels`), en de grootte van `gebaren.jsonl` op schijf
+  (`opname.bestandKB`: die mag groeien, het is een opname van de hele avond). Een structuur met een vaste grens (bv. snapshots ≤ 99) moet
   daaronder blijven; voor de rest geldt: **groei** = de mediaan in het laatste kwart van de run is anderhalf keer
   die in het tweede kwart, en minstens 50 hoger. Schommelen (slews) en pieken (een wachtrij die net een volle
   repaint heeft op het moment van meten) zijn geen groei; een structuur die gestaag oploopt wel. Open handles
   per soort net zo (minstens 20 hoger).
+- **Opname van de hele avond** (bij `doorlopend`) — hoeveel nep-minuten, hoe groot `gebaren.jsonl` en
+  `samenvatting.md` werden, en voor hoeveel apps en invoerbronnen er tellers waren.
 - **Acties** — hoe vaak elke soort handeling voorkwam.
+- **Hub-meldingen** — het aantal, en de laatste vijf (de laatste dertig staan in de JSON).
 
 ### Invarianten
 
@@ -121,7 +137,8 @@ Op stdout (en hetzelfde, plus alle metingen, in de JSON):
 | geen slew loopt meer dan 1 s over zijn eindtijd, en geen slew duurt langer dan 120 s | elke 5 s nep |
 | na rust: geen slews meer; elke verbonden app heeft precies de waarden die de hub denkt; elke cockpit ziet de focus, status en waarden van de kern | afbouw |
 | elke app bewaart alleen waarden van zijn eigen parameters | afbouw |
-| zonder clients: alleen de drivers verbonden; routes, padDruk, ingedrukte triggers, LED-wachtrij, slews leeg; elke app `weg`; een app zonder manifest is vergeten; even veel luisteraars en timers als bij de start; geen sockets meer open | afbouw |
+| de opname van de hele avond (`doorlopend`) loopt tot de afbouw, en sluit daar binnen 30 s nep af met `gebaren.jsonl` en `samenvatting.md` | begin en afbouw |
+| zonder clients: alleen de drivers verbonden; routes, padDruk, ingedrukte triggers, LED-wachtrij, slews leeg; elke app `weg`; een app zonder manifest is vergeten; precies evenveel luisteraars op de kern en evenveel klok-timers als bij de start (vóór de apps kwamen); geen sockets meer open | afbouw |
 | na `hub.stop()`: niets meer op de klok | einde |
 
 Wat de duurtest **niet** van binnen ziet: de Maps in `src/transports/server.js` (welke socket welke app is,
@@ -134,8 +151,11 @@ gecontroleerd: sockets dicht (handles), heap, en de kern-kant van elke verbindin
    alleen `hallo` stuurde (een half afgebouwde koppeling, een app die steeds een andere naam kiest, de rommel-app)
    bleef na het verbreken met status `weg` in `kern.apps` staan, met slot, in elk beeld voor de cockpit. Elke
    nieuwe naam = een AppStaat erbij, de hele avond. Nu: zonder manifest wordt hij bij het verbreken vergeten; zijn
-   slot komt vrij (een volgende app krijgt het eerst), had hij de focus, dan heeft niemand die. Een app mét
-   manifest blijft zoals altijd bekend met status `weg` en zijn waarden.
+   slot komt vrij (een volgende app krijgt het eerst: `#geefSlot` vult een gat vóór een nieuw slot achteraan), had
+   hij de focus, dan heeft niemand die. Dat laatste gaat niet via `focus(null)` (een keuze van Clay of de set), zodat
+   de kern na een herstart midden in de set (golf-7-herstart, `bewaardFocus`) nog weet wie de focus terug hoort te
+   krijgen. Een app mét manifest blijft zoals altijd bekend met status `weg` en zijn waarden. Het contract staat in
+   PROTOCOL.md §15.
 2. **`waarden` groeide met elke onbekende parameter** (`#zetWaarde`, `#manifest`). Vóór het manifest werd elke
    `zet`/`staat` met een willekeurige id bewaard, en een nieuw manifest liet de waarden van parameters die het
    niet meer had staan. Een app in ontwikkeling (steeds een ander manifest) of een app die rommel stuurt, liet
@@ -155,8 +175,9 @@ Elk heeft een gerichte test in `test/duurtest.test.js` ("lekken die de duurtest 
 
 ## Open punten (gevonden, niet in deze golf opgelost)
 
-Geen lekken, maar plekken waar iets kan blijven hangen. De duurtest omzeilt ze (zie "Eén hand, één toets" en de
-cockpit die zijn triggers loslaat); haal die omweg weg zodra ze opgelost zijn.
+Geen lekken, maar plekken waar iets kan blijven hangen, midden in een optreden. Ze staan ook in `STATUS.md` (bekende
+risico's) en als `it.todo` in `test/duurtest.test.js`. De duurtest omzeilt ze (zie "Eén hand, één toets" en de
+cockpit die zijn triggers loslaat), dus hij meldt ze niet; haal die omweg weg zodra ze opgelost zijn.
 
 1. **Een cockpit die abrupt wegvalt terwijl hij een trigger vasthoudt** (wifi van de tablet weg midden in een
    ingedrukte trigger-knop): de hub laat virtuele toetsen los (§10), maar geen `zet` op een trigger (`v:1`). De
@@ -182,17 +203,20 @@ cockpit die zijn triggers loslaat); haal die omweg weg zodra ze opgelost zijn.
 ## Uitslag van de lange run
 
 `node --expose-gc tools/duurtest.mjs --minuten 8 --seed 7` (4 oktober 2026, Node 22.22, cloud-container met 4
-kernen, met de herstellingen hierboven): **8 minuten echt = 3 uur 34 minuten avond (×26,6). Goed: geen lek, geen
-geschonden invariant.** Daarnaast seeds 3, 5, 11, 42 en 99, elk anderhalf uur avond: ook goed.
+kernen, met de herstellingen hierboven en na de reviews; één opname van de hele avond): **8 minuten echt = 3 uur
+38 minuten avond (×27,1). Goed: geen lek, geen geschonden invariant.** Daarnaast seeds 3 en 11 (`--opname
+wisselend`) en 5 en 42 (doorlopend), elk een uur avond (`--nep-minuten 60`, vier tegelijk): ook goed, en overal
+precies 13 klok-timers bij de start en zonder clients.
 
 | | |
 |---|---|
-| gespeeld | 51 052 fader-, 42 110 knop- en 25 545 toetsbewegingen op de APC, 1 595 focuswissels, 8 541 LPD8-macro's, 135 keer paniek, 310 keer Stop All, 86 keer opname aan/uit, 1 383 snapshots op APC en LPD8 en 3 115 vanuit de cockpit, 15 969 cockpit-zets, 5 477 virtuele toetsen, 296 cockpits erbij en 295 weg (366 keer traag), 104 haperingen, 115 herstarts, 116 keer stil, 102 keer lang weg en 125 keer een tweede tab, 275 half afgebouwde apps, 8 507 rommelacties (30 594 rommelberichten), 39 keer de APC en 32 keer de LPD8 eruit, 64 keer de uurwerk-brug weg |
-| berichten | kern → apps 306 per nep-seconde (8 129 per echte seconde); bij de cockpits 13 445 per echte seconde, 6,9 GB in totaal; naar APC en LPD8 1 803 per echte seconde |
-| heap na gc | 12,6 MB na 10 s, 13,4 MB na 1 min, 14,0 MB na 3 min, 14,4 MB na 5 min, 14,6 MB na 8 min; oordeel: minimum +0,9 MB, geen lek. Wat er nog bijkomt is begrensd en vult zich langzaam: hub-snapshots (19 → 85 van de 99 nummers, de cockpit kiest er willekeurig één), de LED-kaart van de lease-app (136 → 456 adressen) en door V8 gecompileerde code (heap-snapshots na 36 s en 206 s: vooral `code`, verder strings, getallen en objecten van die snapshots). De groei per minuut neemt af. rss max 119 MB |
-| event-loop | p50 0,2 ms, p99 4,8 ms, max 75 ms (de eigen `gc()` van de meting: tot 39 ms) — bij ±26× het werk van een echte avond per seconde |
-| timers en handles | 13 klok-timers bij de start, 38 op het drukste moment, 13 zonder clients, **0** na `hub.stop()`; zonder clients alleen nog de luisterende server-socket open, na stoppen niets |
-| structuren | alles vlak of binnen zijn grens: `kern.apps` 10–15 (11 zonder clients: 7 apps, 3 drivers en de rommel-app, die een manifest stuurde), `kern.verbindingen` 3 zonder clients (de drivers), `kern.slews` hooguit 10, routes, padDruk, ingedrukte triggers en LED-wachtrij zonder clients 0, luisteraars op de kern steeds 8, driver-diagnose op de ringbuffer (3 × 256), opnamebuffer hooguit 36 kB |
+| gespeeld | 52 108 fader-, 42 918 knop- en 26 026 toetsbewegingen op de APC, 1 618 focuswissels, 8 710 LPD8-macro's, 137 keer paniek, 315 keer Stop All, 1 405 snapshots op APC en LPD8 en 3 190 vanuit de cockpit, 16 320 cockpit-zets, 5 647 virtuele toetsen, 303 cockpits erbij en 302 weg (378 keer traag), 105 haperingen, 116 herstarts, 117 keer stil, 105 keer lang weg en 128 keer een tweede tab, 278 half afgebouwde apps, 8 663 rommelacties (31 066 rommelberichten), 42 keer de APC en 33 keer de LPD8 eruit, 65 keer de uurwerk-brug weg |
+| opname | één opname van 3 uur 38 minuten nep: `gebaren.jsonl` 241 MB (3,8 miljoen regels), `samenvatting.md` 2,7 kB, netjes afgesloten in de afbouw. De schrijfbuffer bleef onder 38 kB; tellers voor 4 invoerbronnen en 41 apps (de 278 half afgebouwde apps met steeds een andere naam; de tellers per app groeien daarmee, een echte avond heeft er een handvol). Let op: dit is ±68 MB per uur bij een hand die onafgebroken ±135 keer per seconde iets op de APC doet; een echte avond is veel rustiger, maar reken bij een extern volume op tientallen MB per uur |
+| berichten | kern → apps 305 per nep-seconde (8 281 per echte seconde); bij de cockpits 13 601 per echte seconde, 7,3 GB in totaal; naar APC en LPD8 1 826 per echte seconde |
+| heap na gc | 12,6 MB na 10 s, 13,4 MB na 1 min, 14,1 MB na 3 min, 14,4 MB na 5 min, 14,6 MB na 8 min; oordeel: minimum +0,85 MB, geen lek. Wat er nog bijkomt is begrensd en vult zich langzaam: hub-snapshots (13 → 88 van de 99 nummers, de cockpit kiest er willekeurig één), de LED-kaart van de lease-app (79 → 462 adressen) en door V8 gecompileerde code. De groei per minuut neemt af. rss max 120 MB |
+| event-loop | p50 0,2 ms, p99 4,5 ms, max 67 ms (de eigen `gc()` van de meting: tot 22 ms) — bij ±27× het werk van een echte avond per seconde |
+| timers en handles | 13 klok-timers bij de start, 35 op het drukste moment, 13 zonder clients, **0** na `hub.stop()`; zonder clients alleen nog de luisterende server-socket open, na stoppen niets |
+| structuren | alles vlak of binnen zijn grens: `kern.apps` 10–13 (11 zonder clients: 7 apps, 3 drivers en de rommel-app, die een manifest stuurde), `kern.verbindingen` 3 zonder clients (de drivers), `kern.slews` hooguit 9, routes, padDruk, ingedrukte triggers en LED-wachtrij zonder clients 0, luisteraars op de kern steeds 8, driver-diagnose op de ringbuffer (3 × 256) |
 
 Ter controle, zonder de herstellingen in de kern (`src/core/kern.js` van vóór golf 7, `--nep-minuten 60`): FOUT,
 `app.waarden` groeit (mediaan 210 → 324; de rommel-app tot 296 waarden, grens 128) en 86 geschonden invarianten:

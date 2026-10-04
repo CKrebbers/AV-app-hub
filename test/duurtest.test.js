@@ -3,17 +3,18 @@
 // structuur die groeit, een paniek die blijft hangen, een timer die na stoppen blijft staan) meteen opvalt. De
 // lange run (minuten) draait lokaal. Daarnaast gerichte tests voor de lekken die de duurtest vond.
 import { describe, it, expect } from 'vitest';
-import { draaiDuurtest, rapportTekst, maakToeval, Agenda, groeit, heapOordeel } from '../tools/duurtest.mjs';
+import { draaiDuurtest, rapportTekst, maakToeval, Agenda, groeit, heapOordeel, leesOpties } from '../tools/duurtest.mjs';
 import { opzet, meldAan, nepVerbinding, stuurApp, FL, MS } from './kern-hulp.js';
 import { ApcSessie, maakApparaten } from '../src/apparaten.js';
 import { NepKlok } from '../src/core/klok.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { MAX_PARAMS } from '../src/protocol/manifest.js';
+import { Kern } from '../src/core/kern.js';
 
 describe('duurtest: een korte avond met de hele hub', () => {
   it('drie minuten nep-tijd (plus afbouw): geen lek, geen geschonden invariant, en er gebeurde van alles', async () => {
     // Seed 7 en een vaste nep-duur: elke run precies dezelfde avond, hoe snel de machine ook is.
-    const r = await draaiDuurtest({ nepMs: 3 * 60_000, seed: 7, meetElkeMs: 500, heap: false });
+    const r = await draaiDuurtest({ nepMs: 3 * 60_000, seed: 7, meetElkeMs: 500, heap: false, opname: 'doorlopend' });
     if (!r.ok) console.log(rapportTekst(r));
     expect(r.schendingen).toEqual([]);
     expect(r.lekken).toEqual([]);
@@ -27,9 +28,47 @@ describe('duurtest: een korte avond met de hele hub', () => {
     expect(r.berichten.totaal.cockpit).toBeGreaterThan(1_000);
     // Na stoppen staat er niets meer op de klok; zonder clients zijn alleen de drivers verbonden.
     expect(r.timers.naStop).toBe(0);
-    expect(r.groottes['kern.verbindingen'].naClients).toBe(3);
+    expect(r.groottes['kern.verbindingen'].naClients).toBe(r.drivers);
     expect(r.metingen.length).toBeGreaterThan(3);
+    // Eén opname van de hele avond, in de tijdelijke map (nooit in het echte avondarchief), netjes afgesloten.
+    expect(r.opnameUitslag?.waar).toMatch(/^avonden\//);
+    expect(r.opnameUitslag?.nepMin).toBeGreaterThanOrEqual(3);
+    expect(r.opnameUitslag?.samenvattingKB).toBeGreaterThan(0);
+    // Zonder heap-oordeel geen gc(): niet elke meting twee volledige gc's, geen V8-vlaggen in het vitest-proces.
+    expect(r.heap.metGc).toBe(false);
   }, 180_000);
+});
+
+describe('duurtest: de opdrachtregel', () => {
+  it('standaard: 3 minuten echt, seed 7, één opname de hele avond', () => {
+    const l = leesOpties([]);
+    expect(l.fout).toBeNull();
+    if (l.fout === null) expect(l.opties).toMatchObject({ echtMs: 180_000, nepMs: Infinity, seed: 7, stapMs: 50, meetElkeMs: 2000, opname: 'doorlopend', bewaar: false });
+    const n = leesOpties(['--nep-minuten', '6', '--seed', '5', '--opname', 'wisselend', '--stil', '--bewaar', '--uit', '/tmp/x']);
+    expect(n.fout).toBeNull();
+    if (n.fout === null) {
+      expect(n.opties).toMatchObject({ echtMs: Infinity, nepMs: 360_000, seed: 5, opname: 'wisselend', bewaar: true });
+      expect([n.stil, n.uit]).toEqual([true, '/tmp/x']);
+    }
+  });
+  it('een tikfout of een getal dat geen getal is, geeft een fout (geen vals "goed" na 0 rondes)', () => {
+    for (const [args, fout] of /** @type {[string[], RegExp][]} */ ([
+      [['--minuten', 'drie'], /--minuten moet een getal groter dan 0/],
+      [['--minuten', '0'], /groter dan 0/],
+      [['--minuten', '-2'], /groter dan 0/],
+      [['--nep-minuten', 'Infinity'], /groter dan 0/],
+      [['--minuut', '3'], /onbekende optie --minuut/],
+      [['--seed'], /--seed mist een waarde/],
+      [['--seed', '1.5'], /geheel getal/],
+      [['--minuten', '--seed', '7'], /--minuten mist een waarde/],
+      [['--opname', 'soms'], /doorlopend of wisselend/],
+      [['3'], /onverwacht "3"/],
+    ])) expect(leesOpties(args).fout, args.join(' ')).toMatch(fout);
+  });
+  it('draaiDuurtest zelf weigert ook onzin (voordat er iets start)', async () => {
+    await expect(draaiDuurtest({ echtMs: Number.NaN })).rejects.toThrow(/echtMs moet een getal groter dan 0/);
+    await expect(draaiDuurtest({ nepMs: 1000, seed: -1 })).rejects.toThrow(/seed/);
+  });
 });
 
 describe('duurtest: hulpmiddelen', () => {
@@ -84,6 +123,36 @@ describe('lekken die de duurtest vond', () => {
     // Een app mét manifest blijft bekend (status weg, waarden bewaard), zoals altijd.
     kern.verbreek(fl);
     expect(kern.apps.get('formula-lab')?.status).toBe('weg');
+  });
+
+  it('het slot van één vergeten app gaat naar de volgende app (geen nieuw slot erachter)', () => {
+    const { kern } = opzet();
+    const v = nepVerbinding();
+    kern.verbind(v);
+    stuurApp(kern, v, { t: 'hallo', app: 'proef', inst: 'p', v: 1 });
+    expect(kern.apps.get('proef')?.slot).toBe(1);
+    kern.verbreek(v);
+    meldAan(kern, FL);
+    expect(kern.apps.get('formula-lab')?.slot).toBe(1);
+    expect(kern.slots).toEqual(['formula-lab']);
+  });
+
+  // Pas na het samenvoegen met golf-7-herstart (herstelSlotsEnFocus, bewaardFocus): een vergeten app neemt de
+  // focus mee, maar wist niet wie hem na een herstart midden in de set terug hoort te krijgen (dat doet alleen focus()).
+  it.runIf('herstelSlotsEnFocus' in Kern.prototype)('na een herstart: een vergeten app zonder manifest neemt de bewaarde focus niet mee', () => {
+    const { kern } = opzet();
+    const k = /** @type {any} */ (kern);
+    expect(k.herstelSlotsEnFocus({ slots: ['formula-lab', 'medisynth'], focus: 'medisynth' })).toEqual({ ok: true, overgeslagen: 0 });
+    const tab = nepVerbinding();
+    kern.verbind(tab);
+    stuurApp(kern, tab, { t: 'hallo', app: 'tab', inst: 't', v: 1 });   // nog geen manifest: tijdelijk de focus
+    expect(kern.focusApp).toBe('tab');
+    kern.verbreek(tab);
+    expect(kern.focusApp).toBeNull();
+    meldAan(kern, FL);
+    expect(kern.focusApp).toBe('formula-lab');
+    meldAan(kern, MS);
+    expect(kern.focusApp).toBe('medisynth');
   });
 
   it('vóór het manifest onthoudt de kern alleen geldige ids, hooguit zoveel als een manifest params heeft', () => {
@@ -164,4 +233,12 @@ describe('lekken die de duurtest vond', () => {
     await stop;
     expect(klok.timers.size).toBe(0);
   });
+});
+
+// Bekende risico's op het podium die de duurtest bewust omzeilt (docs/DUURTEST.md "Open punten", STATUS.md). Zodra
+// ze opgelost zijn: de test hier schrijven en de omweg in tools/duurtest.mjs weghalen.
+describe('open punten (de duurtest omzeilt ze nu)', () => {
+  it.todo('een cockpit die wegvalt terwijl hij een trigger vasthoudt: de hub laat de trigger los (trig aan:false)');
+  it.todo('dezelfde toets twee keer ingedrukt (APC en cockpit) met een focuswissel ertussen: de eerste app krijgt zijn los');
+  it.todo('een controller die sneller terug is dan één hotplug-ronde: de hub initialiseert hem opnieuw');
 });

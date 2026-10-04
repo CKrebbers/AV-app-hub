@@ -278,8 +278,11 @@ export class Kern extends Zender {
     this.appPaniekTot.delete(a.app);
     if (a.slot !== null && this.slots[a.slot - 1] === a.app) this.slots[a.slot - 1] = null;
     a.slot = null;
-    if (this.focusApp === a.app) { this.focus(null); return; }
-    if (this.hubIn) this.#teken();
+    // Niet via focus(null): dat is een keuze van Clay (of de set). Hier valt alleen een app weg; wat de hub nog
+    // weet over wie de focus hoort te krijgen (bv. na een herstart midden in de set), blijft staan.
+    const hadFocus = this.focusApp === a.app;
+    if (hadFocus) this.focusApp = null;
+    if (hadFocus || this.hubIn) this.#teken();
     this.#beeldGewijzigd();
   }
 
@@ -354,8 +357,10 @@ export class Kern extends Zender {
    */
   #geefSlot(a) {
     if (a.slot !== null) return;
-    const vrij = this.slots.indexOf(null); // van een vergeten app (#vergeet)
-    if (vrij >= 0) { this.slots[vrij] = a.app; a.slot = vrij + 1; return; }
+    // Zijn eigen slot van vóór een herstart van de hub (herstelSlotsEnFocus), of een gat: dat eerst.
+    const eigen = this.slots.indexOf(a.app);
+    const gat = eigen >= 0 ? eigen : this.slots.indexOf(null);
+    if (gat >= 0) { this.slots[gat] = a.app; a.slot = gat + 1; return; }
     if (this.slots.length < SLOTS) { a.slot = this.slots.push(a.app); return; }
     const weg = (/** @type {string|null} */ id) => { const st = this.apps.get(id ?? '')?.status; return st === undefined || st === 'weg'; };
     let i = this.slots.findIndex((id) => weg(id) && id !== this.focusApp);
