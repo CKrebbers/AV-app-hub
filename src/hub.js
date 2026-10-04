@@ -18,6 +18,17 @@ import { Opnemer, avondmapPad } from './opname/opnemer.js';
 export const OPNAME_SLUIT_MS = 2000;
 
 /**
+ * Is een melding van de Opnemer een fout (rood in de cockpit)? Fouten dragen de oorzaak mee (e), of beginnen
+ * met "opname: " (geen avondmap, niets bewaard, achterstand); "opname: schrijven lukt weer" is goed nieuws.
+ * "opname gestart …", "opname loopt: …" en "opname klaar: …" zijn gewone meldingen.
+ * @param {string} tekst @param {unknown} [e]
+ */
+export function isOpnameFout(tekst, e) {
+  if (e !== undefined && e !== null) return true;
+  return /^opname: /.test(String(tekst)) && !/lukt weer/.test(String(tekst));
+}
+
+/**
  * @param {{
  *   config: any, systeem: import('./ports/poort.js').Systeem, klok?: import('./core/klok.js').Klok,
  *   poort?: number, host?: string, lpd8Profiel?: any, drivers?: boolean, fetch?: typeof fetch,
@@ -55,9 +66,15 @@ export async function startHub({ config, systeem, klok = echteKlok, poort, host,
     ...(opname.git !== undefined ? { git: opname.git } : {}), spoelMs: opname.spoelMs,
     lpd8Profiel: () => apparaten.lpd8.profiel,
   });
+  // Cockpit: sinds wanneer er opgenomen wordt (vóór opnemer.koppel, zodat het er al staat als de eerste melding komt).
+  if (opnemer) kern.bij('opname', (/** @type {boolean} */ aan) => kern.zetOpnameInfo({ sinds: aan ? klok.nu() : null }));
   opnemer?.koppel();
   await opnemer?.gitKlaar;   // kort (git rev-parse): dan staat de commit ook in de kop van een avond die meteen begint
-  opnemer?.bij('melding', (/** @type {string} */ t) => log(t));
+  opnemer?.bij('melding', (/** @type {string} */ t, /** @type {unknown} */ e) => {
+    log(t);
+    // Ook naar de cockpit (beeld.opnameInfo): de laatste melding blijft daar staan tot er een nieuwe komt.
+    kern.zetOpnameInfo({ map: opnemer.huidig?.map ?? null, melding: t, fout: isOpnameFout(t, e) });
+  });
   apparaten.lpd8.bij('profiel', () => opnemer?.profielGewijzigd());
 
   // Echte controllers → kern; hun stand → cockpit.

@@ -129,10 +129,26 @@ async function demo() {
   ];
   const globaal = { 'macro.intensiteit': 0.6, 'macro.helderheid': 0.4, 'macro.ruimte': 0.5, 'macro.beweging': 0.2, 'macro.kleur': 0.7, 'macro.dichtheid': 0.3, 'klok.adem_periode': 0.5, 'macro.balans': 0.5, adem: 0, bpm: 92, grondtoon: 'D' };
   const t0 = Date.now();
+  // LPD8-pad 4 = opname (zoals de hub, zonder schijf); een zet op een 'waarde' glijdt over 2 s (slew_s).
+  const opname = { aan: false, sinds: /** @type {number|null} */ (null), melding: /** @type {string|null} */ (null) };
+  /** @type {Map<string, { app: string, id: string, van: number, doel: number, start: number, eindMs: number }>} */
+  const slews = new Map();
   const beeld = () => {
-    globaal.adem = ((Date.now() - t0) / 1000 / (4 + 12 * globaal['klok.adem_periode'])) % 1;
+    const nu = Date.now();
+    globaal.adem = ((nu - t0) / 1000 / (4 + 12 * globaal['klok.adem_periode'])) % 1;
+    for (const [k, x] of slews) {
+      const a = apps.find((y) => y.app === x.app);
+      const f = Math.min(1, (nu - x.start) / (x.eindMs - x.start));
+      if (a) /** @type {any} */ (a.waarden)[x.id] = x.van + (x.doel - x.van) * f;
+      if (f >= 1) slews.delete(k);
+    }
     const focus = apps.find((a) => a.focus)?.app ?? null;
-    return { t: 'beeld', apps, focus, globaal, apparaten: { apc40: false, lpd8: false } };
+    const map = opname.aan ? `/demo/varve-avonden/${new Date(/** @type {number} */ (opname.sinds)).toISOString().slice(0, 19).replace('T', '_').replaceAll(':', '-')}` : null;
+    return {
+      t: 'beeld', apps, focus, globaal, apparaten: { apc40: false, lpd8: false }, nu,
+      opname: opname.aan, opnameInfo: { map, melding: opname.melding, fout: false, sinds: opname.sinds },
+      slews: [...slews.values()].map(({ app, id, doel, eindMs }) => ({ app, id, doel, eindMs })),
+    };
   };
   const leds = () => {
     /** @type {Record<string, any>} */
@@ -157,6 +173,11 @@ async function demo() {
       const g = b.dev === 'lpd8' ? lpdOntleed(b.bytes) : APC.ontleed(b.bytes);
       s.stuur({ t: 'invoer', g });
       if (g.dev === 'lpd8' && g.kind === 'waarde' && g.el) /** @type {Record<string, any>} */ (globaal)[ROLLEN[Number(g.el.slice(1)) - 1]] = g.v;
+      if (g.dev === 'lpd8' && g.kind === 'druk' && g.el === 'p4') {
+        opname.aan = !opname.aan;
+        opname.sinds = opname.aan ? Date.now() : null;
+        opname.melding = opname.aan ? 'opname loopt (demo, er wordt niets bewaard)' : 'opname klaar (demo)';
+      }
       if (g.el?.startsWith('fader') && g.kind === 'waarde') {
         const fa = apps.find((a) => a.focus);
         const p = fa?.params.filter((x) => x.soort === 'waarde')[Number(g.el.slice(5)) - 1];
@@ -167,7 +188,11 @@ async function demo() {
       s.stuur({ t: 'leds', dev: 'apc40', staat: leds() });
     } else if (b.t === 'zet') {
       const a = apps.find((x) => x.app === b.app);
-      if (a) /** @type {any} */ (a.waarden)[b.id] = b.v;
+      const p = a?.params.find((x) => x.id === b.id);
+      if (a && p?.soort === 'waarde') {
+        const nu = Date.now();
+        slews.set(`${a.app}:${b.id}`, { app: a.app, id: b.id, van: /** @type {any} */ (a.waarden)[b.id] ?? 0, doel: b.v, start: nu, eindMs: nu + 2000 });
+      } else if (a) /** @type {any} */ (a.waarden)[b.id] = b.v;
     }
     console.log('cockpit →', JSON.stringify(b));
   });

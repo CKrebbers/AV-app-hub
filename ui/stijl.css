@@ -38,6 +38,19 @@ h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
 .naar-oefen { color: var(--zacht); text-decoration: none; font-size: 13px; border: 1px solid var(--rand); border-radius: 999px; padding: 2px 10px; }
 .naar-oefen:hover { color: var(--tekst); }
 .merk .stip { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+/* opname (LPD8-pad 4): rode REC met mapnaam en looptijd, en de laatste melding (fout = rood) */
+.opname { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.rec { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+  font: 600 12px var(--mono); color: #fff; background: #c8332e; border: 1px solid var(--fout);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--fout) 55%, transparent); }
+.rec[hidden], .opname-melding[hidden] { display: none; }
+.rec .rec-stip { color: #fff; animation: rec-stip 1.2s ease-in-out infinite; }
+.rec .rec-map { font-weight: 400; opacity: .9; }
+.rec .rec-tijd { font-variant-numeric: tabular-nums; }
+@keyframes rec-stip { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .rec .rec-stip { animation: none; } }
+.opname-melding { font-size: 12px; color: var(--zacht); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42ch; }
+.opname-melding.fout { color: var(--fout); font-weight: 600; }
 .apparaten { display: flex; gap: 6px; margin-left: auto; }
 .chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rand); color: var(--stil); }
 .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--stil); }
@@ -156,6 +169,9 @@ body.paniek .kop { box-shadow: inset 0 -2px 0 var(--fout); }
 .lpd-pad.in, .lpd-pad.hw { background: #c8332e; border-color: #ff6a5e; box-shadow: 0 0 12px #c8332e88; }
 .lpd-pad.in .naam, .lpd-pad.hw .naam, .lpd-pad.in .kort, .lpd-pad.hw .kort { color: #fff; }
 .lpd-pad.vast { box-shadow: 0 0 0 2px var(--accent); }
+/* P4 = gebaren opnemen: zolang de opname loopt een rode rand en stip */
+.lpd-pad.opneemt { border-color: var(--fout); box-shadow: inset 0 0 0 2px var(--fout); }
+.lpd-pad.opneemt::after { content: '● REC'; position: absolute; top: 4px; right: 6px; font: 600 9px var(--mono); color: var(--fout); }
 @media (max-width: 700px) { .lpd8 { grid-template-columns: 1fr; } }
 
 /* ── apps ── */
@@ -189,6 +205,17 @@ body.paniek .kop { box-shadow: inset 0 -2px 0 var(--fout); }
 .param .keuzes { display: flex; flex-wrap: wrap; gap: 4px; }
 .param .keuzes button { padding: 3px 8px; font-size: 12px; }
 .param .trigger { touch-action: none; }
+/* slew (§12): de schuif staat op het doel; de tussenwaarde (wat de app nu heeft) is een aparte balk */
+.param .schuif { position: relative; min-width: 0; }
+.param .schuif .tussen, .param .schuif .doel { position: absolute; pointer-events: none; display: none; }
+.param .schuif .tussen { z-index: 1; left: 0; top: 50%; height: 4px; margin-top: -2px; width: calc(var(--tussen, 0) * 100%); border-radius: 2px;
+  background: #e6e9f0d9; box-shadow: 0 0 0 1px #0b0d1299; }
+.param .schuif .tussen::after { content: ''; position: absolute; right: -4px; top: 50%; width: 8px; height: 8px; margin-top: -4px; border-radius: 50%; background: #fff; }
+.param .schuif .doel { z-index: 1; top: 1px; bottom: 1px; left: calc(var(--doel, 0) * 100%); width: 2px; margin-left: -1px; background: var(--let); }
+.param .schuif .naar { position: absolute; top: 100%; left: calc(var(--doel, 0) * 100%); transform: translateX(-50%); margin-top: -2px;
+  font: 10px var(--mono); color: var(--let); white-space: nowrap; display: none; pointer-events: none; }
+.param.glijdt { padding-bottom: 10px; }
+.param.glijdt .schuif .tussen, .param.glijdt .schuif .doel, .param.glijdt .schuif .naar { display: block; }
 
 /* ── snapshots ── */
 .snapshots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

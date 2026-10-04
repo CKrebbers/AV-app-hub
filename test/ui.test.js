@@ -7,7 +7,7 @@ import { maakOntleder, standaardProfiel } from '../src/devices/lpd8.js';
 import { INDELING, BREEDTE, HOOGTE } from '../ui/indeling.js';
 import { drukBytes, losBytes, ccBytes, relBytes, lpdDruk, lpdLos, lpdKnop, animDuur } from '../ui/midi.js';
 import { weergave, LED_KLEUR } from '../ui/led.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel } from '../ui/opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, mapNaamVan, looptijdTekst, opnameVan, slewsVan } from '../ui/opmaak.js';
 import { Verbinding, WACHTTIJDEN, VERBIND_TIJD, cockpitUrl } from '../ui/verbinding.js';
 import { startNepServer, bestandVoor } from './ui-nepserver.js';
 
@@ -151,6 +151,25 @@ describe('opmaak', () => {
     expect(focusVan({ apps: 'x' })).toBe(null);
     expect(paramSleutel('a', /** @type {any} */ ([null, { id: 'x', soort: 'waarde' }, 3]))).toBe('a|x:waarde:0');
     expect(paramSleutel('a', /** @type {any} */ ('x'))).toBe('a|');
+  });
+  it('opname: mapnaam, looptijd en melding uit het beeld', () => {
+    expect(mapNaamVan('/Users/clay/Movies/varve-avonden/2026-10-04_21-00-00')).toBe('2026-10-04_21-00-00');
+    expect(mapNaamVan('C:\\avonden\\2026-10-04_21-00-00-2\\')).toBe('2026-10-04_21-00-00-2');
+    expect([mapNaamVan(null), mapNaamVan('')]).toEqual(['', '']);
+    expect([looptijdTekst(0), looptijdTekst(61_900), looptijdTekst(3_725_000), looptijdTekst(-5), looptijdTekst(NaN)]).toEqual(['0:00', '1:01', '1:02:05', '0:00', '0:00']);
+    const b = { opname: true, nu: 95_000, opnameInfo: { map: '/a/2026-10-04_21-00-00', melding: 'opname loopt: /a/2026-10-04_21-00-00', fout: false, sinds: 5_000 } };
+    expect(opnameVan(b)).toEqual({ aan: true, map: '2026-10-04_21-00-00', looptijdMs: 90_000, melding: 'opname loopt: /a/2026-10-04_21-00-00', fout: false });
+    // gestopt: geen REC meer, de melding blijft
+    expect(opnameVan({ ...b, opname: false })).toMatchObject({ aan: false, map: '', looptijdMs: null, melding: 'opname loopt: /a/2026-10-04_21-00-00' });
+    expect(opnameVan({ opname: true })).toEqual({ aan: true, map: '', looptijdMs: null, melding: '', fout: false });
+    expect(opnameVan(null)).toEqual({ aan: false, map: '', looptijdMs: null, melding: '', fout: false });
+  });
+  it('slews van de focus-app uit het beeld', () => {
+    const b = { nu: 1000, slews: [{ app: 'lab', id: 'niveau', doel: 0.8, eindMs: 3500 }, { app: 'ander', id: 'x', doel: 0.1, eindMs: 2000 }, { app: 'lab', id: 'kapot', doel: 'x' }, null] };
+    expect([...slewsVan(b, 'lab')]).toEqual([['niveau', { doel: 0.8, restMs: 2500 }]]);
+    expect(slewsVan(b, null).size).toBe(0);
+    expect(slewsVan({ slews: 'x' }, 'lab').size).toBe(0);
+    expect(slewsVan({ slews: [{ app: 'lab', id: 'n', doel: 1.4, eindMs: 1 }] }, 'lab').get('n')).toEqual({ doel: 1, restMs: null });
   });
 });
 
@@ -569,6 +588,124 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     await page.waitForTimeout(450);
     server.stuur(metTrigger); // daarna geldt weer wat de hub zegt
     await expect.poll(() => s.inputValue()).toBe('0.25');
+  });
+
+  // ── slew (§12) en opname ──
+
+  const metSlew = (/** @type {number} */ niveau, /** @type {any[]} */ slews) => ({
+    ...metTrigger, nu: 10_000, slews,
+    apps: [{ ...metTrigger.apps[0], waarden: { niveau } }],
+  });
+  const rijStaat = (/** @type {string} */ id) => page.locator(`.param[data-id="${id}"]`).evaluate((rij) => {
+    const naar = /** @type {HTMLElement} */ (rij.querySelector('.naar'));
+    const doel = /** @type {HTMLElement} */ (rij.querySelector('.doel'));
+    const tussen = /** @type {HTMLElement} */ (rij.querySelector('.tussen'));
+    const schuif = /** @type {HTMLElement} */ (rij.querySelector('.schuif')).getBoundingClientRect();
+    const zichtbaar = (/** @type {HTMLElement} */ e) => getComputedStyle(e).display !== 'none';
+    return {
+      glijdt: rij.classList.contains('glijdt'),
+      schuif: /** @type {HTMLInputElement} */ (rij.querySelector('input')).value,
+      getal: /** @type {HTMLElement} */ (rij.querySelector('output')).textContent,
+      naar: zichtbaar(naar) ? naar.textContent : null,
+      // waar de doelstreep en het eind van de tussenbalk staan, als aandeel van de schuifbreedte
+      doel: zichtbaar(doel) ? (doel.getBoundingClientRect().left + doel.getBoundingClientRect().width / 2 - schuif.left) / schuif.width : null,
+      tussen: zichtbaar(tussen) ? tussen.getBoundingClientRect().width / schuif.width : null,
+    };
+  });
+
+  it('slew: de schuif staat op het doel met "→ 80%", de tussenwaarde is een aparte balk', async () => {
+    server.stuur(metSlew(0.3, [{ app: 'lab', id: 'niveau', doel: 0.8, eindMs: 12_500 }]));
+    await page.locator('.param[data-id="niveau"] input').waitFor();
+    await expect.poll(() => rijStaat('niveau').then((r) => r.glijdt)).toBe(true);
+    const r = await rijStaat('niveau');
+    expect(r).toMatchObject({ schuif: '0.8', getal: '30%', naar: '→ 80%' });
+    expect(r.doel).toBeCloseTo(0.8, 2);
+    expect(r.tussen).toBeCloseTo(0.3, 2);
+    // een slew van een andere app of parameter doet hier niets
+    server.stuur(metSlew(0.3, [{ app: 'ander', id: 'niveau', doel: 0.8, eindMs: 12_500 }]));
+    await expect.poll(() => rijStaat('niveau')).toMatchObject({ glijdt: false, schuif: '0.3', getal: '30%', naar: null, doel: null, tussen: null });
+    // klaar met glijden: geen markering meer, de schuif staat op de waarde
+    server.stuur(metSlew(0.55, [{ app: 'lab', id: 'niveau', doel: 0.8, eindMs: 12_500 }]));
+    await expect.poll(() => rijStaat('niveau').then((r) => r.getal)).toBe('55%');
+    server.stuur(metSlew(0.8, []));
+    await expect.poll(() => rijStaat('niveau')).toMatchObject({ glijdt: false, schuif: '0.8', getal: '80%', naar: null });
+  });
+
+  it('slew: een schuif die je net losliet springt niet terug naar de tussenwaarde', async () => {
+    server.stuur(metSlew(0.25, []));
+    const s = page.locator('.param[data-id="niveau"] input');
+    await s.waitFor();
+    await s.fill('0.8');
+    await server.wachtOp(() => zetten().some((z) => z.id === 'niveau' && z.v === 0.8));
+    await page.waitForTimeout(500);   // ruim na de korte rust van een eigen wijziging
+    // de hub glijdt: de app zit pas op 0,4 en daarna op 0,6
+    server.stuur(metSlew(0.4, [{ app: 'lab', id: 'niveau', doel: 0.8, eindMs: 12_000 }]));
+    await expect.poll(() => rijStaat('niveau').then((r) => r.getal)).toBe('40%');
+    expect(await rijStaat('niveau')).toMatchObject({ glijdt: true, schuif: '0.8', naar: '→ 80%' });
+    server.stuur(metSlew(0.6, [{ app: 'lab', id: 'niveau', doel: 0.8, eindMs: 12_000 }]));
+    await expect.poll(() => rijStaat('niveau').then((r) => r.tussen ?? 0)).toBeCloseTo(0.6, 2);
+    expect(await s.inputValue()).toBe('0.8');
+  });
+
+  it('slew terwijl je sleept: de schuif blijft van jou, de balk toont waar de app is', async () => {
+    server.stuur(metSlew(0.25, []));
+    const s = page.locator('.param[data-id="niveau"] input');
+    await s.waitFor();
+    await s.dispatchEvent('pointerdown');
+    await s.fill('0.7');
+    server.stuur(metSlew(0.35, [{ app: 'lab', id: 'niveau', doel: 0.5, eindMs: 12_000 }]));   // de hub loopt achter
+    await expect.poll(() => rijStaat('niveau').then((r) => r.glijdt)).toBe(true);
+    expect(await rijStaat('niveau')).toMatchObject({ schuif: '0.7', getal: '70%', naar: '→ 70%' });
+    expect((await rijStaat('niveau')).tussen).toBeCloseTo(0.35, 2);
+    await s.dispatchEvent('pointerup');
+  });
+
+  const opnameBeeld = (/** @type {any} */ x) => ({ ...tweeApps, nu: 100_000, ...x });
+  const kop = () => page.evaluate(() => {
+    const rec = /** @type {HTMLElement} */ (document.getElementById('rec'));
+    const m = /** @type {HTMLElement} */ (document.getElementById('opname-melding'));
+    const p4 = /** @type {HTMLElement} */ (document.querySelector('#lpd8 [data-id="p4"]'));
+    return {
+      rec: rec.hidden || getComputedStyle(rec).display === 'none' ? null : rec.textContent?.replace(/\s+/g, ' ').trim(),
+      recKleur: getComputedStyle(rec).backgroundColor,
+      melding: m.hidden ? null : m.textContent,
+      meldingKleur: getComputedStyle(m).color,
+      fout: m.classList.contains('fout'),
+      p4: p4.classList.contains('opneemt'),
+      p4Rand: getComputedStyle(p4).borderTopColor,
+    };
+  });
+  const rood = (/** @type {string} */ c) => { const [r, g, b] = (c.match(/\d+/g) ?? []).map(Number); return r > 150 && r > 2 * g && r > 2 * b; };
+
+  it('opname: rode REC met mapnaam en looptijd in de kop, P4 van de LPD8 rood, melding blijft staan', async () => {
+    server.stuur(opnameBeeld({ opname: false }));
+    await page.waitForSelector('.app[data-app="formula-lab"]');
+    expect(await kop()).toMatchObject({ rec: null, melding: null, p4: false });
+    server.stuur(opnameBeeld({ opname: true, opnameInfo: { map: null, melding: 'opname gestart — map wordt gemaakt in /x/avonden…', fout: false, sinds: 100_000 } }));
+    await expect.poll(() => kop().then((k) => k.rec)).toBe('● REC 0:00');
+    server.stuur(opnameBeeld({ opname: true, opnameInfo: { map: '/x/avonden/2026-10-04_21-00-00', melding: 'opname loopt: /x/avonden/2026-10-04_21-00-00', fout: false, sinds: 25_000 } }));
+    await expect.poll(() => kop().then((k) => k.rec)).toMatch(/^● REC 2026-10-04_21-00-00 1:1[56]$/);
+    let k = await kop();
+    expect(k).toMatchObject({ melding: 'opname loopt: /x/avonden/2026-10-04_21-00-00', fout: false, p4: true });
+    expect(rood(k.recKleur)).toBe(true);
+    expect(rood(k.meldingKleur)).toBe(false);
+    expect(rood(k.p4Rand)).toBe(true);
+    // de looptijd telt zelf door tussen de beelden
+    await expect.poll(() => kop().then((k) => k.rec), { timeout: 3000 }).toMatch(/1:1[67]$/);
+    // een fout: rood, en hij blijft staan bij volgende beelden zonder nieuwe melding
+    const fout = 'opname: kan niet schrijven in /x/avonden — schijf vol — maak ruimte vrij';
+    server.stuur(opnameBeeld({ opname: true, opnameInfo: { map: '/x/avonden/2026-10-04_21-00-00', melding: fout, fout: true, sinds: 25_000 } }));
+    await expect.poll(() => kop().then((k) => k.fout)).toBe(true);
+    k = await kop();
+    expect(k.melding).toBe(fout);
+    expect(rood(k.meldingKleur)).toBe(true);
+    // gestopt: REC weg, P4 weer gewoon, de laatste melding blijft
+    server.stuur(opnameBeeld({ opname: false, opnameInfo: { map: null, melding: fout, fout: true, sinds: null } }));
+    await expect.poll(() => kop().then((k) => k.rec)).toBe(null);
+    expect(await kop()).toMatchObject({ melding: fout, fout: true, p4: false });
+    server.stuur(opnameBeeld({ opname: false, opnameInfo: { map: null, melding: 'opname klaar: /x/avonden/2026-10-04_21-00-00 (1:20, 812 regels)', fout: false, sinds: null } }));
+    await expect.poll(() => kop().then((k) => k.melding)).toBe('opname klaar: /x/avonden/2026-10-04_21-00-00 (1:20, 812 regels)');
+    expect((await kop()).fout).toBe(false);
   });
 
   // ── LEDs ──

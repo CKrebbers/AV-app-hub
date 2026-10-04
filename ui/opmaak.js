@@ -91,3 +91,57 @@ export function appKleur(a) {
 export const paramSleutel = (app, params) => `${app}|${(Array.isArray(params) ? params : [])
   .filter((p) => p && typeof p === 'object')
   .map((p) => `${p.id}:${p.soort}:${Array.isArray(p.keuzes) ? p.keuzes.length : 0}`).join(',')}`;
+
+/** Laatste deel van een pad (de mapnaam van een avond), ook met Windows-slashes. @param {unknown} pad */
+export function mapNaamVan(pad) {
+  if (typeof pad !== 'string' || !pad) return '';
+  const delen = pad.split(/[\\/]+/).filter(Boolean);
+  return delen.length ? delen[delen.length - 1] : '';
+}
+
+/** Looptijd als m:ss, of u:mm:ss vanaf een uur (zoals de samenvatting van een avond). @param {unknown} ms */
+export function looptijdTekst(ms) {
+  const s = typeof ms === 'number' && Number.isFinite(ms) ? Math.max(0, Math.floor(ms / 1000)) : 0;
+  const u = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const twee = (/** @type {number} */ n) => String(n).padStart(2, '0');
+  return u ? `${u}:${twee(m)}:${twee(r)}` : `${m}:${twee(r)}`;
+}
+
+/**
+ * Opname-stand uit het beeld (PROTOCOL.md §8): loopt hij, de mapnaam, hoe lang hij al loopt (op het moment
+ * van het beeld; de cockpit telt zelf door), en de laatste melding. Robuust tegen ontbrekende velden.
+ * @param {any} beeld
+ * @returns {{ aan: boolean, map: string, looptijdMs: number|null, melding: string, fout: boolean }}
+ */
+export function opnameVan(beeld) {
+  const info = beeld && typeof beeld.opnameInfo === 'object' && beeld.opnameInfo ? beeld.opnameInfo : {};
+  const aan = beeld?.opname === true;
+  const nu = typeof beeld?.nu === 'number' && Number.isFinite(beeld.nu) ? beeld.nu : null;
+  const sinds = typeof info.sinds === 'number' && Number.isFinite(info.sinds) ? info.sinds : null;
+  return {
+    aan,
+    map: aan ? mapNaamVan(info.map) : '',
+    looptijdMs: aan && nu !== null && sinds !== null ? Math.max(0, nu - sinds) : null,
+    melding: typeof info.melding === 'string' ? info.melding : '',
+    fout: info.fout === true,
+  };
+}
+
+/**
+ * Lopende slews van één app uit het beeld: parameter-id → { doel, restMs } (restMs: hoe lang hij nog glijdt,
+ * op het moment van het beeld; null als het beeld geen `nu` heeft).
+ * @param {any} beeld @param {string|null} app
+ * @returns {Map<string, { doel: number, restMs: number|null }>}
+ */
+export function slewsVan(beeld, app) {
+  /** @type {Map<string, { doel: number, restMs: number|null }>} */
+  const uit = new Map();
+  if (!app || !Array.isArray(beeld?.slews)) return uit;
+  const nu = typeof beeld.nu === 'number' && Number.isFinite(beeld.nu) ? beeld.nu : null;
+  for (const s of beeld.slews) {
+    if (!s || s.app !== app || typeof s.id !== 'string' || typeof s.doel !== 'number' || !Number.isFinite(s.doel)) continue;
+    const eind = typeof s.eindMs === 'number' && Number.isFinite(s.eindMs) ? s.eindMs : null;
+    uit.set(s.id, { doel: Math.max(0, Math.min(1, s.doel)), restMs: nu !== null && eind !== null ? Math.max(0, eind - nu) : null });
+  }
+  return uit;
+}

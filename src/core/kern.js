@@ -1260,9 +1260,35 @@ export class Kern extends Zender {
       apparaten: { ...this.apparaatInfo },
       snapshots: [...this.snapshots.keys()].sort((x, y) => x - y),
       opname: this.opname,
+      opnameInfo: { ...this.opnameInfo },
       pickup,
+      // Lopende slews (§12): waar een parameter heen glijdt en wanneer hij er is (eindMs op de kern-klok, zie `nu`).
+      slews: [...this.slews.values()].map((x) => ({ app: x.app, id: x.id, doel: x.slew.naar, eindMs: x.slew.start + x.slew.duurMs })),
+      nu: this.klok.nu(),
     };
   }
+
+  /**
+   * Stand van de opname voor de cockpit (beeld.opnameInfo, PROTOCOL.md §8); src/hub.js geeft de meldingen van
+   * de Opnemer door. Alleen de meegegeven velden veranderen: map van de lopende avond (null = nog geen of
+   * geen map), de laatste melding (blijft staan tot er een nieuwe komt), of die een fout is, en sinds wanneer
+   * er opgenomen wordt (kern-klok, ms; null = niet).
+   * @param {Partial<{ map: string|null, melding: string|null, fout: boolean, sinds: number|null }>} info
+   */
+  zetOpnameInfo(info) {
+    const oud = this.opnameInfo;
+    const nieuw = { ...oud };
+    if (info && 'map' in info) nieuw.map = typeof info.map === 'string' ? info.map : null;
+    if (info && 'melding' in info) nieuw.melding = typeof info.melding === 'string' ? info.melding : null;
+    if (info && 'fout' in info) nieuw.fout = info.fout === true;
+    if (info && 'sinds' in info) nieuw.sinds = typeof info.sinds === 'number' && Number.isFinite(info.sinds) ? info.sinds : null;
+    if (nieuw.map === oud.map && nieuw.melding === oud.melding && nieuw.fout === oud.fout && nieuw.sinds === oud.sinds) return;
+    this.opnameInfo = nieuw;
+    this.#beeldGewijzigd();
+  }
+
+  /** @type {{ map: string|null, melding: string|null, fout: boolean, sinds: number|null }} */
+  opnameInfo = { map: null, melding: null, fout: false, sinds: null };
 
   /** De hub meldt de stand van een controller (voor de cockpit). @param {string} dev @param {{ verbonden: boolean, naam?: string|null, model?: string|null }} info */
   zetApparaat(dev, info) {

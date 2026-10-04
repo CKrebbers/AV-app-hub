@@ -119,6 +119,14 @@ export function maakLpd8(root, { stuur }) {
         if (typeof v === 'number' && !bezig.has(`k${i + 1}`)) zetStand(`k${i + 1}`, v);
       });
     },
+    /** Opname-stand (beeld.opname) op P4 'gebaren': rood zolang de avond wordt opgenomen. @param {boolean} aan */
+    zetOpname(aan) {
+      const d = el.get('p4');
+      if (!d) return;
+      d.classList.toggle('opneemt', aan);
+      d.setAttribute('aria-pressed', String(aan));
+      d.setAttribute('aria-label', `LPD8 pad 4: ${PAD_NAMEN[3]}${aan ? ' — opname loopt' : ''}`);
+    },
     /** @param {any} g */
     invoer(g) {
       if (!g || g.dev !== 'lpd8' || !g.el) return;
