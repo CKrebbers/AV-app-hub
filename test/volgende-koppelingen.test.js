@@ -168,7 +168,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'test/drivers.test.js', regel: 715, bevat: 'actueel t.o.v. de bronnen' },
     { pad: 'PROTOCOL.md', regel: 19, bevat: 'hub luistert op 7701' },
     { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 98, bevat: '"koppeling": "osc"' },
+    // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 beschrijven nog de stand van golf 5 ("osc")
+    { pad: 'config.json', regel: 98, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.
