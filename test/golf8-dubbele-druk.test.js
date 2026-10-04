@@ -1,5 +1,5 @@
 // @ts-nocheck
-// Golf 8: dezelfde toets twee keer ingedrukt zonder los (docs/DUURTEST.md open punt 2, PROTOCOL.md §11 "Triggers
+// Golf 8: dezelfde toets twee keer ingedrukt zonder los (docs/DUURTEST.md golf 8 punt 2, PROTOCOL.md §11 "Triggers
 // blijven nooit hangen"). De kern weet niet welke bron (APC, virtueel in een cockpit, een tweede cockpit) een toets
 // indrukt: voor hem is een toets in of uit. Een tweede druk op een toets die al in is, gaat bij dezelfde bestemming
 // nergens heen; is de bestemming intussen een andere (focuswissel, Bank), dan krijgt de eerste eerst zijn los. De

@@ -611,7 +611,7 @@ export async function startServer({ poort, host = '127.0.0.1', kern, uiMap, srcM
   // dan laat de hub zijn triggers los met `zet v:0`, zoals zijn virtuele toetsen. Niet als iemand hem nog vasthoudt:
   // een andere cockpit (die laat hem los, of de hub als ook die wegvalt), of de hardware (Stop All, LPD8 P1 of een
   // APC-pad: de kern laat hem los bij het loslaten daarvan). Een nette `v:0` van welke cockpit ook zet hem in de
-  // app uit (kern.cockpit telt geen bronnen, open punt 2); dan houdt niemand hem nog vast en volgt bij wegvallen niets.
+  // app uit (kern.cockpit telt geen bronnen: bekende grens); dan houdt niemand hem nog vast en volgt bij wegvallen niets.
   /** @type {Map<string, { app: string, id: string, houders: Set<WebSocket> }>} */
   const triggerHouders = new Map();
   /** De kern van src/core/kern.js, met de staat die hier gelezen wordt (een andere kern mist die: dan via beeld()). */

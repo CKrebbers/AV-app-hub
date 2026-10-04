@@ -7,7 +7,8 @@ staat nog klopt.
 
 - `tools/duurtest.mjs` — het script (en de functie `draaiDuurtest`, die de test ook gebruikt).
 - `test/duurtest.test.js` — een korte versie in CI (drie minuten nep-tijd plus afbouw, seed 7, één opname de hele
-  avond, ±10 s echt), de opdrachtregel, plus gerichte tests voor elk lek dat de duurtest vond.
+  avond, ±10 s echt), de opdrachtregel, gerichte tests voor elk lek dat de duurtest vond, en per punt van golf 8 een
+  test dat de korte avond het echt oefent (en de invariant ervan niet geschonden is).
 - Rapporten: `tools/uitvoer/duurtest-<datum>-seed<seed>.json` (`tools/uitvoer/` staat in `.gitignore`; een rapport
   dat je bewust meelevert, voeg je toe met `git add -f`).
 
@@ -50,8 +51,9 @@ Er is geen hardware, browser of andere repo nodig: alles draait in één Node-pr
   zelf doet, maar van buitenaf gestart zodat hun interne structuren te meten zijn: Scene Kit en Sediment (MIDI,
   op virtuele nep-poorten) en uurwerk (HTTP, tegen een nep-brug die ook even weg kan zijn). td-lab staat in
   `config.json` uit en blijft uit.
-- **Nep-MIDI**: een nep-APC40 mkII en een nep-LPD8 mk2 (`src/ports/nep.js`); de LPD8 antwoordt op de
-  identiteitsvraag.
+- **Nep-MIDI**: een nep-APC40 mkII en een nep-LPD8 mk2 (`src/ports/nep.js`); de APC antwoordt op de intro (zoals de
+  echte, met een intro-antwoord), de LPD8 op de identiteitsvraag. Een losgetrokken nep-poort gooit bij sturen en meldt
+  `levend()` false, ook als hij al terug is (een nieuwe poort met dezelfde naam).
 - **Nep-tijd**: een `NepKlok` die in stappen van `--stap` ms vooruit gezet wordt; tussen twee stappen krijgt de
   event-loop één ronde voor de echte WebSockets. Alle hub-timers (hartslag, adem, slew, wachtrij, LED-tempo,
   hotplug, opname, geheugen) lopen dus versneld, eerlijk, want ze lopen allemaal via de `Klok`. Op een gewone
@@ -65,13 +67,13 @@ Er is geen hardware, browser of andere repo nodig: alles draait in één Node-pr
 - **Cockpits** (2 tot 5) die komen en gaan, schuiven, focus kiezen, snapshots bewaren en laden, triggers
   indrukken en loslaten, virtueel op de APC en de LPD8 drukken (soms blijft een toets hangen tot de cockpit
   weggaat; dan laat de hub hem los), en soms een tijd niets lezen (een trage tablet: de hub moet dan overslaan en
-  later inhalen). Een cockpit die weggaat, laat eerst zijn triggers los, zoals `ui/cockpit.js` doet als de pagina
-  sluit (zie de open punten).
-- **Eén hand, één toets.** De hub ziet een virtuele toets en dezelfde fysieke toets als één toets; twee keer
-  indrukken zonder loslaten kan met één hand niet. Daarom drukt de "hand" op de APC nooit een toets die hij al
-  vasthoudt opnieuw in, drukken de cockpits virtueel alleen op de pads in rij 1–2 (en LPD8 P7, P8) en de hand op
-  de rest (en LPD8 P5, P6), en neemt een cockpit geen virtuele toets die een andere cockpit vasthoudt of net
-  losliet.
+  later inhalen). Een cockpit die weggaat, valt abrupt weg (`terminate`, zoals een tablet waarvan de wifi uitvalt):
+  niets losgelaten, ook geen ingedrukte trigger. Dat doet de hub (PROTOCOL §10).
+- **Eén hand, twee kanten.** De "hand" op de APC drukt nooit een toets in die hij al vasthoudt (dat kan met één hand
+  niet). De cockpits drukken virtueel op dezelfde toetsen als de hand, ook op Stop All en op LPD8 P5–P8, ook als de
+  hand of een andere cockpit die toets op dat moment vasthoudt (in het rapport: `dubbeledruk`). Voor de hub is dat één
+  toets die in of uit is; de eerste los laat hem los, en wisselde de focus ertussen, dan krijgt de eerste app eerst
+  zijn los (PROTOCOL §11).
 
 ## Wat er gebeurt (gemiddeld, in nep-tijd)
 
@@ -82,18 +84,20 @@ Er is geen hardware, browser of andere repo nodig: alles draait in één Node-pr
 | hub-snapshot laden of bewaren (Bank + Scene, Shift erbij) | elke 25 s |
 | Stop All ingedrukt houden (0,15–3 s) | elke 40 s |
 | LPD8-macroknop draaien | elke 1,5 s |
-| LPD8 P2 tap tempo, P3 adem, P5–P6 snapshot kort/lang | elke 30 s, 60 s, 15 s |
+| LPD8 P2 tap tempo, P3 adem, P5–P8 snapshot kort/lang | elke 30 s, 60 s, 15 s |
 | LPD8 P1 paniek vasthouden (kort, of 1,3–5 s) | elke 90 s |
 | LPD8 P4: één opname van het begin tot de afbouw (`--opname doorlopend`), of aan/uit (`wisselend`) | eenmaal; of elke 150 s |
-| cockpit: zet (een trigger: indrukken en weer los) / focus / snapshot / virtuele toets | elke 0,4 s |
+| cockpit: zet (een trigger: indrukken en weer los) / focus / snapshot / virtuele toets (1 op 10 Stop All) | elke 0,4 s |
 | cockpit erbij of weg; een cockpit 2–12 s traag | elke 20 s; elke 30 s |
 | een app: netwerkhapering, herstart (nieuwe inst), stil (geen hartslag), lang weg, of een tweede tab | elke 20 s |
 | rommel-app: kapotte JSON, binair, berichten vóór hallo, ongeldige manifesten, onbekende parameters, LED-SysEx, hartslagvloed, een bericht boven 256 kB, abrupt weg, steeds een ander manifest | elke 1,5 s |
 | een half afgebouwde app met steeds een andere naam (alleen `hallo`) | elke 45 s |
-| APC eruit (2,5–10 s, altijd langer dan één hotplug-ronde); LPD8 eruit (idem); uurwerk-brug weg (5–40 s) | elke 5 min; 6,7 min; 3,3 min |
+| APC eruit (1 op 3 keer 0,1–0,25 s, korter dan één tik van de poortlijst; anders 0,25–10 s); LPD8 eruit (idem); uurwerk-brug weg (5–40 s) | elke 5 min; 6,7 min; 3,3 min |
+| APC en LPD8 allebei één keer 0,15 s los, vroeg in de avond (zonder toeval, zodat ook de korte run het oefent) | na 40 s en 70 s |
 
 Aan het eind de **afbouw**: wat nog gepland stond afmaken, alles loslaten, alle apps terug en 15 s rust; dan
-de staat vergelijken; dan alle apps, cockpits en de rommel weg; dan de hub stoppen.
+de staat vergelijken; dan drukt elke cockpit een trigger in en valt abrupt weg; dan alle apps en de rommel weg; dan de
+hub stoppen.
 
 ## Het rapport lezen
 
@@ -125,7 +129,11 @@ Op stdout (en hetzelfde, plus alle metingen, in de JSON):
   per soort net zo (minstens 20 hoger).
 - **Opname van de hele avond** (bij `doorlopend`) — hoeveel nep-minuten, hoe groot `gebaren.jsonl` en
   `samenvatting.md` werden, en voor hoeveel apps en invoerbronnen er tellers waren.
-- **Acties** — hoe vaak elke soort handeling voorkwam.
+- **Golf 8 gecontroleerd** — hoe vaak de invarianten van golf 8 echt aan de beurt kwamen (een cockpit die wegviel met
+  een trigger vast, Stop All los terwijl niemand hem vasthield, een replug van de APC en de LPD8), en hoeveel logregels
+  `sturen mislukt` er per controller kwamen.
+- **Acties** — hoe vaak elke soort handeling voorkwam (ook `dubbeledruk`, `cockpit.virtueel.stopall`,
+  `cockpit.weg.trigger`, `apc.kortlos`, `lpd8.kortlos`).
 - **Hub-meldingen** — het aantal, en de laatste vijf (de laatste dertig staan in de JSON).
 
 ### Invarianten
@@ -135,10 +143,16 @@ Op stdout (en hetzelfde, plus alle metingen, in de JSON):
 | P1 langer dan 1 s vast → de paniek loopt (`globaal.paniek` 1) | 150 ms na het ingaan |
 | na loslaten + naloop (`paniek.naloop_s`) + 1 s: paniek voorbij, geen P1-timer, `paniekTot` verlopen; geen Stop All op Infinity; elke app die bij het loslaten verbonden was, hoorde daarna "paniek uit" (een app met een paniek-trigger `trig aan:false`, de rest `globaal paniek 0`) | na elke paniek |
 | geen slew loopt meer dan 1 s over zijn eindtijd, en geen slew duurt langer dan 120 s | elke 5 s nep |
+| een paniek op Infinity (`appPaniekTot`) hoort alleen bij de app waar de Stop All die nu in is heen ging (`kern.routes`) | elke 5 s nep |
+| Stop All los (hand en cockpits) → geen app met `appPaniekTot` Infinity | na elke paniek, als niemand Stop All vasthoudt |
+| een cockpit die wegviel met een trigger vast: 1,5 s later staat die trigger in de app uit, tenzij een andere cockpit, LPD8 P1, Stop All of een APC-pad hem nog vasthoudt | na elke cockpit die wegvalt |
+| na elke replug: binnen `hotplug_ms` + 300 ms kreeg de nieuwe nep-poort de intro met de modus (APC) of de identiteitsvraag (LPD8), en zijn antwoord bereikte de kern | na elke replug, en in de afbouw |
+| hooguit één logregel `sturen mislukt` per keer dat een controller eruit ging | einde |
 | na rust: geen slews meer; elke verbonden app heeft precies de waarden die de hub denkt; elke cockpit ziet de focus, status en waarden van de kern | afbouw |
+| na rust en zonder cockpits (die net abrupt wegvielen met een trigger vast): in geen app staat nog een trigger aan, geen paniek op Infinity, geen APC-toets meer in | afbouw |
 | elke app bewaart alleen waarden van zijn eigen parameters | afbouw |
 | de opname van de hele avond (`doorlopend`) loopt tot de afbouw, en sluit daar binnen 30 s nep af met `gebaren.jsonl` en `samenvatting.md` | begin en afbouw |
-| zonder clients: alleen de drivers verbonden; routes, padDruk, ingedrukte triggers, LED-wachtrij, slews leeg; elke app `weg`; een app zonder manifest is vergeten; precies evenveel luisteraars op de kern en evenveel klok-timers als bij de start (vóór de apps kwamen); geen sockets meer open | afbouw |
+| zonder clients: alleen de drivers verbonden; routes, padDruk, ingedrukte triggers, LED-wachtrij, slews leeg; geen paniek op Infinity; elke app `weg`; een app zonder manifest is vergeten; precies evenveel luisteraars op de kern en evenveel klok-timers als bij de start (vóór de apps kwamen); geen sockets meer open | afbouw |
 | na `hub.stop()`: niets meer op de klok | einde |
 
 Wat de duurtest **niet** van binnen ziet: de Maps in `src/transports/server.js` (welke socket welke app is,
@@ -173,34 +187,60 @@ gecontroleerd: sockets dicht (handles), heap, en de kern-kant van elke verbindin
 
 Elk heeft een gerichte test in `test/duurtest.test.js` ("lekken die de duurtest vond") die zonder het herstel faalt.
 
-## Open punten (gevonden, niet in deze golf opgelost)
+## Gevonden en opgelost (golf 8)
 
-Geen lekken, maar plekken waar iets kan blijven hangen, midden in een optreden. Ze staan ook in `STATUS.md` (bekende
-risico's) en als `it.todo` in `test/duurtest.test.js`. De duurtest omzeilt ze (zie "Eén hand, één toets" en de
-cockpit die zijn triggers loslaat), dus hij meldt ze niet; haal die omweg weg zodra ze opgelost zijn.
+Drie plekken waar midden in een optreden iets kon blijven hangen. De duurtest omzeilde ze eerst (de cockpit liet zijn
+triggers zelf los, hand en cockpits drukten op verschillende toetsen, een controller ging altijd langer dan één
+hotplug-ronde los); die omwegen zijn weg, en elk punt heeft nu een invariant die een regressie meldt (zie de tabel
+hierboven). Zonder het herstel faalt de duurtest: met seed 7 (3 minuten nep) zonder het loslaten in de server 6
+geschonden invarianten (triggers die blijven staan), zonder het herstel in de kern 91 (een paniek op Infinity na Stop All
+los), met de hotplug van vóór golf 8 4 (geen intro of identiteitsvraag na een snelle replug; de LPD8 bleef de rest
+van de avond doof, zodat ook de opname niet meer te stoppen was). De gerichte tests staan in `test/golf8-*.test.js`; `test/duurtest.test.js` kijkt of de korte avond elk punt
+echt raakt.
 
 1. **Een cockpit die abrupt wegvalt terwijl hij een trigger vasthoudt** (wifi van de tablet weg midden in een
-   ingedrukte trigger-knop): de hub laat virtuele toetsen los (§10), maar geen `zet` op een trigger (`v:1`). De
-   app houdt `trig aan:true` (bv. de paniek-trigger van Waterschaal) tot iemand hem opnieuw indrukt en loslaat.
-   Herstel hoort in `src/transports/server.js`: per cockpit-socket onthouden welke triggers (`zet` met `v > 0` op
-   een parameter met `soort:"trigger"`) ingedrukt zijn, en bij sluiten `kern.cockpit({ t:'zet', app, id, v:0 })`.
+   ingedrukte trigger-knop). Gekozen gedrag (`src/transports/server.js`, PROTOCOL §10): de server onthoudt per
+   cockpit-socket welke triggers hij met `zet v > 0` indrukte, en laat ze bij het sluiten (ook een fout of geen pong) los
+   met `zet v:0` → `trig aan:false`. Niet als iemand anders hem nog vasthoudt: een andere cockpit, of de hardware (LPD8
+   P1 op `paniek`, Stop All op de paniek-trigger van die app, een APC-pad); dan laat die hem los. Bekende grens: een
+   cockpit die netjes `v:0` stuurt terwijl Stop All of P1 dezelfde paniek vasthoudt, beëindigt die meteen (de kern telt
+   de bronnen van een cockpit-trigger niet; `it.todo` in `test/golf8-cockpit-trigger.test.js`). In de duurtest: een
+   cockpit valt nu altijd abrupt weg (`terminate`), en in de afbouw drukt elke cockpit eerst nog een trigger in.
 2. **Dezelfde toets twee keer ingedrukt zonder los** (dezelfde pad virtueel in de cockpit én op de APC, of in twee
-   cockpits): de kern houdt per control één route (`kern.routes`); de tweede `druk` overschrijft hem. Wisselt de
-   focus ertussen, dan krijgt de eerste app zijn `los` nooit: een trigger blijft aan, en bij Stop All blijft
-   `appPaniekTot` op Infinity, de paniek van die app eindigt dan nooit (§14). Na: focus A, Stop All (APC), focus B
-   (cockpit), Stop All (cockpit virtueel), twee keer los → A heeft `trig paniek aan:true` en nooit `aan:false`.
-   Herstel hoort in `src/core/kern.js` (`invoer`): een `druk` op een control die al een route heeft, stuurt eerst
-   de `los` naar die route.
-3. **Een controller die sneller terug is dan één hotplug-ronde** (`hotplug_ms`, 2 s): `src/core/aansluiting.js`
-   vergelijkt alleen de naam in de poortlijst. Is het apparaat er bij de volgende ronde alweer (een kabel die even
-   loszat), dan ziet de hub geen `weg` en geen `verbonden`: geen `ApcSessie.init()`, dus de APC blijft in modus
-   0x40 (waar hij na elke replug op terugvalt) en donker, en met de nep-poort hoort de hub het apparaat daarna niet
-   meer. Na: verwijderen, 0,5 s later weer toevoegen, 5 s laten lopen → nog steeds één keer `verbonden`, geen `weg`.
-   De duurtest trekt een controller daarom altijd langer dan één ronde los. Herstel hoort in de hotplug (bv. een
-   poort die meldt dat hij dicht is, of een `fout` bij sturen, zie "Gevonden en opgelost" punt 4, als reden om meteen opnieuw
-   te openen en te initialiseren).
+   cockpits), met een focuswissel ertussen. Gekozen gedrag (`src/core/kern.js`, `invoer` en `#laatLos`, PROTOCOL §11):
+   een toets is voor de hub in of uit, van hoeveel bronnen ook. Een druk op een toets die al in is: bij dezelfde
+   bestemming niets, bij een andere (focus of Bank wisselde) eerst de los naar de eerste (`trig aan:false`, Stop All in
+   de naloop, een note-off voor een lease-app). De eerste los laat de toets los; een los op een toets die al los is, gaat
+   nergens heen. In de duurtest drukken de cockpits op dezelfde toetsen als de hand, ook Stop All (tellen mee in
+   `stopAllVast`) en LPD8 P5–P8.
+3. **Een controller die sneller terug is dan één hotplug-ronde** (een kabel die even loszat). Gekozen gedrag
+   (`src/core/aansluiting.js`, `src/apparaten.js`, `src/hub.js`, PROTOCOL §16): de hub kijkt elke 250 ms in de
+   poortlijst; zegt de poort dat hij niet meer leeft (de nep-poort na een replug) of gooit sturen, dan sluit, opent en
+   initialiseert hij hem meteen (APC: modus, ringen, alle LEDs; LPD8: identiteitsvraag), daarna met oplopende pauzes; één
+   logregel per storing (`APC: sturen mislukt — kabel los? de hub probeert opnieuw`). Grens: met RtMidi op de Mac meldt
+   een poort niets en gooit sturen niet; een kabel die korter dan 250 ms los is, blijft daar onzichtbaar (de hardware-avond
+   meet het, `docs/HARDWARE-AVOND.md` blok 4). In de duurtest gaat een controller nu een op de drie keer 0,1–0,25 s los
+   (en één keer allebei vroeg in de avond).
 
-## Uitslag van de lange run
+## Uitslag na golf 8 (zonder omwegen)
+
+`node --expose-gc tools/duurtest.mjs --minuten 4 --seed <7|11|3>` (4 oktober 2026, Node 22.22, cloud-container met 4
+kernen, de drie tegelijk; één opname van de hele avond): elk **4 minuten echt = ±1 uur 47 avond (×26,3–26,6). Goed:
+geen lek, geen geschonden invariant.** Daarnaast seeds 5 en 42 (doorlopend) en 11 en 3 (`--opname wisselend`), elk een
+uur avond (`--nep-minuten 60`, vier tegelijk): ook goed. Overal 13 klok-timers bij de start en zonder clients, 0 na
+stoppen.
+
+| seed | dubbele druk | Stop All (hand / cockpit) | cockpit weg met trigger vast | APC eruit (kort) | LPD8 eruit (kort) | 'sturen mislukt' APC | heap (minimum, groei) |
+|---|---|---|---|---|---|---|---|
+| 7 | 1 086 | 148 / 236 | 11 (+5 in de afbouw) | 16 (7) | 14 (4) | 2 | 13,7 → 14,4 MB (+0,69) |
+| 11 | 1 411 | 117 / 260 | 12 (+3) | 23 (8) | 17 (5) | 3 | 13,8 → 14,4 MB (+0,59) |
+| 3 | 1 137 | 151 / 237 | 9 (+2) | 29 (8) | 17 (7) | 6 | 13,8 → 14,4 MB (+0,60) |
+
+Elke replug is gecontroleerd (intro of identiteitsvraag binnen `hotplug_ms` + 300 ms, en het antwoord in de kern), en
+de LPD8 gaf nooit een regel `sturen mislukt` (de hub stuurt hem bijna niets; de dode poort wordt bij de volgende tik van
+de lijst gezien). Event-loop p99 ±4 ms, max ±63 ms (de eigen `gc()` van de meting tot 32 ms); rss max 122 MB.
+
+## Uitslag van de lange run (golf 7)
 
 `node --expose-gc tools/duurtest.mjs --minuten 8 --seed 7` (4 oktober 2026, Node 22.22, cloud-container met 4
 kernen, met de herstellingen hierboven en na de reviews; één opname van de hele avond): **8 minuten echt = 3 uur

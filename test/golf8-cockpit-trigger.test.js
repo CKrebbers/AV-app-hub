@@ -1,5 +1,5 @@
 // @ts-check
-// Golf 8, open punt 1 van docs/DUURTEST.md: een cockpit (tablet over wifi) die abrupt wegvalt terwijl hij een
+// Golf 8, punt 1 van docs/DUURTEST.md: een cockpit (tablet over wifi) die abrupt wegvalt terwijl hij een
 // trigger vasthoudt, laat die trigger los (PROTOCOL.md §10). Echte kern (nep-klok) achter de echte server, cockpits
 // over echte WebSockets; de apps zijn nep-verbindingen rechtstreeks op de kern.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -219,7 +219,7 @@ describe('golf 8: een cockpit die wegvalt laat zijn triggers los', () => {
     lpdLos(o.kern, 1);
   });
 
-  // Open punt 2 van docs/DUURTEST.md: de kern telt per trigger de bronnen nog niet. Een nette `zet v:0` van een
+  // Bekende grens (docs/DUURTEST.md golf 8 punt 1): de kern telt per trigger de bronnen nog niet. Een nette `zet v:0` van een
   // cockpit gaat direct door als aan:false, ook als Stop All, P1 of een APC-pad dezelfde trigger nog vasthoudt.
   it.todo('Stop All (of P1) vast en een cockpit laat dezelfde paniek netjes los (v:0) → de paniek loopt door tot Stop All los is');
 

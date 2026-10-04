@@ -124,13 +124,24 @@ Klaar als (op jouw Mac):
 - [ ] spiekbrief van je set geprint en naast de controllers gelegd; klopt hij met wat je voelt?
 - [ ] midden in een set de hub met Ctrl-C stoppen en opnieuw starten: komt alles terug zoals beschreven?
 
+## Golf 8 — niets blijft hangen ✓ (gebouwd en getest zonder hardware)
+3 onderdelen, elk in een eigen tak met review, samengevoegd; daarna de duurtest zonder omwegen en opnieuw getest.
+- [x] **Tablet verliest wifi met een trigger vast** — de hub laat de trigger los (`trig aan:false`), behalve als een andere cockpit of de hardware (LPD8 P1, Stop All, een APC-pad) hem nog vasthoudt (PROTOCOL §10)
+- [x] **Dezelfde toets van twee kanten** (APC én cockpit, of twee cockpits) met een focuswissel ertussen — de eerste app krijgt altijd zijn los, de paniek na Stop All loopt gewoon uit; de eerste los laat de toets los, er blijft niets hangen (PROTOCOL §11)
+- [x] **Kabel even los** — de hub kijkt elke 250 ms in de poortlijst, en sluit, opent en initialiseert meteen opnieuw bij een stuurfout (daarna met oplopende pauzes); in het hubvenster één regel per storing: `APC: sturen mislukt — kabel los? de hub probeert opnieuw` (PROTOCOL §16). Met RtMidi op de Mac is een kabel die korter dan 250 ms los is onzichtbaar
+- [x] **Duurtest zonder omwegen** — de cockpits drukken op dezelfde toetsen als de hand (ook Stop All), vallen abrupt weg, en de APC en de LPD8 gaan ook heel kort los; voor elk van de drie een invariant die een regressie meldt (`docs/DUURTEST.md`). Seeds 7, 11 en 3, elk 4 minuten echt (±1 uur 47 avond): goed, geen lek, geen geschonden invariant
+- [x] **`npm run check`** — ✗ als pad 1 van de LPD8 in het profiel in PC-modus staat (de paniek eindigt dan nooit), ! als dat alleen voor pad 5–8 geldt (geen snapshot), met wat te doen
+
+Klaar als (op jouw Mac):
+- [ ] APC en LPD8 kort los (`docs/HARDWARE-AVOND.md`, blok 4): binnen ±2 s weer verbonden en het LED-beeld terug; blijft hij donker, noteer hoe lang de kabel los was
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
 
-## Bekende risico's (gevonden door de duurtest, golf 7 — werk voor de volgende golf)
-De duurtest (`docs/DUURTEST.md`, "Open punten") omzeilt ze bewust, dus hij meldt ze niet; elk heeft een `it.todo` in `test/duurtest.test.js`.
-- [ ] **Tablet-cockpit verliest wifi terwijl hij een trigger vasthoudt**: de app houdt `trig aan:true` (bv. de paniek-trigger van Waterschaal: volume blijft 0) tot iemand hem opnieuw indrukt en loslaat. Herstel in `src/transports/server.js` (ingedrukte triggers per cockpit-socket, bij sluiten loslaten).
-- [ ] **Dezelfde toets twee keer ingedrukt** (APC én cockpit, of twee cockpits) met een focuswissel ertussen: de eerste app krijgt zijn `los` nooit; bij Stop All eindigt de paniek van die app niet. Herstel in `src/core/kern.js` (`invoer`).
-- [ ] **Kabel korter los dan één hotplug-ronde** (2 s): de hub ziet geen `weg`/`verbonden`, de APC blijft donker in modus 0x40 en de hub hoort hem niet meer. Herstel in de hotplug (`src/core/aansluiting.js`).
-- [ ] Mislukt sturen naar de APC/LPD8 (`fout` op de apparaten) komt nog nergens in beeld: `src/hub.js` luistert er niet naar. Eén logregel met advies ("APC: sturen mislukt — kabel los? de hub probeert opnieuw").
+## Bekende risico's (gevonden door de duurtest, golf 7 — opgelost in golf 8)
+De duurtest oefent ze nu zelf, zonder omwegen, met een invariant per punt (`docs/DUURTEST.md`, "Gevonden en opgelost (golf 8)"); `test/duurtest.test.js` kijkt of de korte avond ze raakt.
+- [x] **Tablet-cockpit verliest wifi terwijl hij een trigger vasthoudt** → opgelost in golf 8: de hub laat de trigger los (`src/transports/server.js`, PROTOCOL §10). Bekende grens: een cockpit die netjes `v:0` stuurt terwijl Stop All of P1 dezelfde paniek vasthoudt, beëindigt die paniek meteen (`it.todo` in `test/golf8-cockpit-trigger.test.js`).
+- [x] **Dezelfde toets twee keer ingedrukt** (APC én cockpit, of twee cockpits) met een focuswissel ertussen → opgelost in golf 8: de eerste app krijgt zijn los, Stop All loopt uit (`src/core/kern.js`, `invoer`/`#laatLos`, PROTOCOL §11).
+- [x] **Kabel korter los dan één hotplug-ronde** → opgelost in golf 8 voor de nep-poort en voor uittrekken langer dan 250 ms; op hardware nog te bevestigen (`src/core/aansluiting.js`, PROTOCOL §16; `docs/HARDWARE-AVOND.md` blok 4, "APC kort los").
+- [x] Mislukt sturen naar de APC/LPD8 → opgelost in golf 8: één logregel per storing in het hubvenster (`APC: sturen mislukt — kabel los? de hub probeert opnieuw`, `src/hub.js`).
