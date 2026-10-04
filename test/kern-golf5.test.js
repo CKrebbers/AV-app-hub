@@ -3,8 +3,12 @@
 // 1) Wat een app zelf verandert tijdens (of vlak na) een paniek, verplaatst het pickup-doel van een LPD8-macroknop niet.
 // 2) Een keuze of schakelaar die al op die stand staat, krijgt geen zet nog eens (behalve replay).
 import { describe, it, expect } from 'vitest';
-import { opzet, meldAan, stuurApp, nepVerbinding, tik, draai, lpdKnop, lpdDruk, lpdLos, van, leeg, CONFIG } from './kern-hulp.js';
-import { PANIEK_MS } from '../src/core/kern.js';
+import { vi } from 'vitest';
+import { opzet, meldAan, stuurApp, nepVerbinding, tik, druk, los, draai, lpdKnop, lpdDruk, lpdLos, van, leeg, CONFIG } from './kern-hulp.js';
+import { PANIEK_MS, leesNaloopMs } from '../src/core/kern.js';
+
+/** De standaard uit config.json, expliciet: de tests hangen niet af van de terugval in de code. */
+const C5 = { ...CONFIG, paniek: { naloop_s: 5 } };
 
 /** Waterschaal-achtig: volume (macro.intensiteit) op fader 1, paniek-trigger. Bij paniek zet hij zelf volume 0. */
 const W = {
@@ -59,7 +63,7 @@ describe('§14 LPD8-pickup na paniek: K1 blijft gevangen', () => {
   });
 
   it('ook een staat van de app binnen de naloop (standaard 5 s) laat K1 met rust', () => {
-    const { kern, klok } = opzet();
+    const { kern, klok } = opzet(C5);
     const w = meldAan(kern, W);
     const m = meldAan(kern, M);
     vangK1(kern, 40 / 127);
@@ -73,7 +77,7 @@ describe('§14 LPD8-pickup na paniek: K1 blijft gevangen', () => {
   });
 
   it('na de naloop volgt de pickup weer de buitenwereld (§11): een zet van de app laat K1 wachten', () => {
-    const { kern, klok } = opzet();
+    const { kern, klok } = opzet(C5);
     const w = meldAan(kern, W);
     const m = meldAan(kern, M);
     vangK1(kern, 40 / 127);
@@ -122,7 +126,7 @@ describe('§14 LPD8-pickup na paniek: K1 blijft gevangen', () => {
   });
 
   it('Stop All van de app met focus telt als paniek voor die app', () => {
-    const { kern } = opzet();
+    const { kern } = opzet(C5);
     const w = meldAan(kern, W);
     const m = meldAan(kern, M);
     expect(kern.focusApp).toBe('waterschaal');
@@ -134,6 +138,110 @@ describe('§14 LPD8-pickup na paniek: K1 blijft gevangen', () => {
     lpdKnop(kern, 1, 42 / 127);
     expect(zetten(w, 'volume').length).toBe(1);
     expect(zetten(m, 'niveau').length).toBe(1);
+  });
+
+  it('Stop All: na de naloop volgt de pickup weer de buitenwereld (§11)', () => {
+    const { kern, klok } = opzet(C5);
+    const w = meldAan(kern, W);
+    const m = meldAan(kern, M);
+    vangK1(kern, 40 / 127);
+    tik(kern, 'stopall');
+    klok.loop(5100);
+    stuurApp(kern, w, { t: 'zet', id: 'volume', v: 0 });
+    leeg(w, m);
+    lpdKnop(kern, 1, 42 / 127);
+    expect(van(w, 'zet')).toEqual([]);
+    expect(van(m, 'zet')).toEqual([]);
+  });
+
+  it('Stop All ingedrukt gehouden: zolang hij vast is, telt elke zet van de app als paniek (ook na 10 s)', () => {
+    const { kern, klok } = opzet(C5);
+    const w = meldAan(kern, W);
+    const m = meldAan(kern, M);
+    vangK1(kern, 40 / 127);
+    druk(kern, 'stopall');
+    klok.loop(10000);
+    stuurApp(kern, w, { t: 'zet', id: 'volume', v: 0 });
+    leeg(w, m);
+    lpdKnop(kern, 1, 42 / 127);
+    expect(zetten(w, 'volume').length).toBe(1);
+    expect(zetten(m, 'niveau').length).toBe(1);
+    los(kern, 'stopall');
+  });
+
+  it('Stop All vast, de app stuurt een manifest zonder paniek-trigger, los: de naloop loopt toch af (geen eeuwige paniek)', () => {
+    const { kern, klok } = opzet(C5);
+    const w = meldAan(kern, W);
+    const m = meldAan(kern, M);
+    vangK1(kern, 40 / 127);
+    druk(kern, 'stopall');
+    stuurApp(kern, w, { t: 'manifest', manifest: { ...W, params: [W.params[0]] } });
+    los(kern, 'stopall');
+    expect(kern.appPaniekTot.get('waterschaal')).toBeLessThan(Infinity);
+    klok.loop(3_600_000);
+    stuurApp(kern, w, { t: 'zet', id: 'volume', v: 0.9 });
+    leeg(w, m);
+    lpdKnop(kern, 1, 42 / 127);
+    expect(van(w, 'zet')).toEqual([]);
+    expect(van(m, 'zet')).toEqual([]);
+  });
+
+  it('Stop All vast en de app wordt een lease, of de APC valt weg: ook dan eindigt de paniek van die app', () => {
+    const { kern } = opzet(C5);
+    const w = meldAan(kern, W);
+    druk(kern, 'stopall');
+    stuurApp(kern, w, { t: 'manifest', manifest: { v: 1, app: 'waterschaal', naam: 'Waterschaal', lease: true, params: [] } });
+    los(kern, 'stopall');
+    expect(kern.appPaniekTot.get('waterschaal')).toBeLessThan(Infinity);
+
+    const b = opzet(C5);
+    meldAan(b.kern, W);
+    druk(b.kern, 'stopall');
+    expect(b.kern.appPaniekTot.get('waterschaal')).toBe(Infinity);
+    b.kern.apparaatWeg('apc40');
+    expect(b.kern.appPaniekTot.get('waterschaal')).toBeLessThan(Infinity);
+  });
+
+  it('Stop All loslaten na een focuswissel start de naloop van de app waar het indrukken heen ging', () => {
+    const { kern } = opzet(C5);
+    meldAan(kern, W);
+    meldAan(kern, M);
+    expect(kern.focusApp).toBe('waterschaal');
+    druk(kern, 'stopall');
+    expect(kern.appPaniekTot.get('waterschaal')).toBe(Infinity);
+    kern.focus('medisynth');
+    los(kern, 'stopall');
+    expect(kern.appPaniekTot.get('waterschaal')).toBeLessThan(Infinity);
+    expect(kern.appPaniekTot.has('medisynth')).toBe(false);
+  });
+
+  it('een snapshot tijdens de paniek verplaatst het doel wél (zoals §11)', () => {
+    const { kern, klok } = opzet(C5);
+    const w = meldAan(kern, W);
+    meldAan(kern, M);
+    kern.cockpit({ t: 'zet', app: 'waterschaal', id: 'volume', v: 0.1 });
+    kern.bewaar(1);
+    vangK1(kern, 40 / 127);
+    expect(kern.apps.get('waterschaal').waarden.volume).toBeCloseTo(40 / 127, 6);
+    paniek(kern, klok, () => kern.laad(1));
+    expect(kern.apps.get('waterschaal').waarden.volume).toBeCloseTo(0.1, 6);
+    leeg(w);
+    lpdKnop(kern, 1, 42 / 127);
+    expect(van(w, 'zet')).toEqual([]);
+  });
+
+  it('K1 werkt ook terwijl P1 nog vastgehouden wordt (bewuste keuze, §14)', () => {
+    const { kern, klok } = opzet(C5);
+    const w = meldAan(kern, W);
+    meldAan(kern, M);
+    vangK1(kern, 40 / 127);
+    lpdDruk(kern, 1);
+    klok.loop(PANIEK_MS + 50);
+    stuurApp(kern, w, { t: 'zet', id: 'volume', v: 0 });
+    leeg(w);
+    lpdKnop(kern, 1, 42 / 127);
+    expect(zetten(w, 'volume').at(-1)?.v).toBeCloseTo(42 / 127, 6);
+    lpdLos(kern, 1);
   });
 
   it('APC-fader van de app met focus volgt wél de buitenwereld: na volume 0 wacht hij weer (knipperende clip-stop)', () => {
@@ -189,6 +297,19 @@ describe('§14 geen dubbele zets bij keuze en schakelaar', () => {
     expect(zetten(f, 'smooth')).toEqual([{ t: 'zet', id: 'smooth', v: 1, bron: 'cockpit' }]);
   });
 
+  it('een ingeslikte zet werkt de LEDs van de app met focus toch bij', () => {
+    const { kern, opp } = opzet();
+    meldAan(kern, F);
+    tik(kern, 'pad4-1');
+    const aan = opp.leds.get('pad4-1');
+    expect(aan).not.toEqual(opp.leds.get('pad5-1'));
+    const getekend = opp.getekend;
+    tik(kern, 'pad4-1');
+    expect(opp.getekend).toBeGreaterThan(getekend);
+    expect(opp.leds.get('pad4-1')).toEqual(aan);
+    expect(kern.apps.get('formula-lab').waarden.palette).toBe(0.25);
+  });
+
   it('heeft de app zelf een andere optie gekozen, dan gaat dezelfde zet als eerst wél weer', () => {
     const { kern } = opzet();
     const f = meldAan(kern, F);
@@ -224,13 +345,29 @@ describe('§14 geen dubbele zets bij keuze en schakelaar', () => {
 });
 
 describe('§14 config', () => {
-  it('config.json heeft paniek.naloop_s (standaard 5) en de kern leest hem', async () => {
+  it('config.json heeft paniek.naloop_s (een getal ≥ 0 met _doc) en de kern leest hem', async () => {
     const { laadConfig } = await import('../src/config.js');
     const cfg = laadConfig();
-    expect(cfg.paniek.naloop_s).toBe(5);
+    expect(typeof cfg.paniek.naloop_s).toBe('number');
+    expect(cfg.paniek.naloop_s).toBeGreaterThanOrEqual(0);
     expect(typeof cfg.paniek._doc).toBe('string');
-    const { kern } = opzet(cfg);
-    expect(kern.paniekNaloopMs).toBe(5000);
+    expect(opzet(cfg).kern.paniekNaloopMs).toBe(cfg.paniek.naloop_s * 1000);
     expect(opzet({ ...CONFIG, paniek: { naloop_s: 2 } }).kern.paniekNaloopMs).toBe(2000);
+  });
+
+  it('een ongeldige naloop_s ("vijf", "5s", -1) wordt gemeld en vervangen door 5 s', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      for (const fout of ['vijf', '5s', -1, null, NaN]) {
+        expect(opzet({ ...CONFIG, paniek: { naloop_s: fout } }).kern.paniekNaloopMs).toBe(5000);
+      }
+      expect(warn).toHaveBeenCalledTimes(5);
+      expect(String(warn.mock.calls[0][0])).toMatch(/paniek\.naloop_s moet een getal/);
+      expect(leesNaloopMs(undefined)).toBe(5000);
+      expect(leesNaloopMs(0)).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(5);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

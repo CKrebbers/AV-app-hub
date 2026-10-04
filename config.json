@@ -125,7 +125,7 @@
   },
   "ringen_nemen_waarde_over": true,
   "paniek": {
-    "_doc": "PROTOCOL §14: wat een app zelf verandert terwijl de paniek loopt (LPD8 P1 vastgehouden, of Stop All van die app) en tot naloop_s seconden daarna, verplaatst het pickup-doel van een LPD8-macroknop niet: de knop blijft gevangen. De hub bewaart en toont de waarde wel. 0 = alleen tijdens de paniek",
+    "_doc": "PROTOCOL §14: wat een app zelf verandert terwijl de paniek loopt (LPD8 P1 vastgehouden, of Stop All van die app) en tot naloop_s seconden daarna, verplaatst het pickup-doel van een LPD8-macroknop niet: de knop blijft gevangen. De hub bewaart en toont de waarde wel. 0 = alleen tijdens de paniek (bij Stop All telt dan alleen wat binnenkomt terwijl de knop ingedrukt is; een gewone tik is meteen weer los). Geen getal ≥ 0 → melding bij de start en 5 gebruikt",
     "naloop_s": 5
   },
   "drivers": {

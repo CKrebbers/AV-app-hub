@@ -72,6 +72,18 @@ function kwantiseer(p, v) {
   return w;
 }
 
+/**
+ * config.paniek.naloop_s (PROTOCOL §14) in ms. Geen getal ≥ 0 (bv. "5s" of "vijf") → melden en 5 s gebruiken,
+ * anders zou nu < nu + NaN de naloop stilletjes uitzetten.
+ * @param {unknown} s
+ */
+export function leesNaloopMs(s) {
+  if (s === undefined) return 5000;
+  if (typeof s === 'number' && Number.isFinite(s) && s >= 0) return s * 1000;
+  console.warn(`[kern] config.json paniek.naloop_s moet een getal in seconden zijn (bv. 5), niet ${JSON.stringify(s)}; nu genegeerd, 5 gebruikt`);
+  return 5000;
+}
+
 /** Sleutel van een LED-adres in de LED-kaart van een lease-app. @param {number[]} m */
 export function ledSleutel(m) {
   const st = m[0] & 0xf0, ch = m[0] & 0x0f;
@@ -174,7 +186,7 @@ export class Kern extends Zender {
     this.paniekActief = false;
     // §14: tot wanneer een zet die een app zelf doet het pickup-doel van een LPD8-macroknop niet verplaatst
     // (Infinity zolang de paniek loopt, daarna loslaten + paniek.naloop_s). Globaal (LPD8 P1) en per app (Stop All).
-    this.paniekNaloopMs = Math.max(0, Number(this.config.paniek?.naloop_s ?? 5)) * 1000;
+    this.paniekNaloopMs = leesNaloopMs(this.config.paniek?.naloop_s);
     this.paniekTot = -Infinity;
     /** @type {Map<string, number>} */
     this.appPaniekTot = new Map();
@@ -483,6 +495,15 @@ export class Kern extends Zender {
     this.#beeldGewijzigd();
   }
 
+  /**
+   * Stop All is losgelaten: de paniek van die app gaat over in de naloop. Los van de indeling (de app kan intussen
+   * een manifest zonder paniek-trigger of een lease hebben gestuurd, of vergeten zijn), anders bleef hij Infinity.
+   * @param {string} app
+   */
+  #stopAllLos(app) {
+    if (this.appPaniekTot.get(app) === Infinity) this.appPaniekTot.set(app, this.klok.nu() + this.paniekNaloopMs);
+  }
+
   /** Loopt er voor deze app een paniek (LPD8 P1 of zijn eigen Stop All), of is hij net voorbij (paniek.naloop_s)? @param {AppStaat} a */
   #inPaniek(a) {
     const nu = this.klok.nu();
@@ -558,6 +579,7 @@ export class Kern extends Zender {
     if (g.kind === 'los' && this.routes.has(el)) {
       const r = this.routes.get(el);
       this.routes.delete(el);
+      if (el === 'stopall' && r && r !== 'hub') this.#stopAllLos(r);
       const a = r && r !== 'hub' ? this.apps.get(r) : undefined;
       if (a) this.#naarAppInvoer(a, g, bytes, vorig);
       return;
@@ -665,7 +687,8 @@ export class Kern extends Zender {
       return;
     }
     if (el === 'stopall' && ind.paniek && (druk || los)) {
-      this.appPaniekTot.set(a.app, druk ? Infinity : this.klok.nu() + this.paniekNaloopMs);
+      if (druk) this.appPaniekTot.set(a.app, Infinity);
+      else this.#stopAllLos(a.app);
       this.#naar(a, { t: 'trig', id: ind.paniek, aan: druk });
       return;
     }
@@ -992,6 +1015,7 @@ export class Kern extends Zender {
       this.hubIn = false;
       this.shiftIn = false;
       for (const [el, r] of routes) {
+        if (el === 'stopall' && r !== 'hub') this.#stopAllLos(r);
         const a = r !== 'hub' ? this.apps.get(r) : undefined;
         const c = APC.OP_ID.get(el);
         if (!a || !c) continue;
