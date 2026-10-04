@@ -113,6 +113,17 @@ Klaar als (op jouw Mac):
 - [ ] iets veranderen in de uurwerk-tab → de cockpit volgt binnen een paar seconden
 - [ ] td-lab: de testtabel in `docs/TDLAB.md`
 
+## Golf 7 — klaar voor een lange avond ✓ (gebouwd en getest zonder hardware)
+4 onderdelen (bouwer + 2 reviewers + verwerker), samengevoegd en opnieuw getest.
+- [x] **Spiekbrief** — één A4 liggend per set met wat elke knop doet (`npm run spiekbrief -- <set|alle>`, of `/spiekbrief` in de cockpit; `docs/SPIEKBRIEF.md`). De indeling komt van een echte kern, en een test drukt elke knop op de spiekbrief en kijkt of de kern precies dat doet
+- [x] **Duurtest** — een hele avond (±3,5 uur) in een paar minuten: `npm run duurtest -- --minuten 3 --seed 7` (`docs/DUURTEST.md`). Vond en herstelde vier lekken/crashes: apps zonder manifest bleven voor altijd staan, waarden met vreemde ids groeiden, een timer bleef na stop staan, en een crash bij een losgetrokken APC met LEDs in de wachtrij. Een korte versie draait in `npm test`
+- [x] **Herstart midden in de set** — valt de hub om (crash, kill -9) of stop je hem per ongeluk: apps krijgen hun eigen slot terug, de focus komt terug, apps van de set draaien door en worden overgenomen (niet dubbel gestart), de opname gaat verder in een nieuwe avond en de afgebroken avond wordt hersteld. `npm start -- <set> --blijf` start de hub na een crash vanzelf opnieuw. Wat je ziet en doet: `docs/HARDWARE-AVOND.md`, "Als de hub omvalt"
+- [x] **Afwerking** — `npm run check` controleert ook het teruglezen in `apps/*.json`; de oefenruimte laat zien dat een waarde glijdt (les 14); docs kloppen weer met de code
+
+Klaar als (op jouw Mac):
+- [ ] spiekbrief van je set geprint en naast de controllers gelegd; klopt hij met wat je voelt?
+- [ ] midden in een set de hub met Ctrl-C stoppen en opnieuw starten: komt alles terug zoals beschreven?
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten

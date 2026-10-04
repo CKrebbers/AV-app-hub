@@ -28,6 +28,11 @@ wachten; dan staat er `rust:false` in de eindregel). Reageert de schijf niet (ex
 de hub hooguit 2 s, meldt *opname niet volledig weggeschreven* en stopt toch: LEDs uit, poorten dicht.
 Nog een keer Ctrl-C stopt meteen.
 
+Valt de hub hard weg (kill -9, een crash, stroom weg), dan herstelt de volgende start de avond: de halve laatste
+regel gaat weg en er komt een `samenvatting.md` met "afgebroken". De laatste ±1 s kan ontbreken (`SPOEL_MS`) en er is
+geen eindregel. Liep de opname, dan gaat hij na de herstart meteen verder in een nieuwe avondmap (docs/HARDWARE-AVOND.md,
+"Als de hub omvalt").
+
 ### Wat er in de map staat
 
 `gebaren.jsonl` — één JSON-waarde per regel, in hetzelfde formaat als de logboeken in `proef/`:

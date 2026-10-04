@@ -18,11 +18,12 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 
 | Opdracht | Wat |
 |---|---|
-| `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien, `--zonder-geheugen` om niets te onthouden |
+| `node src/cli.js start` | **de hub**: cockpit op http://localhost:7700 (virtuele APC40/LPD8, apps, live invoer), apps verbinden op `ws://localhost:7700/app`. `--zonder-midi` om zonder controllers te draaien, `--zonder-geheugen` om niets te onthouden, `--blijf` om na een crash vanzelf opnieuw te starten (hooguit 5× per minuut; zie `docs/HARDWARE-AVOND.md`, "Als de hub omvalt") |
 | `npm start -- meditatie` | **een hele avond**: de hub plus alle apps van de set (`sets/meditatie.json`, `dj`, `scene-kit`): apps starten, Chrome-tabs openen, beginstand en focus zetten; Ctrl-C ruimt op wat de set startte. Eenmalig `cp sets/paden.voorbeeld.json sets/paden.json` en je mappen invullen. Zie `docs/SETS.md` |
 | `npm start -- --lan` | ook op het netwerk (tablet als cockpit, flux op een andere machine), met token en mDNS. `node src/cli.js token` toont de adressen; `node src/cli.js installeer` laat de hub altijd draaien (launchd). Zie `docs/NETWERK.md` |
 | `npm run check -- meditatie` | **alles nalopen vlak vóór een optreden**: hub, controllers, LPD8-profiel, de statische manifesten in `apps/`, F0-proef, geheugen, avondmap (vrije ruimte), Chrome, token, en per app van de set map/node_modules/poort/hub-koppeling. ✓/!/✗ met wat te doen. Zie `docs/CHECK.md` |
 | http://localhost:7700/oefen | **oefenen**: 14 korte lessen om de basis onder de knie te krijgen (focus, pickup, pads, LPD8-rollen, slew, snapshots, paniek, tempo, glijden zien), met twee oefen-apps (Zon en Zee). Werkt met je echte APC40/LPD8 of met de virtuele op de pagina. Start eerst de hub. Zie `docs/OEFENEN.md` |
+| `npm run spiekbrief -- <set>` | **wat doet welke knop**, per set (of `alle`): één A4 liggend om te printen, in `tools/uitvoer/`. Met de hub aan ook op http://localhost:7700/spiekbrief. Zie `docs/SPIEKBRIEF.md` |
 | `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±35-45 min; volg `docs/HARDWARE-AVOND.md`). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |
@@ -52,6 +53,7 @@ git push
 ```bash
 npm test            # alles, zonder hardware: nep-poorten en een gesimuleerde gebruiker
 npm run repetitie   # generale repetitie: de hub met de échte app-koppelingen, één avond lang (docs/REPETITIE.md)
+npm run duurtest -- --minuten 3 --seed 7   # duurtest: een hele avond in een paar minuten, lekken en invarianten (docs/DUURTEST.md)
 ```
 
 Indeling: `src/devices/` (APC40, LPD8) · `src/ports/` (poort-interface, nep, RtMidi) · `src/core/` (kern, indeling, pickup, slew, klok, wachtrij, LED-beeld, hotplug, logboek) · `src/protocol/` (het contract, PROTOCOL.md) · `src/transports/` (HTTP- en WebSocket-server) · `src/drivers/` (MIDI, HTTP, TD) · `src/sets/`, `src/opname/`, `src/check/` · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/hub.js` (alles samen) · `src/cli.js` · `ui/` (cockpit en oefenruimte). Werkafspraken in `CLAUDE.md`.

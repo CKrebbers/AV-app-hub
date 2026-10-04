@@ -158,7 +158,7 @@ gebruiken (bv. pad 4 laten branden tijdens een opname) of dat alles via de cockp
 npm start
 ```
 
-Open **http://localhost:7700/oefen** in Chrome. Sluit de controllers aan *voordat* je de hub start. Dertien korte lessen
+Open **http://localhost:7700/oefen** in Chrome. Sluit de controllers aan *voordat* je de hub start. Veertien korte lessen
 leren je de basis met twee oefen-apps, Zon en Zee (alles staat in `docs/OEFENEN.md`).
 
 Let vanavond vooral op wat alleen echte hardware kan laten zien:
