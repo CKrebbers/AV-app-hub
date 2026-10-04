@@ -131,6 +131,11 @@
   "drivers": {
     "uitstel_ms": 3000
   },
+  "teruglezen": {
+    "_doc": "HTTP-driver (uurwerk) leest terug wat er in de app zelf verandert (src/drivers/http.js, docs/VOLGENDE-KOPPELINGEN.md §3.3): elke elke_s seconden GET /verb/toon, alleen als de app gezond is (tab open); een echt verschil (meer dan de afronding van de app, en niet wat de hub net zelf stuurde) gaat als zet van de app (bron 'app') naar de kern. 0 = uit; nooit vaker dan elke 0,5 s. Na een mislukte poging verdubbelt de wachttijd tot max_s (standaard 30), met één logregel per storing",
+    "elke_s": 2,
+    "max_s": 30
+  },
   "geheugen": {
     "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js, PROTOCOL §12); ~ = thuismap, $VARVE_HUB_STAAT gaat voor; 'varve-hub start --zonder-geheugen' zet het uit. Optioneel schrijf_ms: hooguit eens per zoveel ms naar schijf (minimum en standaard 1000)",
     "pad": "~/.varve-hub/staat.json"
