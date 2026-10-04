@@ -202,6 +202,68 @@ describe('dezelfde toets twee keer ingedrukt (golf 8, §11)', () => {
   });
 });
 
+describe('Stop All vast terwijl de app zijn paniek-trigger kwijtraakt (#laatLos → #stopAllLos)', () => {
+  // Bij de los op Stop All beëindigt #manifestInvoer de paniek alleen als de indeling nog een paniek-trigger heeft.
+  // Is de app intussen een lease geworden (of verloor zijn manifest de paniek), dan moet #laatLos het zelf doen.
+  const LEASE_A = { ...DJ, app: 'formula-lab', naam: 'Formula Lab' };
+  const ZONDER_PANIEK_A = { ...FL, params: FL.params.filter((p) => p.id !== 'paniek') };
+
+  for (const [naam, manifest] of [['lease', LEASE_A], ['manifest zonder paniek', ZONDER_PANIEK_A]]) {
+    it(`A wordt ${naam}, focus B, Stop All nog eens (cockpit), twee keer los → de paniek van A eindigt`, () => {
+      const { kern, klok } = opzet(C);
+      const a = meldAan(kern, FL);
+      meldAan(kern, MS);
+      druk(kern, 'stopall');               // APC, op A
+      expect(kern.appPaniekTot.get('formula-lab')).toBe(Infinity);
+      stuurApp(kern, a, { t: 'manifest', manifest });
+      kern.focus('medisynth');
+      druk(kern, 'stopall');               // cockpit, op B: A krijgt eerst zijn los
+      expect(kern.appPaniekTot.get('formula-lab')).toBeLessThan(Infinity);
+      los(kern, 'stopall');
+      los(kern, 'stopall');
+      for (const [app, tot] of kern.appPaniekTot) expect(tot, app).toBeLessThan(Infinity);
+      klok.loop(kern.paniekNaloopMs + 1);
+      for (const [app, tot] of kern.appPaniekTot) expect(tot, app).toBeLessThanOrEqual(klok.nu());
+    });
+
+    it(`A wordt ${naam} terwijl Stop All vast is, dan valt de APC weg → de paniek van A eindigt`, () => {
+      const { kern } = opzet(C);
+      const a = meldAan(kern, FL);
+      druk(kern, 'stopall');
+      stuurApp(kern, a, { t: 'manifest', manifest });
+      kern.apparaatWeg('apc40');
+      expect(kern.appPaniekTot.get('formula-lab')).toBeLessThan(Infinity);
+      expect(kern.routes.size).toBe(0);
+    });
+  }
+});
+
+describe('een los die nooit aankomt (verloren note-off, snelle replug zonder apparaatWeg)', () => {
+  // Bewust vastgelegd (§11): de hub ziet de toets nog als in. De eerstvolgende druk bij dezelfde app telt niet
+  // ("hij is al in"), de los erna laat hem los. Er blijft niets hangen; het kost Clay hooguit één tik.
+  it('trigger: druk zonder los, dan twee tikken → aan, uit, aan, uit (één tik gemist, niets hangt)', () => {
+    const { kern } = opzet(C);
+    const a = meldAan(kern, FL);
+    druk(kern, 'pad5-2');                   // de los gaat verloren
+    tik(kern, 'pad5-2');
+    tik(kern, 'pad5-2');
+    expect(trig(a, 'take').map((t) => t.aan)).toEqual([true, false, true, false]);
+    expect(kern.routes.size).toBe(0);
+    expect(kern.apps.get('formula-lab').vast.size).toBe(0);
+  });
+
+  it('schakelaar: druk zonder los, dan een tik → schakelt niet; de tik daarna wel', () => {
+    const { kern } = opzet(C);
+    const a = meldAan(kern, FL);
+    druk(kern, 'pad4-2');                   // mute aan, de los gaat verloren
+    leeg(a);
+    tik(kern, 'pad4-2');
+    expect(van(a, 'zet')).toEqual([]);
+    tik(kern, 'pad4-2');
+    expect(van(a, 'zet').map((z) => z.v)).toEqual([0]);
+  });
+});
+
 describe('LPD8-pads van twee bronnen (echte en virtuele LPD8)', () => {
   it('P1: een tweede druk tijdens de paniek start geen tweede paniek; de eerste los beëindigt hem, daarna niets meer', () => {
     const { kern, klok } = opzet(C);
