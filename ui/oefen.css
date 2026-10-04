@@ -89,3 +89,6 @@ body.opdracht-weg .opdracht-balk { transform: translate(-50%, 0); }
 /* Ruimte onderaan, zodat je de onderste pads altijd boven de balk kunt scrollen. */
 body.oefen { padding-bottom: 150px; }
 @media (prefers-reduced-motion: reduce) { .opdracht-balk { transition: none; } }
+
+.klokken { margin: 8px 2px 0; font: 13px var(--mono); color: var(--zacht); }
+.focus-weg { display: block; margin-bottom: 6px; color: var(--let); font-size: 15px; }

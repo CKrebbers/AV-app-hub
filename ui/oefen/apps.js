@@ -39,6 +39,10 @@ export const MANIFESTEN = {
 export const beginWaarden = (m) => Object.fromEntries(m.params.filter((p) => p.soort !== 'trigger').map((p) => [p.id, p.standaard ?? 0]));
 
 const WACHT_MS = [500, 1000, 2000, 5000];
+/** Na close-code 4001 (deze app is al open in een andere tab) of 4003 (token nodig): rustig aan (PROTOCOL §11, §13). */
+const RUSTIG_MS = 30000;
+/** Pas zo lang na het verbinden telt de verbinding als stabiel en begint de wachttijd weer van voren. */
+const STABIEL_MS = 5000;
 
 /**
  * Eén oefen-app aan de hub. Houdt zijn eigen waarden bij (truth "app"), meldt alles wat binnenkomt
@@ -67,7 +71,11 @@ export class OefenApp {
     /** @type {any} */ this.ws = null;
     /** @type {any} */ this.hbTimer = null;
     /** @type {any} */ this.opnieuw = null;
+    /** @type {any} */ this.stabiel = null;
     this.poging = 0;
+    this.laatsteHb = 0;
+    /** Waarom de verbinding weg is: null, 'vervangen' (4001: open in een andere tab) of 'token' (4003). @type {string|null} */
+    this.reden = null;
     this.gestopt = false;
   }
 
@@ -83,12 +91,16 @@ export class OefenApp {
     this.ws = ws;
     ws.onopen = () => {
       if (this.ws !== ws) return;
-      this.poging = 0;
+      // De wachttijd pas terug naar het begin na een tijdje stabiel: anders blijft hij bij een weigering
+      // direct na het openen (4001) eeuwig op 0,5 s hangen.
+      clearTimeout(this.stabiel);
+      this.stabiel = setTimeout(() => { this.poging = 0; this.reden = null; }, STABIEL_MS);
       this.#stuur({ t: 'hallo', app: this.app, inst: this.inst, v: 1 });
       this.#stuur({ t: 'manifest', manifest: this.manifest });
       this.#stuur({ t: 'staat', waarden: { ...this.waarden } });
       this.verbonden = true;
-      this.hbTimer = setInterval(() => this.#stuur({ t: 'hb' }), 1000);
+      this.laatsteHb = Date.now();
+      this.hbTimer = setInterval(() => this.#hartslag(), 1000);
       this.#meld({ t: '_status', verbonden: true });
     };
     ws.onmessage = (/** @type {{ data: any }} */ e) => {
@@ -97,24 +109,36 @@ export class OefenApp {
       try { b = JSON.parse(String(e.data)); } catch { return; }
       this.#ontvang(b);
     };
-    ws.onclose = () => {
+    ws.onclose = (/** @type {{ code?: number }} */ e) => {
       if (this.ws !== ws) return;
       this.ws = null;
       clearInterval(this.hbTimer);
+      clearTimeout(this.stabiel);
       const was = this.verbonden;
       this.verbonden = false;
       this.focus = false;
-      if (was) this.#meld({ t: '_status', verbonden: false });
+      this.triggers = {};                        // een trigger die nog "aan" stond, krijgt zijn "uit" nooit meer
+      const code = e?.code;
+      this.reden = code === 4001 ? 'vervangen' : code === 4003 ? 'token' : null;
+      if (was || this.reden) this.#meld({ t: '_status', verbonden: false, reden: this.reden });
       if (this.gestopt) return;
-      const ms = WACHT_MS[Math.min(this.poging++, WACHT_MS.length - 1)];
+      const ms = this.reden ? RUSTIG_MS : WACHT_MS[Math.min(this.poging++, WACHT_MS.length - 1)];
       this.opnieuw = setTimeout(() => this.start(), ms);
     };
     ws.onerror = () => {};
   }
 
+  /** Hartslag: elke seconde, ook als de browser de interval-timer van een verborgen tab afknijpt
+   *  (dan houden de berichten van de hub, ~10 per seconde, hem levend via #ontvang). */
+  #hartslag() {
+    if (Date.now() - this.laatsteHb < 900) return;
+    if (this.#stuur({ t: 'hb' })) this.laatsteHb = Date.now();
+  }
+
   stop() {
     this.gestopt = true;
     clearInterval(this.hbTimer);
+    clearTimeout(this.stabiel);
     clearTimeout(this.opnieuw);
     try { this.ws?.close(); } catch { /* al dicht */ }
     this.ws = null;
@@ -135,6 +159,7 @@ export class OefenApp {
 
   /** @param {any} b */
   #ontvang(b) {
+    this.#hartslag();
     switch (b?.t) {
       case 'zet':
         if (typeof b.id === 'string' && typeof b.v === 'number' && b.id in this.waarden) this.waarden[b.id] = Math.max(0, Math.min(1, b.v));

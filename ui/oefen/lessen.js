@@ -30,8 +30,10 @@ import { MANIFESTEN, ZON, ZEE } from './apps.js';
 
 const INDELINGEN = { [ZON]: maakIndeling(MANIFESTEN[ZON]), [ZEE]: maakIndeling(MANIFESTEN[ZEE]) };
 
-/** Zo lang telt een LPD8-druk als "lang" (bewaren); de hub zelf gebruikt 600 ms (LANG_MS in src/core/kern.js). */
-const LANG_DRUK_MS = 600;
+/** Zo lang telt een LPD8-druk als "lang" (bewaren). De hub zelf gebruikt 600 ms (LANG_MS in src/core/kern.js) op
+ *  zijn eigen klok; de pagina meet bij aankomst van de invoer en kan dus iets afwijken. Daarom ruim erboven, en
+ *  daaronder (tot TWIJFEL_MS) de vraag om een volle seconde vast te houden. */
+const LANG_DRUK_MS = 750, TWIJFEL_MS = 450;
 /** De oefening gebruikt snapshot 4 (pad 8): die overschrijft het minst waarschijnlijk iets van een echte avond. */
 const OEFEN_SNAPSHOT = 4;
 
@@ -121,7 +123,7 @@ export const LESSEN = [
       id: 'apps-actief',
       opdracht: () => 'Even wachten tot Zon en Zee verbonden zijn met de hub…',
       klaar: (c) => zonEnZeeActief(c.beeld),
-      hint: 'Draait de hub? Start hem met `npm start` en herlaad deze pagina.',
+      hint: 'Draait de hub? Start hem met npm start en herlaad deze pagina.',
     }],
     geleerd: 'Zon en Zee staan in de hub, elk met een eigen kleur en een vast <b>slot</b> (1–8). Dat slot gebruik je straks om een app te kiezen.',
   },
@@ -305,21 +307,26 @@ export const LESSEN = [
     id: 'snapshot',
     titel: 'Snapshots: een moment bewaren',
     intro: 'Een <b>snapshot</b> is de stand van álle apps tegelijk. Op de LPD8 zijn pad 5–8 snapshot 1–4: <b>lang drukken = bewaren</b>, <b>kort drukken = terugzetten</b>. '
-      + '(Op de APC: Bank + Scene 1–5.)',
+      + '(Op de APC: Bank + Scene 1–5 laadt, Bank + Shift + Scene bewaart.)',
     stappen: [
       {
         id: 'bewaren', wijs: () => ['lpd:p8'],
         begin: (c) => { c.mem.hadAl = (c.beeld?.snapshots ?? []).includes(OEFEN_SNAPSHOT); },
         opdracht: (c) => 'Houd <b>pad 8</b> op de LPD8 (bovenste rij, rechts) een seconde vast: snapshot 4 bewaart de huidige stand.'
+          + (c.mem.twijfel ? ' <b>Dat was net te kort: houd hem een volle seconde vast.</b>' : '')
           + (c.mem.hadAl ? ' <i>(Je hebt al een snapshot 4: die wordt overschreven. Liever niet? Sla deze les over.)</i>' : ''),
         klaar: (c) => {
           if (c.ev.soort === 'invoer' && c.ev.g?.dev === 'lpd8' && c.ev.g.el === 'p8') {
             if (c.ev.g.kind === 'druk') c.mem.sinds = c.nu;
-            else if (c.ev.g.kind === 'los' && c.mem.sinds !== undefined) c.mem.lang = c.nu - c.mem.sinds >= LANG_DRUK_MS;
+            else if (c.ev.g.kind === 'los' && c.mem.sinds !== undefined) {
+              const ms = c.nu - c.mem.sinds;
+              c.mem.lang = ms >= LANG_DRUK_MS;
+              c.mem.twijfel = !c.mem.lang && ms >= TWIJFEL_MS;
+            }
           }
           return !!c.mem.lang && (c.beeld?.snapshots ?? []).includes(OEFEN_SNAPSHOT);
         },
-        hint: 'Echt even vasthouden: kort drukken laadt, lang drukken (vanaf ruim een halve seconde) bewaart.',
+        hint: 'Echt een volle seconde vasthouden: kort drukken laadt, lang drukken bewaart.',
       },
       {
         id: 'veranderen',
@@ -357,7 +364,12 @@ export const LESSEN = [
       {
         id: 'los', wijs: () => ['lpd:p1'],
         opdracht: () => 'Laat pad 1 los: de paniek is voorbij.',
-        klaar: (c) => { const m = appBericht(c); return !!m && m.b.t === 'trig' && m.b.id === 'paniek' && m.b.aan === false; },
+        // Ook als de hub de paniek voorbij meldt zonder trig (bv. na een herstart van de hub midden in de paniek).
+        klaar: (c) => {
+          const m = appBericht(c);
+          if (m && m.b.t === 'trig' && m.b.id === 'paniek' && m.b.aan === false) return true;
+          return c.ev.soort === 'beeld' && Number(c.beeld?.globaal?.paniek ?? 0) === 0;
+        },
       },
     ],
     geleerd: 'Pad 1 vasthouden = paniek voor alle apps. Stop All op de APC = paniek voor alleen de app met focus.',
@@ -371,14 +383,14 @@ export const LESSEN = [
       {
         id: 'tap', wijs: () => ['lpd:p2'],
         begin: (c) => { c.mem.bpm = c.beeld?.globaal?.bpm; },
-        opdracht: () => 'Tik een paar keer op <b>pad 2</b>, rustig in de maat. Het tempo rechtsboven verandert.',
+        opdracht: () => 'Tik een paar keer op <b>pad 2</b>, rustig in de maat. Het tempo onder het tafereel verandert.',
         klaar: (c) => typeof c.beeld?.globaal?.bpm === 'number' && c.beeld.globaal.bpm !== c.mem.bpm,
         hint: 'Minstens twee tikken, niet te ver uit elkaar.',
       },
       {
         id: 'adem', wijs: () => ['lpd:k7'],
         begin: (c) => { c.mem.adem = c.beeld?.globaal?.['klok.adem_periode']; },
-        opdracht: () => 'Draai <b>K7 (adem)</b>, de derde knop in de onderste rij: de cirkel rechtsboven ademt sneller of langzamer.',
+        opdracht: () => 'Draai <b>K7 (adem)</b>, de derde knop in de onderste rij: de adem onder het tafereel wordt langer of korter, en de hemel ademt mee.',
         klaar: (c) => { const v = c.beeld?.globaal?.['klok.adem_periode']; return typeof v === 'number' && v !== c.mem.adem; },
       },
     ],
@@ -444,8 +456,10 @@ export class Leraar {
     const app = (/** @type {string} */ id) => apps.find((/** @type {any} */ a) => a.app === id);
     return {
       beeld: this.beeld, ev, mem: this.mem, nu: this.nu(), focus: this.beeld?.focus ?? null,
-      slot: (id) => String(app(id)?.slot ?? '?'),
-      naam: (id) => app(id)?.naam ?? id,
+      // Alleen eigen teksten in de opdracht (die gaat als HTML de pagina in): de naam uit het eigen manifest,
+      // het slot als getal. Een app die zich als oefen-zee meldt met een rare naam, komt er zo niet in.
+      slot: (id) => { const s = Number(app(id)?.slot); return Number.isInteger(s) && s > 0 ? String(s) : '?'; },
+      naam: (id) => MANIFESTEN[id]?.naam ?? '?',
       waar: waarOpApc,
       acties: this.acties,
     };
@@ -493,14 +507,26 @@ export class Leraar {
 
   /** Verwerk één gebeurtenis. @param {Gebeurtenis} ev */
   verwerk(ev) {
+    const eersteBeeld = ev.soort === 'beeld' && !this.beeld;
     if (ev.soort === 'beeld') this.beeld = ev.beeld;
     if (!this.begonnen) return;
+    // Begon de les vóór het eerste beeld (bij het laden van de pagina), dan legden begin() en overslaanAls()
+    // nog niets vast (focus, tempo, snapshots onbekend): nu de stap opnieuw beginnen.
+    if (eersteBeeld && !this.lesKlaar) { this.#beginStap(); this.#meld(); return; }
     const s = this.stap;
     if (!s) { if (ev.soort === 'beeld') this.#meld(); return; }
     let gelukt = false;
     try { gelukt = s.klaar(this.#ctx(ev)); } catch (e) { console.error(e); }
     if (gelukt) this.#volgendeStap();
     if (gelukt || ev.soort === 'beeld') this.#meld();
+  }
+
+  /** Na een focusstap in deze les: is de focus intussen naar een andere app gegaan? Dan eerst dat zeggen. @param {Ctx} c */
+  #focusWaarschuwing(c) {
+    const i = this.les.stappen.findIndex((s) => s.id.startsWith('focus-'));
+    if (i < 0 || this.stapIndex <= i || !c.beeld) return '';
+    const app = this.les.stappen[i].id.slice('focus-'.length);
+    return c.focus === app ? '' : `<span class="focus-weg">De <b>${c.naam(app)}</b> heeft geen focus meer: Bank + Track Select ${c.slot(app)}.</span> `;
   }
 
   /** Wat de pagina moet tonen. */
@@ -510,7 +536,7 @@ export class Leraar {
     return {
       lesIndex: this.lesIndex, aantal: this.lessen.length, les,
       stapIndex: this.stapIndex, lesKlaar: this.lesKlaar, allesKlaar: this.allesKlaar,
-      opdracht: this.stap ? this.stap.opdracht(c) : null,
+      opdracht: this.stap ? this.#focusWaarschuwing(c) + this.stap.opdracht(c) : null,
       hint: this.stap?.hint ?? null,
       knop: this.stap?.knop ?? null,
       wijs: this.stap?.wijs ? this.stap.wijs(c) : [],

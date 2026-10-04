@@ -2,7 +2,7 @@
 // Oefenruimte: een gesimuleerde leerling doorloopt álle lessen tegen de echte hub (kern + server),
 // met de echte oefen-apps (Zon, Zee) en de virtuele controllers via de cockpit — precies het pad
 // dat de pagina in de browser gebruikt. Zo weten we dat elke les met het echte hubgedrag te halen is.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import WebSocket from 'ws';
 import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
@@ -203,6 +203,103 @@ describe('oefenruimte: lessen en oefen-apps', () => {
     l.verwerk({ soort: 'invoer', g: { dev: 'apc40', el: 'fader1', kind: 'waarde', v: 0.4 } });
     l.verwerk({ soort: 'app', app: ZON, b: { t: 'zet', id: 'gloed', v: 0.81, bron: 'apc40' } });
     expect(l.lesKlaar).toBe(true);
+  });
+
+  it('begonnen vóór het eerste beeld (pagina laden): de stap begint opnieuw zodra het beeld er is, en slaagt niet vanzelf', () => {
+    const l = new Leraar({ nu: () => 0 });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'tempo'));   // zoals oefen.js bij het laden met een bewaarde les
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { bpm: 120 } } });
+    expect(l.stap?.id).toBe('tap');
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { bpm: 120 } } });
+    expect(l.stap?.id).toBe('tap');
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { bpm: 96 } } });
+    expect(l.stap?.id).toBe('adem');
+  });
+
+  it('opdrachten gebruiken alleen eigen teksten: een vreemde naam uit het beeld komt niet in de HTML', () => {
+    const l = new Leraar({ nu: () => 0 });
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [{ app: ZEE, naam: '<img src=x onerror=alert(1)>', slot: '<b>2</b>' }, { app: ZON, naam: 'Zon', slot: 1 }] } });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'focus'));
+    const t = /** @type {string} */ (l.toestand().opdracht);
+    expect(t).not.toMatch(/<img|onerror|<b>2<\/b>/);
+    expect(t).toMatch(/Track Select \?/);
+  });
+
+  it('paniek loslaten slaagt ook als de hub de paniek voorbij meldt zonder trig (hub herstart midden in de paniek)', () => {
+    const l = new Leraar({ nu: () => 0 });
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { paniek: 1 } } });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'paniek'));
+    for (const app of [ZON, ZEE]) l.verwerk({ soort: 'app', app, b: { t: 'trig', id: 'paniek', aan: true } });
+    expect(l.stap?.id).toBe('los');
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { paniek: 1 } } });
+    expect(l.lesKlaar).toBe(false);
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], globaal: { paniek: 0 } } });
+    expect(l.lesKlaar).toBe(true);
+  });
+
+  it('na een focusstap: wisselt de leerling van app, dan zegt de opdracht dat eerst', () => {
+    const l = new Leraar({ nu: () => 0 });
+    const apps = [{ app: ZON, naam: 'Zon', slot: 1 }, { app: ZEE, naam: 'Zee', slot: 2 }];
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps } });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'fader'));
+    expect(l.toestand().opdracht).not.toMatch(/geen focus meer/);
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZEE, apps } });
+    expect(l.toestand().opdracht).toMatch(/De <b>Zon<\/b> heeft geen focus meer: Bank \+ Track Select 1/);
+  });
+
+  it('snapshot bewaren: net te kort (rond de 600 ms van de hub) telt niet en vraagt om een volle seconde', () => {
+    let nu = 0;
+    const l = new Leraar({ nu: () => nu });
+    l.verwerk({ soort: 'beeld', beeld: { focus: ZON, apps: [], snapshots: [4] } });
+    l.gaNaar(LESSEN.findIndex((x) => x.id === 'snapshot'));
+    const p8 = (/** @type {'druk'|'los'} */ kind) => l.verwerk({ soort: 'invoer', g: { dev: 'lpd8', el: 'p8', kind } });
+    p8('druk'); nu += 620; p8('los');
+    expect(l.stap?.id).toBe('bewaren');
+    expect(l.toestand().opdracht).toMatch(/net te kort/);
+    p8('druk'); nu += 900; p8('los');
+    expect(l.stap?.id).toBe('veranderen');
+  });
+
+  it('OefenApp: 4001 (open in een andere tab) → rustig 30 s wachten, met reden; triggers worden gewist', async () => {
+    vi.useFakeTimers();
+    try {
+      /** @type {any[]} */
+      const sockets = [];
+      class NepWS {
+        constructor() { this.readyState = 0; this.verstuurd = []; sockets.push(this); }
+        /** @param {string} d */ send(d) { this.verstuurd.push(JSON.parse(d)); }
+        close() {}
+      }
+      const a = new OefenApp({ manifest: MANIFESTEN[ZON], url: 'ws://x/app', WebSocket: NepWS });
+      /** @type {any[]} */
+      const status = [];
+      a.bij((b) => { if (b.t === '_status') status.push(b); });
+      a.start();
+      const s0 = sockets[0];
+      s0.readyState = 1; s0.onopen();
+      s0.onmessage({ data: JSON.stringify({ t: 'trig', id: 'flits', aan: true }) });
+      expect(a.triggers.flits).toBe(true);
+      s0.readyState = 3; s0.onclose({ code: 4001 });
+      expect(a.reden).toBe('vervangen');
+      expect(a.triggers).toEqual({});
+      expect(status.at(-1)).toMatchObject({ verbonden: false, reden: 'vervangen' });
+      vi.advanceTimersByTime(29000);
+      expect(sockets).toHaveLength(1);
+      vi.advanceTimersByTime(1500);
+      expect(sockets).toHaveLength(2);
+      // gewone storing: korte backoff, en die loopt op zolang de verbinding niet stabiel wordt
+      const s1 = sockets[1];
+      s1.readyState = 1; s1.onopen(); s1.readyState = 3; s1.onclose({ code: 1006 });
+      vi.advanceTimersByTime(600);
+      expect(sockets).toHaveLength(3);
+      const s2 = sockets[2];
+      s2.readyState = 1; s2.onopen(); s2.readyState = 3; s2.onclose({ code: 1006 });
+      vi.advanceTimersByTime(600);
+      expect(sockets).toHaveLength(3);          // nu 1 s
+      vi.advanceTimersByTime(500);
+      expect(sockets).toHaveLength(4);
+      a.stop();
+    } finally { vi.useRealTimers(); }
   });
 
   it('een stap die al vervuld is, slaat de leraar over (de Zon heeft al focus)', async () => {
