@@ -104,6 +104,21 @@ describe.skipIf(!heeftBrowser)('oefenruimte in de browser', () => {
     expect(await page.$$eval('#voortgang button.gehaald', (e) => e.length)).toBe(1); // les 1 (welkom)
   });
 
+  it('toont tempo en adem onder het tafereel (les 12)', async () => {
+    await page.goto(`${hub.adres}/oefen`);
+    await expect.poll(() => page.textContent('#klokken')).toMatch(/^tempo 120 bpm · adem 10,0 s/);
+  });
+
+  it('twee tabs: de oude tab zegt dat Zon en Zee in een andere tab open zijn (en blijft niet herverbinden)', async () => {
+    await page.goto(`${hub.adres}/oefen`);
+    await page.locator('#knop-volgende').waitFor({ state: 'visible' });
+    const tweede = await browser.newPage();
+    await tweede.goto(`${hub.adres}/oefen`);
+    await expect.poll(() => page.textContent('#let-op'), { timeout: 8000 }).toMatch(/andere tab/);
+    expect(await page.textContent('#app-oefen-zon .slot')).toBe('open in een andere tab');
+    await tweede.close();
+  });
+
   it('past op een telefoon: geen horizontale scroll op 390 px', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${hub.adres}/oefen`);

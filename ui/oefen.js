@@ -46,8 +46,9 @@ let bpm = 120;
 const verbinding = new Verbinding({ url: cockpitUrl(location), bijBericht: ontvang, bijStatus: toonStatus });
 const apc = maakApc($('apc'), { stuur: (bytes) => verbinding.stuur({ t: 'virtueel', dev: 'apc40', bytes }), bpm: () => bpm });
 const lpd = maakLpd8($('lpd8'), { stuur: (bytes) => verbinding.stuur({ t: 'virtueel', dev: 'lpd8', bytes }) });
+// Alleen een klik van jou telt als eigen keuze (het toggle-event vuurt ook als de pagina zelf open/dicht zet).
 let virtueelGekozen = false;
-$('virtueel').addEventListener('toggle', () => { virtueelGekozen = true; });
+/** @type {HTMLElement} */ ($('virtueel').querySelector('summary')).addEventListener('click', () => { virtueelGekozen = true; });
 
 /** @param {any} b */
 function ontvang(b) {
@@ -58,6 +59,7 @@ function ontvang(b) {
       lpd.zetGlobaal(b.globaal ?? {});
       tekenApparaten();
       tekenApps();
+      tekenKlokken();
       leraar.verwerk({ soort: 'beeld', beeld: b });
       break;
     case 'leds': if ((b.dev ?? 'apc40') === 'apc40' && b.staat && typeof b.staat === 'object') apc.zetLeds(b.staat); break;
@@ -92,13 +94,22 @@ function tekenApparaten() {
     ? '(een van je controllers is niet aangesloten: gebruik hier de virtuele)' : '(je APC40 en LPD8 zijn niet aangesloten: gebruik deze)';
 }
 
+/** Tempo en adem van de hub (les 12), onder het tafereel. */
+function tekenKlokken() {
+  const g = beeld?.globaal ?? {};
+  const bpmTekst = typeof g.bpm === 'number' ? `${Math.round(g.bpm)} bpm` : '—';
+  const k7 = g['klok.adem_periode'];
+  const periode = typeof k7 === 'number' && Number.isFinite(k7) ? 4 + 12 * Math.max(0, Math.min(1, k7)) : 10;
+  $('klokken').textContent = `tempo ${bpmTekst} · adem ${periode.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} s per ademhaling`;
+}
+
 // ── Zon en Zee: waarden, pickup en wat er binnenkomt ─────────────────────────
 /** @type {{ app: string, tekst: string, bron: string }[]} */
 const stroom = [];
 
 for (const a of Object.values(apps)) {
   a.bij((b) => {
-    if (b.t === '_status') { tekenApps(); return; }
+    if (b.t === '_status') { tekenApps(); tekenLes(); return; }
     if (b.t === '_zelf') voegStroom(a.app, `${b.id} → ${toonPct(b.v)} (in de app zelf)`, 'zelf');
     else {
       if (b.t === 'zet') { voegStroom(a.app, `${b.id} → ${toonPct(b.v)}`, b.bron ?? 'hub'); knipper(a.app, b.id); }
@@ -170,7 +181,8 @@ function tekenApps() {
       pick.className = 'pickup';
       doos.append(pick);
     }
-    /** @type {HTMLElement} */ (doos.querySelector('.slot')).textContent = !a.verbonden ? 'niet verbonden'
+    /** @type {HTMLElement} */ (doos.querySelector('.slot')).textContent = !a.verbonden
+      ? (a.reden === 'vervangen' ? 'open in een andere tab' : a.reden === 'token' ? 'token nodig' : 'niet verbonden')
       : info?.slot ? `slot ${info.slot}` : 'verbinden…';
     // Pickup: waar staat de fysieke control, en heeft hij de app al "gevangen"?
     /** @type {string[]} */
@@ -200,9 +212,11 @@ let laatsteStap = '';
 /** @type {HTMLElement[]} */
 let gewezen = [];
 
+let laatsteOpslag = '', laatsteOpdracht = '', laatsteKlaar = false;
 function tekenLes() {
   const t = leraar.toestand();
-  bewaarVoortgang({ les: t.lesIndex, gehaald: t.gehaald });
+  const opslag = JSON.stringify({ les: t.lesIndex, gehaald: t.gehaald });
+  if (opslag !== laatsteOpslag) { laatsteOpslag = opslag; bewaarVoortgang({ les: t.lesIndex, gehaald: t.gehaald }); }
   const ol = $('voortgang');
   if (!ol.childElementCount) {
     LESSEN.forEach((les, i) => {
@@ -221,15 +235,13 @@ function tekenLes() {
   $('les-nr').textContent = `Les ${t.lesIndex + 1} van ${t.aantal}`;
   $('les-titel').textContent = t.les.titel;
   $('les-intro').innerHTML = t.les.intro;          // eigen tekst uit lessen.js
+  // Alleen herschrijven als er echt iets veranderde: het beeld komt tot 10× per seconde, en een aria-live-gebied
+  // dat steeds opnieuw geschreven wordt, laat een schermlezer telkens opnieuw voorlezen.
   const opdracht = $('opdracht');
-  if (t.opdracht) {
-    const stappen = t.les.stappen.length > 1
-      ? `<div class="stappen" aria-hidden="true">${t.les.stappen.map((_, i) => `<i class="${i < t.stapIndex ? 'klaar' : i === t.stapIndex ? 'nu' : ''}"></i>`).join('')}</div>` : '';
-    opdracht.innerHTML = stappen + t.opdracht;
-    opdracht.classList.remove('gelukt');
-  } else {
-    opdracht.textContent = '';
-  }
+  const stappen = t.opdracht && t.les.stappen.length > 1
+    ? `<div class="stappen" aria-hidden="true">${t.les.stappen.map((_, i) => `<i class="${i < t.stapIndex ? 'klaar' : i === t.stapIndex ? 'nu' : ''}"></i>`).join('')}</div>` : '';
+  const html = t.opdracht ? stappen + t.opdracht : '';
+  if (html !== laatsteOpdracht) { laatsteOpdracht = html; opdracht.innerHTML = html; }   // eigen tekst uit lessen.js
   // Dezelfde opdracht onderaan in beeld, voor als je naar de virtuele controllers scrolt.
   const balk = $('opdracht-balk');
   balk.innerHTML = t.opdracht ?? (t.lesKlaar ? '✓ Les gehaald — scroll omhoog voor de volgende les.' : '');
@@ -238,7 +250,9 @@ function tekenLes() {
   if (t.lesKlaar) { geleerd.innerHTML = t.allesKlaar ? `${t.les.geleerd}<br><br><b>Alle lessen gehaald!</b> De spiekbrief hieronder heeft alles nog eens op een rij.` : t.les.geleerd; }
   $('knop-volgende').hidden = !t.lesKlaar || t.allesKlaar;
   $('knop-begrepen').hidden = !t.knop;
-  if (t.lesKlaar && !t.allesKlaar) $('knop-volgende').focus({ preventScroll: true });
+  // Focus alleen op het moment dat de les gehaald wordt, niet bij elk beeld (anders kun je niet tabben).
+  if (t.lesKlaar && !laatsteKlaar && !t.allesKlaar) $('knop-volgende').focus({ preventScroll: true });
+  laatsteKlaar = t.lesKlaar;
 
   // Hint pas na een tijdje op dezelfde stap.
   const stapSleutel = `${t.lesIndex}:${t.stapIndex}:${t.lesKlaar}`;
@@ -258,11 +272,17 @@ function tekenLes() {
     if (el) { el.classList.add('wijs'); gewezen.push(el); }
   }
 
-  // Andere apps verbonden? De LPD8 en snapshots raken die ook.
+  // Zon/Zee open in een andere tab, of andere apps verbonden (de LPD8 en snapshots raken die ook)?
   const anderen = (beeld?.apps ?? []).filter((/** @type {any} */ a) => a.status === 'actief' && a.app !== ZON && a.app !== ZEE);
-  $('let-op').hidden = !anderen.length;
-  $('let-op').textContent = anderen.length
-    ? `Let op: ook ${anderen.map((/** @type {any} */ a) => a.naam).join(', ')} is verbonden. De LPD8, snapshots en paniek werken daar ook op — oefen liefst zonder andere apps.` : '';
+  const vervangen = Object.values(apps).some((a) => a.reden === 'vervangen');
+  const token = Object.values(apps).some((a) => a.reden === 'token');
+  const meldingen = [
+    vervangen ? 'Zon en Zee zijn al open in een andere tab of venster: sluit die, of oefen daar verder. Deze pagina probeert het over 30 s opnieuw.' : '',
+    token ? 'De hub wil een token (hij draait met --lan): open deze pagina via het adres met ?token= uit node src/cli.js token.' : '',
+    anderen.length ? `Let op: ook ${anderen.map((/** @type {any} */ a) => String(a.naam)).join(', ')} is verbonden. De LPD8, snapshots en paniek werken daar ook op — oefen liefst zonder andere apps.` : '',
+  ].filter(Boolean);
+  $('let-op').hidden = !meldingen.length;
+  $('let-op').textContent = meldingen.join(' ');
 }
 
 let vorigeKlaar = false;
@@ -301,6 +321,8 @@ verbinding.start();
 apps[ZON].start();
 setTimeout(() => apps[ZEE].start(), 300);
 addEventListener('pagehide', () => { for (const a of Object.values(apps)) a.stop(); verbinding.stop(); });
+// Terug via de vorige-knop uit de bfcache: de verbindingen zijn dan dicht, dus opnieuw laden.
+addEventListener('pageshow', (e) => { if (e.persisted) location.reload(); });
 const begin = Number.isInteger(opgeslagen.les) ? /** @type {number} */ (opgeslagen.les) : 0;
 leraar.gaNaar(begin);
 tekenLes();
