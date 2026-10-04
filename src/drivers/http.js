@@ -47,6 +47,18 @@ export function verbBericht(spec, soort, v) {
   return { verb: spec.verb, args, auteur: AUTEUR };
 }
 
+/**
+ * De waarde (0..1) zoals de app hem echt krijgt: na de afronding van verbBericht op 4 decimalen, in eenheden van de app.
+ * Zo telt bij het teruglezen alleen de afronding van de app zelf (de slider van uurwerk snapt op 0,01), niet ook die
+ * van de hub (hub 0,45496 → verstuurd 0,4550 → tab 0,46: verschil 0,005, niet 0,00504). Puur.
+ * @param {VerbSpec} spec @param {number} v
+ */
+export function verstuurdeDraad(spec, v) {
+  const [lo, hi] = Array.isArray(spec.bereik) && spec.bereik.length === 2 && spec.bereik.every(Number.isFinite) && spec.bereik[0] !== spec.bereik[1] ? spec.bereik : [0, 1];
+  const x = Math.round((lo + klem01(Number(v)) * (hi - lo)) * 1e4) / 1e4;
+  return klem01((x - lo) / (hi - lo));
+}
+
 /** URL zonder slash aan het eind. @param {string} u */
 const basisUrl = (u) => String(u).replace(/\/+$/, '');
 
@@ -102,6 +114,12 @@ export class HttpDriver extends DriverBasis {
     this.leesGemeld = false;
     /** @type {{ id: string, v: number }[]} wat er is teruggemeld aan de kern (diagnose/tests) */
     this.teruggelezen = [];
+    /** @type {number|null} aantal tabs volgens de laatste gezondheidscheck ("tabs: N"); null = onbekend */
+    this.tabs = null;
+    /** meer dan één tab is al gemeld */
+    this.tabsGemeld = false;
+    /** een verse (lege) tab gaf al één replay; nog eens leeg = overnemen (iemand zette alles echt op nul) */
+    this.versHersteld = false;
   }
 
   /** @param {{ verb: string, args: Record<string, unknown>, auteur: string }} bericht */
@@ -141,7 +159,7 @@ export class HttpDriver extends DriverBasis {
     const spec = this.driver.verbs?.[id];
     const p = this.params.get(id);
     if (!spec || !p || p.soort === 'trigger' || !Number.isFinite(v)) return;
-    this.bekend.set(id, p.soort === 'schakelaar' ? (v >= 0.5 ? 1 : 0) : klem01(v));
+    this.bekend.set(id, p.soort === 'schakelaar' ? (v >= 0.5 ? 1 : 0) : verstuurdeDraad(spec, v));
     const nu = this.klok.nu();
     let r = this.rem.get(id);
     if (!r) { r = { laatstOp: -Infinity, timer: null }; this.rem.set(id, r); }
@@ -183,6 +201,8 @@ export class HttpDriver extends DriverBasis {
     if (this.checkBezig || this.gestopt) return;
     this.checkBezig = true;
     let ok = false;
+    /** @type {number|null} */
+    let tabs = null;
     const ac = typeof AbortController === 'function' ? new AbortController() : null;
     // De time-out sluit de check zelf af: ook een fetch die het afbreken negeert, blokkeert de volgende niet.
     /** @type {{ ac: AbortController|null, timer: any }} */
@@ -201,7 +221,9 @@ export class HttpDriver extends DriverBasis {
       // de uurwerk-brug draait wel, maar zonder browsertab gebeurt er niets: "tabs: 0"
       if (ok && typeof r.text === 'function') {
         const tekst = await r.text().catch(() => '');
-        if (/tabs:\s*0\b/.test(String(tekst))) ok = false;
+        const m = /tabs:\s*(\d+)\b/.exec(String(tekst));
+        if (m) tabs = Number(m[1]);
+        if (tabs === 0) ok = false;
       }
     } catch { ok = false; }
     if (this.lopend !== mijn) return; // intussen gestopt (en misschien opnieuw gestart): deze uitslag telt niet
@@ -211,8 +233,13 @@ export class HttpDriver extends DriverBasis {
     if (this.gestopt) return;
     const was = this.bereikbaar;
     this.bereikbaar = ok;
+    this.tabs = tabs;
     if (!ok) return;
-    if (was === false) this.leesFouten = 0; // de app is terug: meteen weer in het gewone ritme teruglezen
+    if (was === false && this.leesFouten) {
+      // de app is terug: meteen weer in het gewone ritme teruglezen, niet pas na de lopende backoff
+      this.leesFouten = 0;
+      if (this.leesTimer !== null) { this.klok.wis(this.leesTimer); this.leesTimer = null; this.#planLees(); }
+    }
     if (was === false || this.gemist) {
       // terug na een storing: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt
       this.gemist = false;
@@ -238,6 +265,15 @@ export class HttpDriver extends DriverBasis {
   lees() {
     const lezer = this.lezer;
     if (!lezer || this.gestopt || this.leesLopend || this.bereikbaar !== true || this.gemist) return Promise.resolve();
+    if (this.tabs !== null && this.tabs > 1) {
+      // De brug stuurt elke vraag naar alle tabs en het eerste antwoord wint: met twee tabs (elk een eigen staat)
+      // sprong de hub om de paar seconden heen en weer. Dus niet teruglezen, en dat één keer melden.
+      if (!this.tabsGemeld) this.log('driver', this.manifest.app, `${this.tabs} tabs open: teruglezen staat stil tot er één over is`);
+      this.tabsGemeld = true;
+      return Promise.resolve();
+    }
+    if (this.tabsGemeld) this.log('driver', this.manifest.app, 'weer één tab: teruglezen loopt weer');
+    this.tabsGemeld = false;
     return new Promise((klaar) => {
       const ac = typeof AbortController === 'function' ? new AbortController() : null;
       /** @type {LeesLopend} */
@@ -260,8 +296,8 @@ export class HttpDriver extends DriverBasis {
     const ac = mijn.ac;
     /** @type {string|null} */
     let fout = null;
-    /** @type {string} */
-    let tekst = '';
+    /** @type {Patch|null} */
+    let patch = null;
     try {
       const r = await this.fetch(`${this.url}/verb/${lezer.verb}`, { method: 'GET', ...(ac ? { signal: ac.signal } : {}) });
       if (!r || r.ok === false) {
@@ -274,8 +310,14 @@ export class HttpDriver extends DriverBasis {
         else {
           const j = JSON.parse(ruw);
           const t = j && typeof j === 'object' ? j[lezer.veld] : undefined;
-          if (typeof t === 'string') tekst = t;
-          else fout = j && typeof j.fout === 'string' ? j.fout : `geen "${lezer.veld}" in het antwoord`;
+          if (typeof t !== 'string') fout = j && typeof j.fout === 'string' ? j.fout : `geen "${lezer.veld}" in het antwoord`;
+          else {
+            patch = leesPatch(lezer, t);
+            // Zonder kopregel is het geen patch (een andere dienst op de poort, een tab waar FXRack.Mod nog ontbreekt
+            // en serialize '' geeft, of een uurwerk met een andere taal): niets overnemen, anders trok 'ontbreekt' de
+            // hub naar nul.
+            if (!patch.kop) fout = `geen kopregel /${lezer.kop?.source}/ in de tekst (geen patch?)`;
+          }
         }
       }
     } catch (e) { fout = /** @type {Error} */ (e)?.message ?? String(e); }
@@ -283,19 +325,32 @@ export class HttpDriver extends DriverBasis {
     this.klok.wis(mijn.timer);
     this.leesLopend = null;
     if (this.gestopt) return;
-    if (fout !== null) { this.#leesMislukt(fout); return; }
+    if (fout !== null || !patch) { this.#leesMislukt(fout ?? 'geen patch'); return; }
     if (this.leesGemeld) this.log('driver', this.manifest.app, 'teruglezen werkt weer');
     this.leesFouten = 0;
     this.leesGemeld = false;
     // Intussen onbereikbaar geworden, of een verb mislukt (replay wacht): niets melden.
     if (!this.kern || this.bereikbaar !== true || this.gemist) return;
-    const waarden = leesTekst(lezer, tekst);
-    for (const [id, x] of Object.entries(waarden)) {
+    /** @type {[string, number, Regel][]} */
+    const anders = [];
+    for (const [id, x] of Object.entries(patch.waarden)) {
       const r = /** @type {Regel} */ (lezer.regels.get(id));
       if (this.#onrustig(id, start)) continue;
       const p = this.params.get(id);
       const hub = this.bekend.get(id) ?? (typeof p?.standaard === 'number' ? p.standaard : 0);
-      if (!verschilt(lezer, r, x, hub)) continue;
+      if (verschilt(lezer, r, x, hub)) anders.push([id, x, r]);
+    }
+    if (patch.vers && anders.length && !this.versHersteld) {
+      // Een vers geladen tab (F5, sneller dan de gezondheidscheck: 'tabs: 0' nooit gezien): lege kop, geen enkele
+      // regel. Uurwerk zet de macro's bij het laden niet terug, dus dit is geen keuze in de tab maar een lege stand.
+      // Niet overnemen, maar één keer opnieuw aanmelden: de kern (truth:"hub") speelt zijn waarden opnieuw af.
+      this.versHersteld = true;
+      this.log('driver', this.manifest.app, 'de tab lijkt vers geladen (lege patch): de hub speelt zijn waarden opnieuw af');
+      this.aanmelden();
+      return;
+    }
+    if (!patch.vers) this.versHersteld = false;
+    for (const [id, x, r] of anders) {
       const v = naarDraad(r, x);
       this.bekend.set(id, v);
       bewaarBegrensd(this.teruggelezen, { id, v });
@@ -308,13 +363,13 @@ export class HttpDriver extends DriverBasis {
     this.leesFouten++;
     if (this.leesGemeld) return;
     this.leesGemeld = true;
-    this.log('driver', this.manifest.app, `teruglezen mislukt: ${fout} (opnieuw met backoff tot ${this.leesMaxMs / 1000} s; verdere fouten niet gelogd)`);
+    this.log('driver', this.manifest.app, `teruglezen mislukt: ${kortFout(fout)} (opnieuw met backoff tot ${this.leesMaxMs / 1000} s; verdere fouten niet gelogd — uitzetten: config.json teruglezen.elke_s = 0)`);
   }
 
   /** Wachttijd tot de volgende teruglees-ronde: het interval, na fouten verdubbeld tot leesMaxMs. */
   leesWacht() {
-    if (!this.leesFouten) return this.leesMs;
-    return Math.min(this.leesMaxMs, this.leesMs * 2 ** Math.min(this.leesFouten, 16));
+    const ms = this.leesFouten ? Math.min(this.leesMaxMs, this.leesMs * 2 ** Math.min(this.leesFouten, 16)) : this.leesMs;
+    return Math.min(ms, MAX_TIMER_MS);
   }
 
   #planLees() {
@@ -337,6 +392,7 @@ export class HttpDriver extends DriverBasis {
     if (!this.gestopt) return; // loopt al: geen tweede timerketen
     this.gestopt = false;
     this.koppel(kern);
+    if (this.lezer) this.log('driver', this.manifest.app, `teruglezen aan: elke ${this.leesMs / 1000} s (config.json teruglezen.elke_s; 0 = uit)`);
     this.controleer();
     this.#plan();
     this.#planLees();
@@ -367,7 +423,9 @@ export class HttpDriver extends DriverBasis {
 // (de enige bron voor het interval) en de app gezond is. Met tolerantie (afronding van de app) en zonder echo (een
 // parameter die de hub net zelf stuurde, slaat hij die ronde over). Na een mislukte poging met backoff tot
 // `teruglezen.max_s`, en hooguit één logregel per storing. Zonder `driver.lees` geldt STANDAARD_LEES[app] (de
-// patchtaal van uurwerk); `lees: false` zet teruglezen uit.
+// patchtaal van uurwerk); `lees: false` zet teruglezen uit. Een antwoord zonder kopregel (`lees.kop`) telt als
+// mislukt; een verse tab (lege kop, geen enkele regel) geeft één replay in plaats van overnemen. Met meer dan één tab
+// open leest de driver niet terug (de brug laat het eerste antwoord winnen).
 
 /**
  * Hoe lang één teruglees-verzoek mag duren (de brug vraagt het aan de tab). De volgende ronde wordt pas gepland als
@@ -380,6 +438,10 @@ export const LEES_MIN_MS = 500;
 export const LEES_MAX_S = 30;
 /** Meer tekst dan dit wordt niet gelezen (een patch is een paar kB). */
 export const LEES_MAX_TEKENS = 200_000;
+/** Langste interval en backoff (s), wat config.json ook zegt: daarboven is teruglezen in de praktijk uit. */
+export const LEES_GRENS_S = 3600;
+/** setTimeout kan niet langer dan dit (2^31-1 ms); daarboven maakt Node er 1 ms van. */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
 /**
  * Geen echo: een parameter die de hub binnen deze tijd vóór het verzoek (of erna) zelf stuurde, of waarvan nog een
  * waarde wacht, wordt bij deze ronde niet vergeleken. De tab heeft de waarde dan misschien nog niet; vergelijken
@@ -388,9 +450,16 @@ export const LEES_MAX_TEKENS = 200_000;
  */
 export const ECHO_MARGE_MS = POST_TIMEOUT_MS;
 
+/** Een foutreden voor het log: één regel, hooguit 200 tekens (een antwoord van buiten kan van alles bevatten). @param {unknown} f */
+export const kortFout = (f) => String(f).replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 200);
+
 /**
  * De patchtaal van uurwerk (uurwerk/taal.js `serialize`, via `GET /verb/toon` → `{ tekst }`). Macro's staan er met
- * twee decimalen in (`toFixed(2)`), dus alles binnen 0,005 (in eenheden van de app) is afronding, geen wijziging.
+ * twee decimalen in (`toFixed(2)`; de sliders snappen op 0,01), dus alles binnen 0,005 (in eenheden van de app) is
+ * afronding, geen wijziging. De hub vergelijkt met wat hij echt verstuurde (na verbBericht's 4 decimalen,
+ * `verstuurdeDraad`), zodat de afronding van de hub er niet nog eens bij komt.
+ * - `kop`: de eerste regel `uurwerk "<zaad>"` moet er staan (anders geen patch); een leeg zaad zonder één andere
+ *   regel = een vers geladen tab;
  * - `licht x` (-1..1) en `samenhang x` ontbreken bij 0;
  * - `tuinman onrust x [bevroren] [op-tijd]` ontbreekt als de tuinman uit staat en onrust 0 is (bevroren dan onbekend);
  * - `dicht x` staat in de `stem`-regel, die ontbreekt zonder stemmen (dan onbekend).
@@ -401,6 +470,7 @@ export const STANDAARD_LEES = {
   uurwerk: {
     verb: 'toon',
     veld: 'tekst',
+    kop: '^uurwerk "([^"]*)"',
     tolerantie: 0.005,
     regels: {
       onrust: { patroon: '^tuinman onrust (-?\\d+(?:\\.\\d+)?)\\b', ontbreekt: 0 },
@@ -413,9 +483,10 @@ export const STANDAARD_LEES = {
 };
 
 /** @typedef {{ patroon: string, ontbreekt?: number }} LeesRegel */
-/** @typedef {{ verb: string, veld?: string, tolerantie?: number, regels: Record<string, LeesRegel> }} LeesSpec */
+/** @typedef {{ verb: string, veld?: string, kop?: string, tolerantie?: number, regels: Record<string, LeesRegel> }} LeesSpec */
 /** @typedef {{ re: RegExp, soort: 'waarde'|'schakelaar', lo: number, hi: number, ontbreekt?: number }} Regel */
-/** @typedef {{ verb: string, veld: string, tolerantie: number, regels: Map<string, Regel> }} Lezer */
+/** @typedef {{ verb: string, veld: string, kop: RegExp|null, tolerantie: number, regels: Map<string, Regel> }} Lezer */
+/** @typedef {{ kop: boolean, vers: boolean, waarden: Record<string, number> }} Patch */
 /** @typedef {{ ac: AbortController|null, timer: any, klaar: () => void }} LeesLopend */
 
 /**
@@ -434,6 +505,12 @@ export function maakLezer(spec, manifest, driver) {
   if (typeof s.verb !== 'string' || !/^[a-z0-9_]+$/i.test(s.verb)) fouten.push('lees.verb moet een werkwoord zijn (letters, cijfers, _)');
   if (s.veld !== undefined && typeof s.veld !== 'string') fouten.push('lees.veld moet tekst zijn');
   if (s.tolerantie !== undefined && !(typeof s.tolerantie === 'number' && s.tolerantie >= 0)) fouten.push('lees.tolerantie moet een getal ≥ 0 zijn');
+  /** @type {RegExp|null} */
+  let kop = null;
+  if (s.kop !== undefined) {
+    if (typeof s.kop !== 'string') fouten.push('lees.kop moet een patroon (tekst) zijn');
+    else try { kop = new RegExp(s.kop); } catch (e) { fouten.push(`lees.kop: ongeldig patroon (${/** @type {Error} */ (e).message})`); }
+  }
   if (!s.regels || typeof s.regels !== 'object' || Array.isArray(s.regels)) fouten.push('lees.regels ontbreekt');
   if (fouten.length) return { lezer: null, fouten };
   const params = new Map((manifest.params ?? []).map((/** @type {any} */ p) => [p.id, p]));
@@ -452,19 +529,28 @@ export function maakLezer(spec, manifest, driver) {
     regels.set(id, { re, soort: p.soort, lo, hi, ...(r.ontbreekt !== undefined ? { ontbreekt: r.ontbreekt } : {}) });
   }
   if (!regels.size) return { lezer: null, fouten: [...fouten, 'lees: geen geldige regels'] };
-  return { lezer: { verb: s.verb, veld: s.veld ?? 'tekst', tolerantie: s.tolerantie ?? 0.005, regels }, fouten };
+  return { lezer: { verb: s.verb, veld: s.veld ?? 'tekst', kop, tolerantie: s.tolerantie ?? 0.005, regels }, fouten };
 }
 
 /**
- * Lees de waarden uit de tekst van de app, in eenheden van de app (licht -1..1; schakelaar 0/1). Puur.
- * Per parameter telt de eerste regel die past; past er geen, dan `ontbreekt` (of onbekend: niet in de uitkomst).
+ * Lees de tekst van de app, in eenheden van de app (licht -1..1; schakelaar 0/1). Puur.
+ * - `kop`: staat de kopregel (`lezer.kop`) erin? Zonder kop-patroon altijd true. Zonder kop: geen waarden.
+ * - `vers`: de kop heeft een lege eerste groep (uurwerk: geen zaad) en geen enkele regel past: een vers geladen tab.
+ * - `waarden`: per parameter de eerste regel die past; past er geen, dan `ontbreekt` (of onbekend: niet in de uitkomst).
  * @param {Lezer} lezer @param {string} tekst
- * @returns {Record<string, number>}
+ * @returns {Patch}
  */
-export function leesTekst(lezer, tekst) {
+export function leesPatch(lezer, tekst) {
   const regels = String(tekst).slice(0, LEES_MAX_TEKENS).split('\n');
   /** @type {Record<string, number>} */
   const uit = {};
+  /** @type {RegExpExecArray|null} */
+  let kopM = null;
+  if (lezer.kop) {
+    for (const regel of regels) if ((kopM = lezer.kop.exec(regel))) break;
+    if (!kopM) return { kop: false, vers: false, waarden: uit };
+  }
+  let gepast = 0;
   for (const [id, r] of lezer.regels) {
     let gevonden = false;
     for (const regel of regels) {
@@ -474,10 +560,14 @@ export function leesTekst(lezer, tekst) {
       const x = Number(m[1]);
       if (Number.isFinite(x)) { uit[id] = x; gevonden = true; break; }
     }
-    if (!gevonden && r.ontbreekt !== undefined) uit[id] = r.ontbreekt;
+    if (gevonden) gepast++;
+    else if (r.ontbreekt !== undefined) uit[id] = r.ontbreekt;
   }
-  return uit;
+  return { kop: true, vers: !!kopM && kopM[1] === '' && gepast === 0, waarden: uit };
 }
+
+/** Alleen de waarden van `leesPatch` (zonder kopregel: geen). @param {Lezer} lezer @param {string} tekst */
+export const leesTekst = (lezer, tekst) => leesPatch(lezer, tekst).waarden;
 
 /** Van eenheden van de app naar 0..1 (de draad, huisregel 4). @param {Regel} r @param {number} x */
 export const naarDraad = (r, x) => (r.soort === 'schakelaar' ? (x >= 0.5 ? 1 : 0) : klem01((x - r.lo) / (r.hi - r.lo)));
@@ -496,7 +586,8 @@ export function verschilt(lezer, r, appWaarde, hub) {
 
 /**
  * config.json `teruglezen` → intervallen in ms. Ontbreekt de sleutel of is `elke_s` 0: uit (null). Een ongeldige
- * waarde geeft een melding en de standaard (2 s, max 30 s). Het interval is nooit korter dan LEES_MIN_MS.
+ * waarde geeft een melding en de standaard (2 s, max 30 s). Het interval is nooit korter dan LEES_MIN_MS; interval en
+ * backoff nooit langer dan LEES_GRENS_S (met een melding).
  * @param {unknown} cfg
  * @returns {{ elkeMs: number, maxMs: number, meldingen: string[] } | null}
  */
@@ -510,11 +601,17 @@ export function leesTerugleesConfig(cfg) {
   if (!(typeof elke === 'number' && elke > 0)) {
     meldingen.push(`config.json teruglezen.elke_s moet een getal in seconden zijn (bv. 2, of 0 = uit), niet ${JSON.stringify(elke)}; 2 gebruikt`);
     elke = 2;
+  } else if (elke > LEES_GRENS_S) {
+    meldingen.push(`config.json teruglezen.elke_s is hooguit ${LEES_GRENS_S} (0 = uit), niet ${elke}; ${LEES_GRENS_S} gebruikt`);
+    elke = LEES_GRENS_S;
   }
   let max = c.max_s ?? LEES_MAX_S;
   if (!(typeof max === 'number' && max > 0)) {
     meldingen.push(`config.json teruglezen.max_s moet een getal in seconden zijn (bv. 30), niet ${JSON.stringify(c.max_s)}; ${LEES_MAX_S} gebruikt`);
     max = LEES_MAX_S;
+  } else if (max > LEES_GRENS_S) {
+    meldingen.push(`config.json teruglezen.max_s is hooguit ${LEES_GRENS_S}, niet ${max}; ${LEES_GRENS_S} gebruikt`);
+    max = LEES_GRENS_S;
   }
   const elkeMs = Math.max(LEES_MIN_MS, elke * 1000);
   return { elkeMs, maxMs: Math.max(elkeMs, max * 1000), meldingen };

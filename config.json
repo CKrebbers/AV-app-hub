@@ -132,7 +132,7 @@
     "uitstel_ms": 3000
   },
   "teruglezen": {
-    "_doc": "HTTP-driver (uurwerk) leest terug wat er in de app zelf verandert (src/drivers/http.js, docs/VOLGENDE-KOPPELINGEN.md §3.3): elke elke_s seconden GET /verb/toon, alleen als de app gezond is (tab open); een echt verschil (meer dan de afronding van de app, en niet wat de hub net zelf stuurde) gaat als zet van de app (bron 'app') naar de kern. 0 = uit; nooit vaker dan elke 0,5 s. Na een mislukte poging verdubbelt de wachttijd tot max_s (standaard 30), met één logregel per storing",
+    "_doc": "HTTP-driver (uurwerk) leest terug wat er in de app zelf verandert (src/drivers/http.js STANDAARD_LEES, docs/VOLGENDE-KOPPELINGEN.md §3.3 'Gebouwd in golf 6'): elke elke_s seconden GET /verb/toon, alleen als de app gezond is (precies één tab open); een echt verschil (meer dan de afronding van de app, en niet wat de hub net zelf stuurde) gaat als zet van de app (bron 'app') naar de kern. 0 = uit; nooit vaker dan elke 0,5 s, hooguit 3600 s. Na een mislukte poging verdubbelt de wachttijd tot max_s (standaard 30, hooguit 3600), met één logregel per storing. Eén parameter niet teruglezen: driver.lees in apps/<app>.json zonder die regel; lees:false = uit voor die app",
     "elke_s": 2,
     "max_s": 30
   },

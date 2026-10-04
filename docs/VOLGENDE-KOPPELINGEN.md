@@ -18,7 +18,7 @@ staan, anders "overgeslagen").*
 | Project | Nu in de hub | Beste koppelvorm | Code in de app? | Werk | Eerst nodig |
 |---|---|---|---|---|---|
 | **varve-radio** | niets | eerst het **takeover-lek dichten**; daarna hooguit een lokale manifest-app (mengpaneel) | ja, klein (1 bestand, achter `?hub=`) | lek S · koppeling M | Clay's OK + één deploy |
-| **uurwerk** | HTTP-driver, werkt | driver houden; **paniek** erbij (alleen manifest) en **teruglezen** (driver leest `toon`) | nee | S + M | — |
+| **uurwerk** | HTTP-driver, werkt; **leest terug** sinds golf 6 (§3.3) | driver houden; **paniek** erbij (alleen manifest); teruglezen gebouwd | nee | S + ~~M~~ | — |
 | **av-scene-kit** | MIDI-driver, actueel | driver houden; **paniek-pad** in TD | ja, TD-hub (1 tak in `td_build_hub.py`) | S | TD-sessie van av-scene-kit |
 | **sediment** | MIDI-driver, actueel | driver houden; paniek = CC 123 (in de generator) | nee (Logic-instelling) | S-M | proef in Logic |
 | **td-lab** | niets (config zegt "osc", die bestaat niet) | **driver in de hub** over de bestaande exec-bridge (:9981) | nee | M | `/genesis` gebouwd in TD |
@@ -47,7 +47,7 @@ een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
 manifest hebben (`src/core/kern.js:734-739`; Stop All: `src/core/kern.js:696`). Geen enkele driver-app heeft die nu
-(`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:156`).
+(`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:209`, `src/drivers/http.js:196`).
 **LPD8-P1 doet nu dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder.
 
 ---
@@ -223,7 +223,7 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
 | `bevries` {aan} | `server.js:30`, `brug.js:128` (`aan !== false`) | ja |
 | `bewaar` {bron:"varve-hub"} | `server.js:19`, `brug.js:84-89` (zonder naam = automatische naam) | ja |
 | `uur` start/stop/meer/minder | `server.js:28`, `brug.js:116-126` (start zonder minuten = 60) | ja |
-| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:182` | ja |
+| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:226` | ja |
 
 **Bevindingen:**
 1. **`truth:"hub"` klopt niet met wat de tab zelf doet.** De tab verandert de macro's zelf: `uur.js:121-122`
@@ -243,15 +243,16 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
 - **Paniek zonder hub-code:** `pas_toe` met een diff `+master 0.00` zet het hoofdvolume op 0 (`brug.js:20-40`
   `pasDiffToe` vervangt de regel `master …`; `taal.js:287` zet `#masterVol`). Met **`meet_seconden: -1`**: de brug
   rekent `Math.max(0, Math.min(15, +meet_seconden || 2.5))` (`brug.js:61`), dus `0` wordt 2,5 s wachten (`+0 || 2.5`)
-  en dat loopt over `POST_TIMEOUT_MS` = 2000 (`src/drivers/http.js:24`): elke paniek zou dan
+  en dat loopt over `POST_TIMEOUT_MS` = 2000 (`src/drivers/http.js:25`): elke paniek zou dan
   "verb pas_toe: geen antwoord binnen 2000 ms" loggen. `-1` geeft `Math.max(0, -1)` = 0 → niet wachten. Het volume
   gaat in beide gevallen meteen naar 0 (`applyText` loopt vóór het wachten, `brug.js:58`).
-- **Teruglezen (hub-code, M):** de HTTP-driver leest bij elke gezondheidscheck (2 s) ook `GET /verb/toon`
+- **Teruglezen (hub-code, M) — voorstel van golf 5, vervangen door wat in golf 6 gebouwd is (alinea hieronder):** de HTTP-driver leest bij elke gezondheidscheck (2 s) ook `GET /verb/toon`
   (`brug.js:49`, geeft de patchtekst) en haalt eruit: `licht x` (`taal.js:214`, ontbreekt bij 0), `samenhang x`
   (`:215`, ontbreekt bij 0), `tuinman onrust x [bevroren]` (`:216`) en `dicht x` in de `stem`-regel (`:185`).
   Verschilt iets van wat de hub denkt, dan meldt de driver een `zet` aan de kern (zoals `#meldPreset` in
   `src/drivers/midi.js:185`). Daarna kan `truth` naar `"app"` (PROTOCOL §1 punt 4): geen replay meer over de tab
-  heen. Ontwerp: `driver.lees = { verb:"toon", elke_s:2, regels: { licht: { patroon:"^licht (-?[\\d.]+)$", bereik:[-1,1], ontbreekt:0 }, … } }`.
+  heen. ~~Ontwerp: `driver.lees = { verb:"toon", elke_s:2, regels: { licht: { patroon:…, bereik:[-1,1], ontbreekt:0 }, … } }`~~
+  (vervangen: het interval staat in `config.json`, het bereik komt uit `driver.verbs`).
   **Met tolerantie:** de tab schrijft macro's met twee decimalen (`taal.js:211-216`, `toFixed(2)`); zonder marge
   meldt de driver bij bijna elke check een `zet` (hub 0,4567 ↔ tab 0,46) en verspringen pickup en LEDs heen en weer.
   Dus alleen melden bij een verschil > 0,005 in eenheden van de app (licht: omgerekend naar 0..1 = 0,0025). De demping
@@ -262,6 +263,59 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
   `slew_s` maakt het erger: elke sprong (snapshot, LPD8, cockpit) wordt 2–4 s uitgesmeerd en levert 2–4 lagen op in
   plaats van één. De echte remedie zit in uurwerk: opeenvolgende lagen van dezelfde auteur (`varve-hub`) binnen N s
   samenvoegen (de laatste overschrijven). Dat is een wijziging in `taal.js` (`Lagen.poll`) — open vraag 3.
+
+**Gebouwd in golf 6: teruglezen.** `src/drivers/http.js` (onderaan, "teruglezen") vraagt elke `teruglezen.elke_s`
+seconden `GET /verb/toon` aan de brug en meldt elk echt verschil als `zet` aan de kern: bron `'app'`, dus de pickup
+volgt de buitenwereld en de kern stuurt het niet terug naar de tab (PROTOCOL §11/§14).
+- **Aan/uit en tempo:** alleen `config.json` → `teruglezen.elke_s` (standaard 2; **0 = uit**; nooit vaker dan 0,5 s,
+  hooguit 3600 s) en `teruglezen.max_s` (backoff na mislukte pogingen, standaard 30, hooguit 3600). Geen `elke_s` in
+  het manifest. Bij de start één logregel: `teruglezen aan: elke 2 s (config.json teruglezen.elke_s; 0 = uit)`.
+- **Wat er gelezen wordt:** `STANDAARD_LEES.uurwerk` in `src/drivers/http.js`: kopregel `uurwerk "<zaad>"` (verplicht:
+  zonder kop is het geen patch en telt het als mislukt — een lege tekst trekt de hub dus niet naar nul), `tuinman
+  onrust x [bevroren]` (onrust en bevries), `licht x`, `samenhang x` (alle drie 0 als de regel ontbreekt) en `dicht x`
+  in de `stem`-regel (onbekend zonder stemmen). Het bereik komt uit `driver.verbs` (licht −1..1).
+- **Per app overschrijven of uitzetten:** `driver.lees` in `apps/uurwerk.json` vervangt de standaard; `"lees": false`
+  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Voorbeeld zonder
+  `dicht` (zie open vraag 4; dit blok staat **niet** in het manifest — dat bestand is in golf 6 ook van "paniek"):
+
+<!-- toets: lees -->
+```json
+{
+  "lees": {
+    "verb": "toon", "veld": "tekst", "kop": "^uurwerk \"([^\"]*)\"", "tolerantie": 0.005,
+    "regels": {
+      "onrust": { "patroon": "^tuinman onrust (-?\\d+(?:\\.\\d+)?)\\b", "ontbreekt": 0 },
+      "licht": { "patroon": "^licht (-?\\d+(?:\\.\\d+)?)\\s*$", "ontbreekt": 0 },
+      "samenhang": { "patroon": "^samenhang (-?\\d+(?:\\.\\d+)?)\\s*$", "ontbreekt": 0 },
+      "bevries": { "patroon": "^tuinman onrust \\S+( bevroren)?" }
+    }
+  }
+}
+```
+- **Tolerantie:** binnen 0,005 in eenheden van de app is afronding (`toFixed(2)`, sliders op 0,01). De hub vergelijkt
+  met wat hij **echt verstuurde** (na de 4 decimalen van `verbBericht`), zodat zijn eigen afronding er niet bij komt
+  (hub 0,45496 → 0,4550 → tab 0,46 is geen wijziging).
+- **Geen echo:** een parameter die de hub binnen `ECHO_MARGE_MS` (2 s) zelf stuurde, of waarvan nog een waarde wacht,
+  slaat de driver die ronde over; niet lezen terwijl een replay wacht (een verb mislukte), en een ronde die gemist of
+  onbereikbaar wordt terwijl `toon` loopt, telt niet.
+- **Robuust:** alleen als de brug gezond is en er precies één tab is (`tabs: N`; bij N > 1 staat teruglezen stil, één
+  logregel, want de brug laat het eerste antwoord winnen). Eén verzoek tegelijk, time-out 1,5 s, hooguit 200 000
+  tekens. Mislukt het, dan backoff (2 → 4 → … → `max_s`) en **één** logregel per storing (ingekort, één regel, met
+  "uitzetten: config.json teruglezen.elke_s = 0"), plus "teruglezen werkt weer". Komt de brug terug na een storing,
+  dan meteen weer in het gewone ritme.
+- **Herladen tab (F5):** sneller dan de gezondheidscheck ziet de driver geen `tabs: 0` en dus geen replay. Een verse
+  tab heeft een lege kop (`uurwerk ""`) en geen enkele gelezen regel; wijkt dat af van de hub, dan neemt de driver het
+  **niet** over maar meldt hij één keer opnieuw aan (de kern speelt zijn waarden af, zoals `truth:"hub"` belooft).
+  Blijft de patch daarna leeg, dan neemt hij hem wel over (iemand zette alles echt op nul). Herkenning op inhoud, niet
+  sluitend: wie in een tab zonder zaad zelf alles op nul zet, krijgt eerst één replay over zich heen; een verse tab
+  met een stem of tuinman (bv. uit een preset) wordt niet herkend en overgenomen. Wat er na een herlaadbeurt moet
+  winnen staat als open vraag 2.
+- **Gevolg voor de bediening:** de **tuinman verandert `dicht` zelf** (`mod.js:807` `Sower.set('density', …)`; ook
+  `uur.js:121`/`:137` en een nieuw uurwerk, `mod.js:679`). Dat komt nu terug als zet van de app; is uurwerk de eerste
+  app met `macro.dichtheid`, dan gaat de LPD8-knop K3 telkens weer "wachten" (pickup, §11) — ook voor MediSynth en
+  Waterschaal — en schuift de cockpit-fader mee. Zo bedoeld, maar zie open vraag 4.
+- **Niet gebouwd — lagen samenvoegen** blijft een open vraag (3): het teruglezen schrijft niets naar de tab, dus het
+  maakt geen lagen erbij, maar de lagenvloed van hub-bewegingen blijft bestaan.
 
 ### 3.4 Manifest-voorstel (huidige driver, alleen aangevuld)
 Precies `apps/uurwerk.json` plus twee triggers (`master_terug`, `paniek`); geen `slew_s`, `max_hz` blijft 10 (§3.3).
@@ -310,7 +364,7 @@ Precies `apps/uurwerk.json` plus twee triggers (`master_terug`, `paniek`); geen 
 }
 ```
 Wat **paniek** hier betekent: het hoofdvolume van uurwerk naar 0 (de slingers lopen door, de tuinman ook). Pas
-bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:148`). Terug met
+bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:188`). Terug met
 `master_terug` of door in de tab het volume te draaien. De laag krijgt auteur `varve-hub`. Liep de engine nog niet,
 dan start paniek hem (stil, want master 0; `brug.js:51`).
 
@@ -326,16 +380,22 @@ is geen agent, maar zijn lagen staan in hetzelfde logboek — en daar helpt een 
   als die nog niet liep — en past daarna de **hele patch** opnieuw toe (`brug.js:53-58`: `pasDiffToe` op de huidige
   tekst, dan `applyText`). `+master 0.00` verandert alleen de master-regel (`pasDiffToe` vervangt op regelkop), maar
   op de Mac nagaan dat het opnieuw toepassen geen hoorbare tik of sprong in andere bronnen geeft.
-- Teruglezen: **M** (HttpDriver + parser + tests met nep-fetch: o.a. "tab 0,46 bij hub 0,4567 → geen `zet`" en
-  "tab 0,60 bij hub 0,4567 → één `zet`"; `toon` gaat via de tab, dus ook hier "tabs: 0" = niets).
+- Teruglezen: **gebouwd in golf 6** (§3.3, alinea "Gebouwd in golf 6"; tests in `test/drivers-http-teruglezen.test.js`
+  met nep-brug, nep-klok en de echte kern). Risico: de tuinman haalt K3 uit de pickup (open vraag 4); een herlaadde
+  tab wordt op inhoud herkend, niet sluitend (open vraag 2).
 - Lagen samenvoegen: **S-M in uurwerk** (`Lagen.poll`), niet in de hub; alleen als Clay het wil (open vraag 3).
 
 ### 3.7 Open vragen voor Clay
 1. Paniek = volume 0 goed, of liever "bevries + onrust 0" (geluid blijft, beweging stopt)?
-2. Mag uurwerk `truth:"app"` worden zodra de driver terugleest (dan wint de tab na een herstart)?
+2. Mag uurwerk `truth:"app"` worden nu de driver terugleest (dan wint de tab na een herstart)? Samenhangend: wat moet
+   winnen na een **herlaadde tab** (F5) — de hub (opnieuw afspelen, zoals nu bij een herkende verse tab) of de tab
+   (overnemen)? Nu hangt het af van de timing en van de herkenning (§3.3, "Herladen tab").
 3. Lagen: de hub kan de lagenvloed niet beperken (§3.3). Mag uurwerk hub-lagen samenvoegen (laatste laag van
    `varve-hub` binnen bv. 10 s overschrijven), of wil je hub-bewegingen helemaal niet als laag? Beide vragen een
    wijziging in uurwerk (`taal.js`, `Lagen.poll`).
+4. De tuinman verandert `dicht` zelf; met teruglezen raakt K3 (`macro.dichtheid`) dan regelmatig uit zijn pickup.
+   Is dat goed (de knop volgt de tuin), of `dicht` niet teruglezen? Dat kan zonder code: `driver.lees` zonder `dicht`
+   in `apps/uurwerk.json` (voorbeeld in §3.3).
 
 ---
 
@@ -504,11 +564,11 @@ Bedienbaar in `/genesis` (custom parameters, parentshortcut `Genesis`, `scripts/
 
 **Ontwerp `src/drivers/td.js`** (naast `http.js`, zelfde levensloop):
 - `driver = { soort:"td", url:"http://127.0.0.1:9981", comp:"/genesis", gezond_s:2, max_hz:10, pars:{ id: {par, bereik?} | {puls} }, paniek?: { <id>: 0..1 } }`.
-  **Poort uit `config.json`** (huisregel 6), zoals `src/drivers/http.js:62-64` al doet: `apps.td-lab.poort` wint; de
+  **Poort uit `config.json`** (huisregel 6), zoals `src/drivers/http.js:75-77` al doet: `apps.td-lab.poort` wint; de
   `url` in het manifest is alleen de terugval. (Bij voorkeur zet de hub-config de poort dan ook in `apps.td-lab`, naast
   `bekende_apps.td-lab.tcp`, `config.json:34`.)
 - **Per tik één POST `/exec`** met alle gewijzigde parameters (`c=op('/genesis')\nc.par.Speed=0.7\n…`), laatste
-  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:119-143`, maar per batch i.p.v. per param):
+  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:158-182`, maar per batch i.p.v. per param):
   TD's hoofddraad krijgt hooguit 10 verzoeken per seconde. Waarde = `bereik[0] + v·(bereik[1]-bereik[0])`;
   schakelaar → `True/False`; puls → `c.par.Reseed.pulse()`. **Niet half toepassen:** de batch begint met
   `c=op('/genesis')` en `if c is None: raise RuntimeError('geen comp')`, en elke toewijzing staat in een eigen
@@ -516,7 +576,7 @@ Bedienbaar in `/genesis` (custom parameters, parentshortcut `Genesis`, `scripts/
   hernoemde parameter niet de rest van de batch tegenhouden, en telt de batch toch als mislukt.
 - **Antwoord lezen, niet alleen de status:** `/exec` geeft **altijd HTTP 200**, ook als de Python faalde — dan staat
   er `ok:false` in de JSON (`td-lab/bridge/td_bridge.py:124` `out['ok'] = False`, `:146` `statusCode = 200`). Een
-  driver die zoals `src/drivers/http.js:102` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
+  driver die zoals `src/drivers/http.js:141` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
   `gemist`, geen replay. Dus: de body altijd als JSON lezen; `ok:false` of een niet-JSON-antwoord = mislukt →
   `gemist = true` → bij de volgende geslaagde gezondheidscheck opnieuw aanmelden (replay, `truth:"hub"`).
 - **Gezondheid**: POST `/exec` met `(lambda c: c.id if c else None)(op('/genesis'))` (TD-time-out zoals
