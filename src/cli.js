@@ -16,8 +16,10 @@
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
 //   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
 //                            een opgenomen avond (avondmap, LPD8-pad 4) opnieuw afspelen tegen een draaiende hub
+//   spiekbrief <set|alle> [--uit bestand.html]
+//                            wat doet welke knop, per set: een HTML om te printen (A4 liggend), zonder hub (docs/SPIEKBRIEF.md)
 import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import readline from 'node:readline';
 import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
 import { laadRtMidi } from './ports/rtmidi.js';
@@ -36,6 +38,7 @@ import { leesOpname, herhaal, verslag } from './opname/herhaal.js';
 import { doelVanCockpit } from './opname/cockpit-doel.js';
 import { GEBAREN } from './opname/opnemer.js';
 import { check, tekstVan, jsonVan } from './check/index.js';
+import { schrijfSpiekbrief } from './spiekbrief/index.js';
 import { leesOfMaakToken, isLoopbackHost, lanNamen, mdnsNaam, lanOrigins, lanAdressen, cockpitAdressen, kondigAan, installeer, dienstVoor } from './lan.js';
 
 const [opdracht = 'help', ...args] = process.argv.slice(2);
@@ -406,6 +409,32 @@ const opdrachten = {
     process.exit(r.verschillen?.length ? 1 : 0);
   },
 
+  spiekbrief() {
+    const uit = optie('--uit');
+    const naam = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--uit');
+    if (!naam || (args.includes('--uit') && !uit)) {
+      console.error(`gebruik: varve-hub spiekbrief <set|alle> [--uit bestand.html] — sets: ${lijstSets().join(', ') || '(geen)'}`);
+      process.exit(1);
+    }
+    let r;
+    try {
+      // Een relatief --uit-pad geldt vanaf waar Clay het typte (npm run zet de map anders op die van de hub).
+      r = schrijfSpiekbrief(naam, { config, uit: uit && resolve(process.env.INIT_CWD ?? process.cwd(), uit), gemaakt: new Date() });
+    } catch (e) {
+      console.error(/** @type {Error} */ (e).message);
+      process.exit(1);
+    }
+    for (const b of r.brieven) {
+      const volgt = b.apps.filter((a) => a.soort === 'volgt').map((a) => a.naam);
+      const fout = b.apps.filter((a) => a.soort === 'fout').map((a) => `${a.naam} (${a.fout})`);
+      console.log(`${b.set.naam}: ${b.apps.map((a) => a.naam).join(', ')}${volgt.length ? ` — indeling volgt als ${volgt.join(', ')} zich meldt` : ''}`);
+      if (fout.length) console.error(`let op, ${b.set.naam}: geen indeling voor ${fout.join(', ')}`);
+    }
+    // Kapotte bronbestanden (vastgelegde manifesten, apps/*.json): één keer melden, niet per set.
+    for (const f of new Set(r.brieven.flatMap((b) => b.fouten))) console.error(`let op: niet te lezen: ${f}`);
+    console.log(`spiekbrief → ${r.pad}\nOpen hem in Chrome en druk ⌘P (A4 liggend). Draait de hub, dan staat hij ook live op /spiekbrief van de cockpit (zelfde adres als de cockpit; LAN-adres: varve-hub token).`);
+  },
+
   help() {
     console.log(`varve-hub — opdrachten:
   start [set]       de hub: cockpit op http://localhost:7700 (--poort, --host, --lan, --zonder-midi, --geen-drivers, --zonder-geheugen);
@@ -419,7 +448,8 @@ const opdrachten = {
   proef [naam]      begeleide hardwareproef (${Object.keys(PROTOCOLLEN).join(', ')})
   testpatroon       regenboog op de APC + live wat binnenkomt
   opname [naam]     speelsessie opnemen in proef/
-  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)`);
+  herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)
+  spiekbrief <set>  wat doet welke knop: HTML om te printen, zonder hub (alle = elke set een pagina; --uit bestand.html)`);
   },
 };
 

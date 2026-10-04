@@ -20,7 +20,8 @@
     "opname": "node src/cli.js opname",
     "herhaal": "node src/cli.js herhaal",
     "start": "node src/cli.js start",
-    "repetitie": "node tools/repetitie.mjs"
+    "repetitie": "node tools/repetitie.mjs",
+    "spiekbrief": "node src/cli.js spiekbrief"
   },
   "optionalDependencies": {
     "@julusian/midi": "^3.8.1"
