@@ -14,6 +14,7 @@ import { NepKlok } from '../src/core/klok.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { startHub } from '../src/hub.js';
 import { APPS_MAP } from '../src/drivers/index.js';
+import { maakLezer } from '../src/drivers/http.js';
 
 const lopend = /** @type {(() => Promise<void>|void)[]} */ ([]);
 afterEach(async () => { for (const x of lopend.splice(0)) await x(); });
@@ -178,22 +179,57 @@ describe('check: bestanden van de hub', () => {
     expect(punt(await check(opties), 'lpd8-profiel')).toMatchObject({ status: 'let', doen: expect.stringMatching(/npm run proef/) });
   });
 
-  it('statische manifesten (apps/): geldig = ✓; een kapotte lees-spec = ✗ met de melding van de driver; geen map = !', async () => {
+  it('statische manifesten (apps/): geldig = ✓; een kapotte lees-spec = ! (de app speelt); geen map = !', async () => {
     const { opties, hubMap } = opzet();
     expect(punt(await check(opties), 'apps')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/^\d+ statische manifesten in orde \(.*uurwerk.*\)$/) });
     const pad = join(hubMap, 'apps', 'uurwerk.json');
     const u = JSON.parse(readFileSync(pad, 'utf8'));
-    writeFileSync(pad, JSON.stringify({ ...u, driver: { ...u.driver, lees: { verb: 'toon', regels: { onrust: { patroon: '(' }, bewaar: { patroon: 'x' } } } } }));
+    const lees = { verb: 'toon', regels: { onrust: { patroon: '(' }, bewaar: { patroon: 'x' } } };
+    writeFileSync(pad, JSON.stringify({ ...u, driver: { ...u.driver, lees } }));
     const r = await check(opties);
     expect(punt(r, 'apps')).toBeUndefined();
+    // dezelfde meldingen als de driver (maakLezer), met driver. ervoor
+    const zelfde = maakLezer(lees, u, u.driver).fouten.map((m) => `driver.${m}`).join('; ');
     expect(punt(r, 'apps/uurwerk.json')).toMatchObject({
-      status: 'fout',
-      uitleg: expect.stringMatching(/^apps\/uurwerk\.json is ongeldig, de hub slaat die driver over: driver\.lees\.regels\.onrust: ongeldig patroon .*; driver\.lees\.regels\.bewaar: een trigger wordt niet teruggelezen/),
-      doen: expect.stringMatching(/herstel apps\/uurwerk\.json/),
+      status: 'let',
+      uitleg: `apps/uurwerk.json: het teruglezen klopt niet, uurwerk speelt gewoon maar die regels worden niet teruggelezen: ${zelfde}`,
+      doen: expect.stringMatching(/herstel driver\.lees in apps\/uurwerk\.json \(of STANDAARD_LEES in src\/drivers\/http\.js\)/),
     });
-    expect(r.code).toBe(1);
+    expect(zelfde).toMatch(/driver\.lees\.regels\.onrust: ongeldig patroon .*; driver\.lees\.regels\.bewaar: een trigger wordt niet teruggelezen/);
+    expect(r.code).toBe(0);
     rmSync(join(hubMap, 'apps'), { recursive: true });
     expect(punt(await check(opties), 'apps')).toMatchObject({ status: 'let', doen: expect.stringMatching(/git checkout -- apps/) });
+  });
+
+  it('statische manifesten: een ongeldig manifest = ✗ alleen voor een app die de hub zou starten (autostart, td, set)', async () => {
+    const { opties, hubMap } = opzet();
+    const kapot = (/** @type {string} */ naam) => {
+      const pad = join(hubMap, 'apps', naam);
+      const m = JSON.parse(readFileSync(pad, 'utf8'));
+      writeFileSync(pad, JSON.stringify({ ...m, driver: { ...m.driver, soort: m.driver.soort, bestaat_niet: true, ...(m.driver.soort === 'http' ? { url: 'ftp://x' } : m.driver.soort === 'td' ? { comp: 'geen pad' } : { poort: '' }) } }));
+    };
+    kapot('uurwerk.json');
+    let r = await check(opties);
+    expect(punt(r, 'apps/uurwerk.json')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/^apps\/uurwerk\.json is ongeldig, de hub slaat die driver over: driver\.url/) });
+    expect(r.code).toBe(1);
+    // autostart:false in config.json: de hub start hem toch niet → !
+    r = await check({ ...opties, config: { ...opties.config, apps: { ...opties.config.apps, uurwerk: { ...opties.config.apps.uurwerk, autostart: false } } } });
+    expect(punt(r, 'apps/uurwerk.json')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/uurwerk doet vanavond toch niet mee/) });
+    // td-lab: een td-driver start alleen met autostart:true
+    kapot('td-lab.json');
+    r = await check(opties);
+    expect(punt(r, 'apps/td-lab.json')).toMatchObject({ status: 'let' });
+    r = await check({ ...opties, config: { ...opties.config, apps: { ...opties.config.apps, 'td-lab': { ...opties.config.apps['td-lab'], autostart: true } } } });
+    expect(punt(r, 'apps/td-lab.json')).toMatchObject({ status: 'fout' });
+    // met een set: alleen apps uit die set; uurwerk buiten de set = !, erin = ✗
+    mkdirSync(join(hubMap, 'sets'), { recursive: true });
+    writeFileSync(join(hubMap, 'sets', 'klok.json'), JSON.stringify({ naam: 'Klok', apps: { uurwerk: { start: { commando: './start.sh' }, url: null } } }));
+    writeFileSync(join(hubMap, 'sets', 'zee.json'), JSON.stringify({ naam: 'Zee', apps: { sediment: { start: null, url: null } } }));
+    expect(punt(await check({ ...opties, set: 'klok' }), 'apps/uurwerk.json')).toMatchObject({ status: 'fout' });
+    expect(punt(await check({ ...opties, set: 'zee' }), 'apps/uurwerk.json')).toMatchObject({ status: 'let' });
+    // onleesbaar (geen JSON): niet te zeggen welke app, dus ✗
+    writeFileSync(join(hubMap, 'apps', 'kapot.json'), '{');
+    expect(punt(await check(opties), 'apps/kapot.json')).toMatchObject({ status: 'fout' });
   });
 
   it('F0-proef: alleen een synthetische of een andere proef telt niet; een echte wel, met datum', async () => {

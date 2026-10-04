@@ -121,7 +121,7 @@ describe.skipIf(!heeftBrowser)('oefenruimte in de browser', () => {
     expect(await page.getAttribute(galm, 'data-doel')).toBe('0.9');
     // de andere parameters glijden niet
     expect(await page.$$eval('.oefen-app .p.glijdt', (e) => e.map((x) => /** @type {HTMLElement} */ (x).dataset.p))).toEqual(['galm']);
-    await expect.poll(() => page.textContent('#opdracht')).toMatch(/Laat K3 los/);
+    await expect.poll(() => page.textContent('#opdracht')).toMatch(/Laat los en wacht/);
     expect(await apcY()).toBe(y0);   // het teken laat de controllers niet verspringen
     await page.locator(`${galm}.glijdt`).waitFor({ state: 'detached', timeout: 6000 });
     expect(await page.isVisible(`${galm} .doel`)).toBe(false);

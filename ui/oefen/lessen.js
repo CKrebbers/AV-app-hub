@@ -37,6 +37,8 @@ const INDELINGEN = { [ZON]: maakIndeling(MANIFESTEN[ZON]), [ZEE]: maakIndeling(M
 const LANG_DRUK_MS = 750, TWIJFEL_MS = 450;
 /** De oefening gebruikt snapshot 4 (pad 8): die overschrijft het minst waarschijnlijk iets van een echte avond. */
 const OEFEN_SNAPSHOT = 4;
+/** Is snapshot 4 bewaard (les 10)? @param {{ beeld: any }} c */
+const heeftOefenSnapshot = (c) => (c.beeld?.snapshots ?? []).includes(OEFEN_SNAPSHOT);
 
 const RIJ_NAAM =['', 'onderste rij', '4e rij van boven', 'middelste rij', '2e rij van boven', 'bovenste rij'];
 
@@ -415,14 +417,24 @@ export const LESSEN = [
       + 'Bij Zon en Zee (en in de cockpit) zie je het aan het <b>glij-teken</b>: een streep op het doel en <b>→ doel · resttijd</b>.',
     stappen: [
       {
-        id: 'glijdt', wijs: () => ['lpd:k3'],
-        opdracht: () => 'Draai <b>K3 (ruimte)</b> snel een flink eind. Kijk bij de <b>Galm</b> van de Zee: het glij-teken toont waar hij heen gaat en hoe lang hij nog glijdt.',
-        klaar: (c) => c.ev.soort === 'beeld' && slewsVan(c.beeld, ZEE).has('galm'),
-        hint: 'Pickup: draai K3 eerst eens helemaal heen en weer, dan een snelle draai.',
+        // Met snapshot 4 (les 10) oefen je het snapshot-deel van de uitleg: K3 zet de Galm ergens anders, pad 8 kort
+        // zet hem terug en dát glijden telt. Zonder snapshot 4 telt het glijden na K3 (zoals les 9, nu met het teken).
+        id: 'glijdt',
+        wijs: (c) => (heeftOefenSnapshot(c) ? ['lpd:k3', 'lpd:p8'] : ['lpd:k3']),
+        opdracht: (c) => (heeftOefenSnapshot(c)
+          ? 'Draai <b>K3 (ruimte)</b> een flink eind, zodat de <b>Galm</b> van de Zee anders staat dan in snapshot 4. Druk dan <b>pad 8 kort</b>: '
+            + 'de snapshot zet de Galm terug, en het glij-teken toont waar hij heen gaat en hoe lang hij nog glijdt.'
+          : 'Je hebt nog geen snapshot 4 (les 10), dus nu met de LPD8: draai <b>K3 (ruimte)</b> snel een flink eind. '
+            + 'Kijk bij de <b>Galm</b> van de Zee: het glij-teken toont waar hij heen gaat en hoe lang hij nog glijdt.'),
+        klaar: (c) => {
+          if (zet(c, ZEE, 'galm', 'snapshot')) c.mem.snapshot = true;
+          return c.ev.soort === 'beeld' && slewsVan(c.beeld, ZEE).has('galm') && (!heeftOefenSnapshot(c) || !!c.mem.snapshot);
+        },
+        hint: 'Glijdt er niets? Dan stond de Galm al waar de snapshot hem wil: draai K3 eerst verder weg (pickup: eerst heen en weer), dan pad 8 kort.',
       },
       {
         id: 'aangekomen',
-        opdracht: () => 'Laat K3 los en wacht: de resttijd telt af, en zodra de Galm op het doel is, verdwijnt het teken.',
+        opdracht: () => 'Laat los en wacht: de resttijd telt af, en zodra de Galm op het doel is, verdwijnt het teken.',
         klaar: (c) => c.ev.soort === 'beeld' && !!c.beeld?.apps?.length && !slewsVan(c.beeld, ZEE).has('galm'),
       },
     ],

@@ -34,7 +34,7 @@ Open daarna **http://localhost:7700/oefen**, of klik op "oefenen" in de cockpit.
 | 11 | Paniek | pad 1 een seconde vasthouden |
 | 12 | Tempo en adem | pad 2 tappen, K7 draaien |
 | 13 | Opnemen | pad 4 (alleen uitleg) |
-| 14 | Glijden zien | K3: het glij-teken bij de Galm (→ doel · resttijd) verschijnt en verdwijnt; waarom een snapshot of de LPD8 zacht gaat |
+| 14 | Glijden zien | K3 weg, dan pad 8 kort (snapshot 4 uit les 10; zonder die snapshot alleen K3): het glij-teken bij de Galm (→ doel · resttijd) verschijnt en verdwijnt; waarom een snapshot of de LPD8 zacht gaat |
 
 ## Goed om te weten
 

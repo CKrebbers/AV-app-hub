@@ -171,16 +171,31 @@ export async function check(o) {
   }
 
   // De statische manifesten (apps/<app>.json, PROTOCOL.md §2): dezelfde controle als de hub bij het starten van de
-  // drivers (valideerStatisch, ook het teruglezen); een ongeldig bestand slaat de hub stil over, dus hier ✗.
+  // drivers (valideerStatisch, ook het teruglezen). Een ongeldig bestand slaat de hub over (één logregel; de app
+  // ontbreekt in de cockpit): ✗, maar alleen voor een app die de hub die avond echt zou starten (startDrivers: niet
+  // bij autostart:false, een td-driver alleen met autostart:true) en, met een set, die in de set staat; anders !.
+  // Een fout in het teruglezen (driver.lees) is !: de app speelt gewoon, alleen die regel wordt niet teruggelezen.
   const appsMap = join(hubMap, 'apps');
   if (!fs.existsSync(appsMap)) best('let', 'apps', `geen ${toon(appsMap)}: de hub start geen drivers (uurwerk, td-lab, sediment, …)`, 'haal de map terug uit git (git checkout -- apps)');
   else {
-    const { statisch, fouten } = laadStatisch(appsMap, { fs });
+    const { statisch, fouten, waarschuwingen } = laadStatisch(appsMap, { fs });
+    /** Zou de hub (startDrivers) deze app vanavond starten, en hoort hij bij de set? @param {string|undefined} app @param {string|undefined} soort */
+    const doetMee = (app, soort) => {
+      if (!app) return true;   // onleesbaar bestand: niet te zeggen, dus ✗
+      const cfg = config.apps?.[app];
+      if (cfg?.autostart === false || (soort === 'td' && cfg?.autostart !== true)) return false;
+      return !def || Object.hasOwn(def.apps ?? {}, app);
+    };
     for (const f of fouten) {
       const bestand = f.bestand === appsMap ? toon(appsMap) : `apps/${f.bestand}`;
-      best('fout', bestand, `${bestand} is ongeldig, de hub slaat die driver over: ${f.fouten.join('; ')}`, `herstel ${bestand} (PROTOCOL.md §2) en draai check opnieuw`);
+      const mee = f.bestand === appsMap || doetMee(f.app, f.soort);
+      best(mee ? 'fout' : 'let', bestand, `${bestand} is ongeldig, de hub slaat die driver over${mee ? '' : ` (${f.app} doet vanavond toch niet mee)`}: ${f.fouten.join('; ')}`, `herstel ${bestand} (PROTOCOL.md §2) en draai check opnieuw`);
     }
-    if (!fouten.length) best('ok', 'apps', `${statisch.length} statische manifest${statisch.length === 1 ? '' : 'en'} in orde${statisch.length ? ` (${statisch.map((s) => s.app).join(', ')})` : ''}`);
+    for (const w of waarschuwingen) {
+      const bestand = `apps/${w.bestand}`;
+      best('let', bestand, `${bestand}: het teruglezen klopt niet, ${w.app} speelt gewoon maar die regels worden niet teruggelezen: ${w.waarschuwingen.join('; ')}`, `herstel driver.lees in ${bestand} (of STANDAARD_LEES in src/drivers/http.js) en draai check opnieuw`);
+    }
+    if (!fouten.length && !waarschuwingen.length) best('ok', 'apps', `${statisch.length} statische manifest${statisch.length === 1 ? '' : 'en'} in orde${statisch.length ? ` (${statisch.map((s) => s.app).join(', ')})` : ''}`);
   }
 
   const proefMap = join(hubMap, config.proefmap ?? 'proef');

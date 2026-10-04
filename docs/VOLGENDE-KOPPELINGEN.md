@@ -282,7 +282,10 @@ volgt de buitenwereld en de kern stuurt het niet terug naar de tab (PROTOCOL §1
   onrust x [bevroren]` (onrust en bevries), `licht x`, `samenhang x` (alle drie 0 als de regel ontbreekt) en `dicht x`
   in de `stem`-regel (onbekend zonder stemmen). Het bereik komt uit `driver.verbs` (licht −1..1).
 - **Per app overschrijven of uitzetten:** `driver.lees` in `apps/uurwerk.json` vervangt de standaard; `"lees": false`
-  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Voorbeeld zonder
+  zet teruglezen voor die app uit. Eén parameter niet teruglezen = `driver.lees` zonder die regel. Een fout in het
+  teruglezen (`driver.lees`, of `STANDAARD_LEES` die niet meer bij de params past) = ! in `varve-hub check`
+  (`valideerStatisch` geeft hem als waarschuwing, met dezelfde melding als de driver): de app speelt gewoon, alleen die
+  regel wordt niet teruggelezen. Voorbeeld zonder
   `dicht` (zie open vraag 4; dit blok staat **niet** in het manifest — dat bestand is in golf 6 ook van "paniek"):
 
 <!-- toets: lees -->
@@ -438,7 +441,7 @@ Mac-rig: ESP32-cam → Python-bridge → OSC **:9000** → TouchDesigner 2025 (`
      Logic automation op CC 20–27 (track TO_TD, `av-scene-kit/logic/README.md` §3), dan kan de hub niet lager dan
      Logic. En als TO_TD het geselecteerde spoor is, stuurt Logic de CC's van "VARVE-HUB Logic" (Sediment: Shape …
      Resonance = CC 20–27!) door naar L2TD — dan bewegen Sediment-knoppen de TD-knoppen.
-  4. De driver ziet niet of TD luistert (`src/drivers/index.js:220`; `sets/scene-kit.json`, opmerking): de app staat
+  4. De driver ziet niet of TD luistert (`src/drivers/index.js:235`; `sets/scene-kit.json`, opmerking): de app staat
      "actief" zolang de poort open is.
 
 ### 4.3 Beste koppelvorm

@@ -75,8 +75,11 @@ in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met he
 - De statische manifesten in `apps/` (de driver-apps: Scene Kit, Sediment, td-lab, uurwerk; PROTOCOL.md §2): dezelfde
   controle als de hub doet voor hij de drivers start (`valideerStatisch` in `src/drivers/index.js`), ook van het
   teruglezen (`driver.lees`, of de standaard-patchtaal van uurwerk). Een ongeldig bestand = ✗ per bestand met wat er
-  mis is (de hub slaat die driver stil over: de app doet die avond niet mee); allemaal goed = één ✓; geen map
-  `apps/` = !.
+  mis is: de hub slaat die driver over (alleen een logregel in de terminal; in de cockpit ontbreekt de app). Start de
+  hub die app toch niet (`config.json` → `apps.<app>.autostart: false`, een td-driver zonder `autostart: true`, of met
+  een set: de app staat niet in de set), dan ! in plaats van ✗. Een fout in het teruglezen = !, de app speelt gewoon,
+  alleen die regel wordt niet teruggelezen (herstel `driver.lees`, of `STANDAARD_LEES` in `src/drivers/http.js`).
+  Allemaal goed = één ✓; geen map `apps/` = !.
 - De F0-proef: een `proef/<stempel>-f0-hardware.jsonl` (de synthetische testfixture telt niet; opnames in dezelfde
   map worden niet gelezen). Hij telt als gedaan als het logboek de slotregel `samenvatting` heeft; een afgebroken
   proef (Ctrl-C) = !. De tijd is lokale tijd (de stempel in de bestandsnaam is UTC). Nooit gedaan = !.
