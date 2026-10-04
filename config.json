@@ -107,6 +107,7 @@
       "midipoort": "VARVE-HUB Logic",
       "repo": "sediment"
     },
+    "varve-eye": { "naam": "Varve Eye", "kleur": "#00e5ff", "koppeling": "ws", "repo": "anbernic-cam", "_doc": "Varve Eye Art op de Mac (anbernic-cam, ./speel-op-mac.sh --hub ws://localhost:7700/app); fase A uit docs/VOLGENDE-KOPPELINGEN.md §7.3. De koppeling staat op een tak (PR CKrebbers/anbernic-cam#1)" },
     "flux": {
       "naam": "Flux",
       "kleur": "#9b1b30",
