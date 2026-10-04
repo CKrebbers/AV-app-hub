@@ -172,6 +172,12 @@ export class Kern extends Zender {
     /** @type {{ soort: 'lease'|'manifest', app: string|null }|null} */
     this.getekend = null;
     this.paniekActief = false;
+    // §14: tot wanneer een zet die een app zelf doet het pickup-doel van een LPD8-macroknop niet verplaatst
+    // (Infinity zolang de paniek loopt, daarna loslaten + paniek.naloop_s). Globaal (LPD8 P1) en per app (Stop All).
+    this.paniekNaloopMs = Math.max(0, Number(this.config.paniek?.naloop_s ?? 5)) * 1000;
+    this.paniekTot = -Infinity;
+    /** @type {Map<string, number>} */
+    this.appPaniekTot = new Map();
     /** @type {number[]} */
     this.taps = [];
     /** @type {Map<string, number>} */
@@ -231,7 +237,7 @@ export class Kern extends Zender {
     switch (b.t) {
       case 'manifest': return this.#manifest(a, b.manifest);
       case 'staat': return this.#staat(a, b.waarden ?? {});
-      case 'zet': if (typeof b.id === 'string' && typeof b.v === 'number') this.#zetWaarde(a, b.id, b.v, { naarApp: false }); return;
+      case 'zet': if (typeof b.id === 'string' && typeof b.v === 'number') this.#zetWaarde(a, b.id, b.v, { naarApp: false, bron: 'app' }); return;
       case 'led': if (Array.isArray(b.bytes)) this.#leaseLed(a, b.bytes); return;
       default: return; // hb en onbekende types: alleen hartslag
     }
@@ -403,7 +409,7 @@ export class Kern extends Zender {
     // truth "hub": de hub heeft net zijn waarden opnieuw afgespeeld; de (standaard)staat van de app wint niet.
     // Alleen de eerste staat na de replay; latere (ook gedeeltelijke) staat telt gewoon.
     if (a.manifest?.truth === 'hub' && a.replay) { a.replay = false; return; }
-    for (const [id, v] of Object.entries(waarden)) if (typeof v === 'number') this.#zetWaarde(a, id, v, { naarApp: false });
+    for (const [id, v] of Object.entries(waarden)) if (typeof v === 'number') this.#zetWaarde(a, id, v, { naarApp: false, bron: 'app' });
   }
 
   // ── hartslag ───────────────────────────────────────────────────────────────
@@ -437,6 +443,7 @@ export class Kern extends Zender {
 
   /**
    * De enige plek waar een waarde verandert: bijwerken, eventueel naar de app, LEDs en pickup mee.
+   * bron 'app': de app meldde het zelf (zet of staat); dan is naarApp altijd false.
    * @param {AppStaat} a @param {string} id @param {number} v
    * @param {{ naarApp: boolean, bron?: string, slew?: boolean, ctrl?: string }} o  ctrl: de control die de waarde zelf zette
    */
@@ -445,8 +452,12 @@ export class Kern extends Zender {
     if (a.manifest && (!p || p.soort === 'trigger')) return;
     const w = kwantiseer(p, v);
     if (!slew) this.slews.delete(`${a.app}\u0000${id}`);
+    const was = a.waarden[id];
     a.waarden[id] = w;
-    if (naarApp) this.#naar(a, { t: 'zet', id, v: w, ...(bron ? { bron } : {}) });
+    // §14: een keuze of schakelaar die al op deze stand staat, krijgt geen zet nog eens (LEDs en pickup gaan wel mee).
+    // Replay altijd: na een herstart weet de app het nog niet.
+    const zelfde = (p?.soort === 'keuze' || p?.soort === 'schakelaar') && w === was && bron !== 'replay';
+    if (naarApp && !zelfde) this.#naar(a, { t: 'zet', id, v: w, ...(bron ? { bron } : {}) });
     if (this.focusApp === a.app && a.indeling) {
       for (const ctrl of controlsVoor(a.indeling, a.pagina, id)) {
         if (ctrl === van) continue; // de bewegende control houdt zijn eigen (ongekwantiseerde) stand
@@ -457,11 +468,25 @@ export class Kern extends Zender {
     }
     // Een LPD8-knop met deze rol moet weer 'wachten' als zijn doel van buitenaf veranderde
     // (snapshot, app, cockpit); zijn eigen macro (en de slew daarvan) niet.
+    // §14: wat een app zelf verandert tijdens (of vlak na) een paniek, verplaatst het doel niet: de knop blijft
+    // gevangen en de eerste tik zet weer alle apps met die rol. Was er nog geen pickup, dan wordt het doel van
+    // vóór deze zet vastgelegd (anders nam #macroDoel straks de paniekwaarde).
     const k = p?.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(p.rol) : -1;
-    const lpk = k >= 0 && bron !== 'lpd8' ? this.lpdPickups.get(`k${k + 1}`) : undefined;
-    if (lpk && p?.rol && this.#rolParam(p.rol)?.a === a) this.lpdPickups.set(`k${k + 1}`, zetDoel(lpk, w));
+    const knop = k >= 0 && bron !== 'lpd8' ? `k${k + 1}` : null;
+    const lpk = knop ? this.lpdPickups.get(knop) : undefined;
+    const vasthouden = knop !== null && bron === 'app' && this.#inPaniek(a);
+    if (knop && (lpk || vasthouden) && p?.rol && this.#rolParam(p.rol)?.a === a) {
+      if (!vasthouden) this.lpdPickups.set(knop, zetDoel(/** @type {Pickup} */ (lpk), w));
+      else if (!lpk) this.lpdPickups.set(knop, nieuwePickup(was ?? p.standaard ?? 0, this.fysiek.get(`lpd8:${knop}`) ?? null));
+    }
     if (a.manifest?.truth === 'hub') this.meld('geheugen');
     this.#beeldGewijzigd();
+  }
+
+  /** Loopt er voor deze app een paniek (LPD8 P1 of zijn eigen Stop All), of is hij net voorbij (paniek.naloop_s)? @param {AppStaat} a */
+  #inPaniek(a) {
+    const nu = this.klok.nu();
+    return nu < this.paniekTot || nu < (this.appPaniekTot.get(a.app) ?? -Infinity);
   }
 
   /** Verloopt een zet op deze parameter over slew_s? Alleen voor `waarde` (een keuze of schakelaar springt). @param {Param|undefined} p */
@@ -639,7 +664,11 @@ export class Kern extends Zender {
       if (this.focusApp === a.app) this.#teken();
       return;
     }
-    if (el === 'stopall' && ind.paniek && (druk || los)) { this.#naar(a, { t: 'trig', id: ind.paniek, aan: druk }); return; }
+    if (el === 'stopall' && ind.paniek && (druk || los)) {
+      this.appPaniekTot.set(a.app, druk ? Infinity : this.klok.nu() + this.paniekNaloopMs);
+      this.#naar(a, { t: 'trig', id: ind.paniek, aan: druk });
+      return;
+    }
     if ((el === 'devL' || el === 'devR') && druk) {
       const nieuw = Math.max(0, Math.min(ind.paginas.length - 1, a.pagina + (el === 'devR' ? 1 : -1)));
       if (nieuw === a.pagina) return;
@@ -726,6 +755,7 @@ export class Kern extends Zender {
   /** @param {boolean} aan */
   #paniek(aan) {
     this.paniekActief = aan;
+    this.paniekTot = aan ? Infinity : this.klok.nu() + this.paniekNaloopMs;
     for (const a of this.apps.values()) {
       if (a.manifest?.params.some((p) => p.id === 'paniek' && p.soort === 'trigger')) this.#naar(a, { t: 'trig', id: 'paniek', aan });
     }

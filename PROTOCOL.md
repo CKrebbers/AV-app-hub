@@ -224,3 +224,20 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - **Zonder geldig token op `/app`:** de hub stuurt `welkom` en wacht op `hallo`. Een `hallo` zonder of met een verkeerd token, elk ander bericht eerst, of geen `hallo` binnen 10 s → `{t:"fout", reden:"token nodig: …"}` en close-code **4003**. Zo'n verbinding bereikt de kern nooit (geen slot, geen LEDs).
 - **Een app die 4003 krijgt** herverbindt met de gewone backoff (0,5 → 5 s); opnieuw proberen helpt pas als het token klopt, dus een app mag ook bewust langzamer gaan of de gebruiker melden dat het token ontbreekt.
 - **Zonder token luistert de hub nooit buiten loopback:** een `host` die niet `127.0.0.1`/`localhost`/`::1` is zonder token wordt geweigerd vóór het luisteren (`start` stopt met exit 4).
+
+## 14. Beslissingen (golf 5)
+
+Uit de generale repetitie (`docs/REPETITIE.md`). Getoetst in `test/kern-golf5.test.js` en `test/repetitie.test.js`.
+
+**Pickup na een paniek** (vult §11 "LPD8-pickup volgt de buitenwereld" aan)
+- Wat een app **zelf** verandert (`zet` of `staat` van de app) terwijl de paniek loopt, of binnen `paniek.naloop_s` seconden daarna (`config.json`, standaard 5; 0 = alleen tijdens de paniek), verplaatst het pickup-doel van een **LPD8-macroknop** niet. De knop blijft gevangen; de eerste tik zet weer elke app met die rol. Voorbeeld: Waterschaal zet bij paniek zelf `volume` op 0 en meldt dat; K1 stond op 0,28 en blijft gevangen, dus de volgende tik zet Waterschaal én MediSynth weer op de knopstand.
+- De hub bewaart en toont die waarde gewoon (`waarden`, cockpit, geheugen): alleen het pickup-doel van de LPD8-knop blijft staan. Had de knop nog geen pickup (nog nooit aangeraakt), dan geldt als doel de waarde van vóór die zet, niet de paniekwaarde.
+- "De paniek loopt": LPD8-P1 is vastgehouden (vanaf het moment dat de paniek ingaat, na 1 s) tot loslaten, voor alle apps; of **Stop All** van de app met focus is ingedrukt, alleen voor die app. De naloop telt vanaf loslaten.
+- Alleen wat de app zelf doet. Een zet van de cockpit of een snapshot tijdens de paniek verplaatst het doel wél (zoals §11).
+- **APC-pickups (faders, ringknoppen zonder overname) van de app met focus volgen wél de buitenwereld**, ook tijdens een paniek: zo'n control hoort bij precies één parameter van de app die je ziet, en wat de app daar zelf van maakt is de waarheid. Na `volume` 0 wacht fader 1 dus weer (de clip-stop-LED knippert) tot hij 0 kruist. Een LPD8-knop is een macro over alle apps met die rol: als één app hem tijdens een paniek loskoppelt, doet hij voor alle andere apps ook niets meer.
+
+**Geen dubbele zets bij keuze en schakelaar**
+- Een `zet` op een parameter met `soort` `keuze` of `schakelaar` gaat niet naar de app als de gekwantiseerde waarde gelijk is aan wat de hub al van de app weet. Dat geldt voor elke bron (LPD8-macro, APC-pad of -stap, cockpit, snapshot): dezelfde keuze nog eens sturen heeft nooit zin. LEDs en pickup worden wel bijgewerkt, en `globaal` (de macro zelf) gaat nog steeds bij elke tik naar iedereen.
+- **Replay gaat altijd** (`bron:"replay"`, na een herstart van de app of van de hub): de app weet het dan nog niet.
+- Meldde de app zelf een andere stand (`zet`/`staat`), dan gaat de oude stand daarna gewoon weer.
+- Voor `soort:"waarde"` verandert er niets.

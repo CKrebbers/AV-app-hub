@@ -27,16 +27,13 @@ const echt = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms))
  * Bekende problemen in de HUB die de repetitie vindt (open vragen, niet in de apps op te lossen). Deze controles
  * tellen niet mee in "stap: …", maar staan in een eigen it.fails: wordt de hub gerepareerd, dan slaagt die test
  * en meldt vitest dat it.fails onterecht faalt — haal de regel dan hier weg.
+ * Vorm: `{ stap: '<naam van de stap>', wat: /<begin van de controle>/, waarom: '<korte omschrijving>' }`.
  *
- * K1 na paniek: Waterschaal zet bij paniek volume op 0 en meldt dat (zet). De pickup van de LPD8 neemt als doel
- * de waarde van de EERSTE app met de rol (kern.#macroDoel, PROTOCOL §10), dus waterschaal.volume = 0; K1 staat op
- * 0,283 en doet daarna voor álle apps met macro.intensiteit niets meer (ook medisynth.niveau) tot hij voorbij 0
- * draait. Repro: deze test, of `node tools/repetitie.mjs` (rapport: "na paniek: K1 twee tikjes verder → … geen zet").
- * Open vraag (hub/PROTOCOL): pickup-doel uit de laatste fysieke stand of het globale doel, niet uit de eerste app?
+ * Opgelost in golf 5 (PROTOCOL §14): "K1 na paniek" (wat een app zelf verandert tijdens de paniek verplaatst het
+ * pickup-doel van een LPD8-macroknop niet meer); zie de tests "na de paniek doen K1 en de apps weer mee".
+ * @type {{ stap: string, wat: RegExp, waarom: string }[]}
  */
-const BEKEND = [
-  { stap: 'paniek: P1 vasthouden en loslaten', wat: /^na paniek: K1 twee tikjes verder → /, waarom: 'K1 na paniek (pickup-doel uit de eerste app met de rol)' },
-];
+const BEKEND = [];
 const isBekend = (/** @type {string} */ stap, /** @type {string} */ wat) => BEKEND.some((b) => b.stap === stap && b.wat.test(wat));
 
 /**
@@ -70,6 +67,8 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
   /** @type {NepKlok} */ let klok;
   /** @type {Awaited<ReturnType<typeof speelAvond>>} */ let uitslag;
   /** @type {Map<string, RepetitieApp>} */ const apps = new Map();
+  /** Wat de hub (en dus de cockpit) tijdens de paniek als waterschaal.volume kende. @type {number[]} */
+  const volumeTijdensPaniek = [];
 
   beforeAll(async () => {
     klok = new NepKlok();
@@ -79,6 +78,11 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
     lpd8.antwoord = (b) => { if (b[1] === 0x7e) setTimeout(() => lpd8.injecteer([0xf0, 0x7e, 0, 6, 2, 0x47, 0x4c, 0, 0xf7]), 1); };
     hub = await startHub({ config: { ...laadConfig(), hotplug_ms: 50 }, systeem, klok, poort: 0, drivers: false });
     const url = hub.adres.replace('http', 'ws') + '/app';
+    hub.kern.bij('beeld', () => {
+      const b = hub.kern.beeld();
+      const w = b.apps.find((/** @type {any} */ a) => a.app === 'waterschaal');
+      if (b.globaal.paniek === 1 && typeof w?.waarden.volume === 'number') volumeTijdensPaniek.push(w.waarden.volume);
+    });
 
     // Nep-tijd: in stappen van 50 ms, met echte pauzes ertussen zodat de WebSockets bijblijven;
     // elke 500 ms nep-tijd een hartslag van elke app (hun eigen interval loopt op de echte klok).
@@ -195,8 +199,8 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
   it('de nep-Waterschaal doet bij paniek wat de echte doet: volume naar 0, en meldt dat', () => {
     const s = uitslag.stappen.find((x) => x.naam === 'paniek: P1 vasthouden en loslaten');
     expect(s?.controles.find((x) => x.wat === 'waterschaal kreeg trig paniek aan')?.ok).toBe(true);
-    // De hub kent volume 0 omdat de app het terugmeldde (niet omdat de hub het zelf zette).
-    expect(hub.kern.apps.get('waterschaal')?.waarden.volume).toBe(0);
+    // De hub (en de cockpit) kende volume 0 omdat de app het terugmeldde (niet omdat de hub het zelf zette).
+    expect(volumeTijdensPaniek.at(-1)).toBe(0);
   });
 
   it('elke app kreeg zijn berichten: latency gemeten, niets verloren buiten een herstart', () => {
@@ -222,6 +226,29 @@ describe('generale repetitie (nep-apps met de echte manifesten)', () => {
       expect(ctl?.ok, ctl?.detail).toBe(true);
       expect(verwacht).not.toBeCloseTo(doel, 3); // anders toetst dit niets over quantiseren
     }
+  });
+
+  it('een keuze krijgt nooit dezelfde zet nog eens (LPD8-macro K5 op palette/palet, PROTOCOL §14)', () => {
+    // Vóór golf 5: 186 zets naar formula-lab palette, waarvan 179 identiek (elke knoptik een zet).
+    for (const [app, id] of [['formula-lab', 'palette'], ['flux', 'palet']]) {
+      const a = uitslag.perApp[app];
+      expect(a, app).toBeTruthy();
+      expect(a.herhaaldeZets[id] ?? 0, `${app}.${id}: ${JSON.stringify(a.herhaaldeZets)}`).toBe(0);
+    }
+  });
+
+  it('na de paniek doen K1 en de apps weer mee: waterschaal.volume en medisynth.niveau lopen niet uiteen (§14)', () => {
+    const s = uitslag.stappen.find((x) => x.naam === 'eindstand: hub en apps zijn het eens');
+    expect(s, 'stap eindstand liep niet').toBeTruthy();
+    const k1 = /** @type {any} */ (s).controles.filter((/** @type {any} */ x) => x.opmerking && x.wat.startsWith('K1 '));
+    expect(k1.map((/** @type {any} */ x) => `${x.wat} — ${x.detail}`)).toEqual([]);
+    // Tijdens de paniek kende de hub wél volume 0 (zie hierboven); K1 zette het daarna weer voor iedereen.
+    expect(volumeTijdensPaniek).toContain(0);
+    expect(hub.kern.apps.get('waterschaal')?.waarden.volume).toBeGreaterThan(0.25);
+    const s2 = uitslag.stappen.find((x) => x.naam === 'paniek: P1 vasthouden en loslaten');
+    const na = s2?.controles.filter((x) => x.wat.startsWith('na paniek: K1 twee tikjes verder → ')) ?? [];
+    expect(na.map((x) => x.wat).sort()).toEqual(['na paniek: K1 twee tikjes verder → medisynth.niveau volgt', 'na paniek: K1 twee tikjes verder → waterschaal.volume volgt']);
+    expect(na.filter((x) => !x.ok).map((x) => `${x.wat} — ${x.detail}`)).toEqual([]);
   });
 
   it('het rapport noemt elke stap en elke app', () => {

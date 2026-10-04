@@ -83,7 +83,8 @@ describe('kern: fader of ring op een schakelaar/keuze via config.kaarten', () =>
     draai(kern, 'fader1', 0.6);
     draai(kern, 'fader1', 0.9);
     draai(kern, 'fader1', 0.2);
-    expect(van(fl, 'zet').map((b) => [b.id, b.v])).toEqual([['mute', 0], ['mute', 0], ['mute', 1], ['mute', 1], ['mute', 0]]);
+    // Alleen als de stand echt verandert gaat er een zet (PROTOCOL §14: geen dubbele zets bij een schakelaar).
+    expect(van(fl, 'zet').map((b) => [b.id, b.v])).toEqual([['mute', 1], ['mute', 0]]);
     expect(kern.beeld().pickup.fader1.gevangen).toBe(true);
   });
 
@@ -97,7 +98,7 @@ describe('kern: fader of ring op een schakelaar/keuze via config.kaarten', () =>
     sync();
     expect(knop.get(16)).toBe(30);
     draaiKnop('dk1', 70); // optie 1
-    expect(van(fl, 'zet').map((b) => b.v)).toEqual([0, 0, 0.5]);
+    expect(van(fl, 'zet').map((b) => b.v)).toEqual([0.5]); // optie 0 stond er al (PROTOCOL §14)
     kern.stop();
   });
 });
