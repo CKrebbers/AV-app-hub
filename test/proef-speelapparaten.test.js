@@ -2,6 +2,7 @@
 // een MIDI-ingang) en een nep-Maschine MK2 (HID). Ook wat er gebeurt als de Maschine bezet is of macOS de invoer
 // tegenhoudt, en zonder HID of zonder keyboard.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { echteKlok } from '../src/core/klok.js';
 import { Logboek, leesLogboek } from '../src/core/logboek.js';
 import { maakApparaten } from '../src/apparaten.js';
@@ -31,6 +32,15 @@ const stappenVan = (regels) => leesLogboek(regels.join('\n')).regels.filter((x) 
 describe('proef speelapparaten met gesimuleerde gebruiker', () => {
   it('staat in de lijst van varve-hub proef', () => {
     expect(PROTOCOLLEN.speelapparaten).toBe(speelapparaten);
+  });
+
+  it('docs/HARDWARE-AVOND.md (blok 8) noemt elke stap, in dezelfde volgorde en met hetzelfde nummer als de terminal', () => {
+    const draaiboek = readFileSync(new URL('../docs/HARDWARE-AVOND.md', import.meta.url), 'utf8');
+    const blok = draaiboek.slice(draaiboek.indexOf('## 8. Xboard49 en Maschine MK2'));
+    const rijen = [...blok.matchAll(/^\| (\d+) \| ([^|]+?) \|/gm)].map((m) => ({ nr: Number(m[1]), titel: m[2] }));
+    expect(rijen).toEqual(speelapparaten.stappen.map((s, i) => ({ nr: i + 1, titel: s.titel })));
+    expect(blok).toMatch(/node src\/cli\.js proef speelapparaten/);
+    expect(blok).toMatch(/xboard49-profiel\.json/);
   });
 
   it('loopt alle stappen door zonder fouten en levert de bevindingen', async () => {
