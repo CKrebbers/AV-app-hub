@@ -19,14 +19,18 @@
  */
 
 /**
- * Het MIDI-systeem van de machine: poorten opsommen en openen.
+ * Het MIDI-systeem van de machine: poorten opsommen en openen. `open(naam, { alleenIngang: true })` opent alleen de
+ * ingang (een apparaat dat niets ontvangt, zoals de Xboard49; `stuur` gooit dan).
  * @typedef {{
  *   soort: string,
  *   lijst: () => { ingangen: string[], uitgangen: string[] },
- *   open: (naam: string) => Poort,
+ *   open: (naam: string, opties?: { alleenIngang?: boolean }) => Poort,
  *   virtueel?: (naam: string) => Poort,
  * }} Systeem
  */
+
+/** Virtuele/doorgeefpoorten (IAC, through, de hub zelf): nooit een controller. */
+const NEP = /iac|through|virtual|varve-hub/i;
 
 /**
  * Zoek een poortnaam die op het patroon past en zowel als ingang als uitgang bestaat.
@@ -35,8 +39,14 @@
  * @param {RegExp} patroon
  */
 export function zoekNaam(l, patroon) {
-  const nep = /iac|through|virtual|varve-hub/i;
-  return l.ingangen.find((n) => patroon.test(n) && !nep.test(n) && l.uitgangen.some((u) => kern(u) === kern(n))) ?? null;
+  return l.ingangen.find((n) => patroon.test(n) && !NEP.test(n) && l.uitgangen.some((u) => kern(u) === kern(n))) ?? null;
+}
+/**
+ * Zoals zoekNaam, maar alleen de ingang hoeft te bestaan (een apparaat dat niets ontvangt, zoals de Xboard49).
+ * @param {{ ingangen: string[] }} l @param {RegExp} patroon
+ */
+export function zoekIngang(l, patroon) {
+  return l.ingangen.find((n) => patroon.test(n) && !NEP.test(n)) ?? null;
 }
 /** Linux/ALSA zet er "MIDI 1 20:0" achter; vergelijk op de kern van de naam. @param {string} n */
 export const kern = (n) => n.replace(/\s+\d+:\d+$/, '').trim();

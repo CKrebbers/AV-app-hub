@@ -11,6 +11,27 @@
     },
     "lpd8": {
       "naam": "lpd8"
+    },
+    "xboard49": {
+      "_doc": "E-MU Xboard49 (PROTOCOL §17): naam = een stukje van de MIDI-poortnaam (alleen de ingang; het keyboard ontvangt niets). Weg = de hub opent hem niet. De 16 knoppen leert de proef speelapparaten (xboard49-profiel.json)",
+      "naam": "xboard"
+    },
+    "maschine-mk2": {
+      "_doc": "Maschine MK2 via USB-HID (docs/MASCHINE.md). vid/pid hex. niet_exclusief: true opent hem naast een ander programma (macOS vraagt dan om Invoermonitoring). stil_ms: zo lang na openen mag er geen enkel rapport komen voor de hub 'geen invoer' zegt. pads: drempel/los (0..4095, hysterese), bevestig (frames ≥ drempel voor een slag), stijging_vol (drukstijging die velocity 127 geeft), max (volle druk), aftertouch_hz. encoder_drempel: tellen in één richting voor een knop iets stuurt (1 omwenteling ≈ 1000). led_max: helderste waarde op de draad (de proef meet of 127 of 255). Weg = geen Maschine",
+      "vid": "17cc",
+      "pid": "1140",
+      "niet_exclusief": false,
+      "stil_ms": 2000,
+      "pads": {
+        "drempel": 200,
+        "los": 100,
+        "bevestig": 2,
+        "stijging_vol": 1500,
+        "max": 4095,
+        "aftertouch_hz": 30
+      },
+      "encoder_drempel": 12,
+      "led_max": 255
     }
   },
   "hubtoets": "bank",

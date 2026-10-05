@@ -25,16 +25,28 @@ export const HERSTEL = Object.freeze({ eersteMs: 250, maxMs: 30000, stabielMs: 1
 export const LIJST_MS = 250;
 
 export class Aansluiting {
-  /** @param {{ systeem: Systeem, patroon: RegExp, klok: Klok, intervalMs?: number, bijVerbonden: (p: Poort) => void, bijWeg: (naam: string) => void, bijFout?: (e: Error) => void, bijOpnieuw?: (p: Poort) => void }} o */
+  /**
+   * Standaard zoekt en opent hij een MIDI-poort (zoekNaam op `patroon`, `systeem.open`). Een ander soort apparaat
+   * geeft eigen `zoek` (de naam/het pad van het apparaat, of null) en `open` mee: een MIDI-apparaat met alleen een
+   * ingang (de Xboard49), of een HID-toestel (de Maschine, src/ports/hid.js). `lijstMs`: hoe vaak hij kijkt of het
+   * apparaat weg is (standaard LIJST_MS); een dure opsomming (USB/HID) kijkt alleen in de gewone ronde (= intervalMs).
+   * @param {{ systeem?: Systeem|null, patroon?: RegExp|null, klok: Klok, intervalMs?: number, lijstMs?: number,
+   *   zoek?: () => string|null, open?: (naam: string) => Poort,
+   *   bijVerbonden: (p: Poort) => void, bijWeg: (naam: string) => void, bijFout?: (e: Error) => void, bijOpnieuw?: (p: Poort) => void }} o
+   */
   constructor(o) {
     this.o = o;
+    /** @type {() => string|null} */
+    this.zoek = o.zoek ?? (() => zoekNaam(/** @type {Systeem} */ (o.systeem).lijst(), /** @type {RegExp} */ (o.patroon)));
+    /** @type {(naam: string) => Poort} */
+    this.openen = o.open ?? ((naam) => /** @type {Systeem} */ (o.systeem).open(naam));
     /** @type {Poort|null} */
     this.poort = null;
     this.timer = null;
     this.gestopt = false;
-    /** Tikken (elk LIJST_MS) per gewone ronde, en de hoeveelste tik dit is (0 = een gewone ronde). */
+    /** Tikken (elk lijstMs) per gewone ronde, en de hoeveelste tik dit is (0 = een gewone ronde). */
     const interval = o.intervalMs ?? 2000;
-    this.tikken = Math.max(1, Math.ceil(interval / LIJST_MS));
+    this.tikken = Math.max(1, Math.ceil(interval / Math.max(1, o.lijstMs ?? LIJST_MS)));
     this.tikMs = interval / this.tikken;
     this.tik = 0;
     /** Timer van een gepland herstel: meteen (0 ms, buiten de wachtrij om) of na een pauze. */
@@ -58,14 +70,14 @@ export class Aansluiting {
   }
   /** Eén tik: is het apparaat weg (elke tik), en zo niet verbonden: is het er (elke gewone ronde)? */
   kijk() {
-    const { systeem, patroon, klok } = this.o;
+    const { klok } = this.o;
     const ronde = this.tik === 0;
     this.tik = (this.tik + 1) % this.tikken;
     /** @type {string|null} */
     let naam = null;
     let lijstGelukt = false;
     try {
-      naam = zoekNaam(systeem.lijst(), patroon);
+      naam = this.zoek();
       lijstGelukt = true;
     } catch (e) {
       // Een hikje in de lijst terwijl de poort open is en werkt, is geen storing (en geen melding waard); de volgende
@@ -127,7 +139,7 @@ export class Aansluiting {
   /** Opnieuw openen als het apparaat er (alweer) is; anders doet de hotplug-ronde het zodra het terugkomt. */
   #probeer() {
     try {
-      const naam = zoekNaam(this.o.systeem.lijst(), this.o.patroon);
+      const naam = this.zoek();
       if (!this.poort && naam) this.#open(naam);
       else if (!naam) this.netWeg = true;   // (nog) los: open hem bij de eerste tik dat hij er weer is
     } catch (e) {
@@ -141,7 +153,7 @@ export class Aansluiting {
   /** @param {string} naam */
   #open(naam) {
     this.netWeg = false;
-    this.poort = this.o.systeem.open(naam);
+    this.poort = this.openen(naam);
     this.o.bijVerbonden(this.poort);
   }
   #sluit() {

@@ -177,8 +177,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
     { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
     { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
-    { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 98, bevat: '"koppeling": "td"' },
+    { pad: 'config.json', regel: 55, bevat: '"td-lab"' },
+    { pad: 'config.json', regel: 119, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.
