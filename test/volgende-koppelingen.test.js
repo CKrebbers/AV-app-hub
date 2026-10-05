@@ -169,7 +169,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/http.js', regel: 206, bevat: 'globaal' },
     { pad: 'src/drivers/http.js', regel: 236, bevat: 'tabs === 0' },
     { pad: 'src/drivers/index.js', regel: 28, bevat: 'DRIVER_SOORTEN' },
-    { pad: 'src/doctor.js', regel: 98, bevat: "'osc'" },
+    { pad: 'src/doctor.js', regel: 99, bevat: "'osc'" },
     { pad: 'src/transports/server.js', regel: 88, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },

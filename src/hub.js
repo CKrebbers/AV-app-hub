@@ -68,7 +68,8 @@ export function opnameMeldingen(zet) {
 export function maschineHint(status, reden = null) {
   if (status === 'bezet') return HINT.bezet;
   if (status === 'geen-invoer') return HINT.invoer;
-  if (status === 'geen-hid') return `${reden ?? 'geen HID'} — npm install haalt node-hid binnen`;
+  // Alleen als node-hid echt ontbreekt helpt npm install (niet bij --zonder-midi of een vid/pid die niet klopt).
+  if (status === 'geen-hid') return /^node-hid niet geïnstalleerd/.test(reden ?? '') ? `${reden} — npm install haalt node-hid binnen` : (reden ?? 'geen HID');
   return null;
 }
 

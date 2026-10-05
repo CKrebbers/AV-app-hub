@@ -6,6 +6,7 @@ import { laadHid, hidSysteemVan, draaiendeNi, NI_PROGRAMMAS, HINT } from '../src
 import { NepSysteem, NepHidSysteem } from '../src/ports/nep.js';
 import { doctor } from '../src/doctor.js';
 import { laadConfig } from '../src/config.js';
+import { maschineHint } from '../src/hub.js';
 import { nepMaschine, rustFrame, XBOARD_NAAM } from './nep-speelapparaten.js';
 
 /** Een nep-node-hid: devices(vid?, pid?) en new HID(pad, opties) als EventEmitter. */
@@ -129,6 +130,28 @@ describe('doctor: speelapparaten', () => {
     expect(data.maschine.hubDraait).toBe(true);
     expect(m.poort.opties).toBe(null);
   }, 15000);
+  it('zonder naam voor de Xboard in config.json zegt doctor dat hij niet meedoet (en noemt de APC niet als Xboard)', async () => {
+    const midi = new NepSysteem();
+    midi.voegToe('APC40 mkII');
+    const { tekst } = await doctor({
+      config: { ...config, apparaten: { ...config.apparaten, xboard49: {} } }, laadMidi: async () => ({ systeem: midi }),
+      laadHid: async () => ({ systeem: null, reden: 'x' }), niProgrammas: () => [], wachtMs: 20, hubDraait: async () => false,
+    });
+    expect(tekst).toMatch(/- xboard49: niet in config\.json/);
+    expect(tekst).not.toMatch(/xboard49: APC40/);
+  }, 15000);
+  it('kan de HID-opsomming niet, dan valt doctor niet om', async () => {
+    const hid = new NepHidSysteem();
+    hid.apparaten = () => { throw new Error('IOKit weg'); };
+    const { tekst } = await draai({ hid });
+    expect(tekst).toMatch(/✗ maschine-mk2: HID-toestellen niet op te sommen \(IOKit weg\)/);
+  }, 15000);
+  it('de hint bij geen-hid: npm install alleen als node-hid echt ontbreekt', () => {
+    expect(maschineHint('geen-hid', 'node-hid niet geïnstalleerd (x)')).toMatch(/npm install/);
+    expect(maschineHint('geen-hid', 'gestart met --zonder-midi')).toBe('gestart met --zonder-midi');
+    expect(maschineHint('geen-hid', 'geen vid/pid in config.json (apparaten.maschine-mk2)')).not.toMatch(/npm install/);
+    expect(maschineHint('verbonden')).toBe(null);
+  });
   it('geen node-hid en geen keyboard: ✗ met wat te doen', async () => {
     const { tekst } = await draai({ hid: null, hidReden: 'node-hid niet geïnstalleerd (x)' });
     expect(tekst).toMatch(/✗ xboard49: niet gevonden/);

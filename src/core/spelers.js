@@ -11,6 +11,9 @@
 // indrukken kreeg, ook na een focuswissel; een loslaten van iets dat niemand vasthield, gaat nergens heen. Valt het
 // apparaat weg, dan krijgt elke app zijn loslaten van wat hij nog vasthield. Polyfone aftertouch volgt de noot.
 // Paniek van de Xboard (CC 120/123) gaat naar wie nu speelt én naar elke app die op dat kanaal nog iets vasthoudt.
+// Pitchbend, modulatie en kanaal-aftertouch gaan naar wie nu speelt; wisselt dat (of valt het apparaat weg) terwijl
+// ze uit de ruststand staan, dan zet de hub ze bij de oude app terug (midden, 0). Een half pedaal dat in stappen
+// zakt: ook de staart gaat naar wie het pedaal losliet.
 //
 // Terug: LED's (`{t:'led', dev, bytes}`) en schermen (`{t:'scherm', dev, nr, data}`) worden per app bewaard en
 // gaan naar het apparaat zolang die app speelt. Wisselt wie speelt, dan eerst alles uit en daarna wat de nieuwe app
@@ -62,6 +65,14 @@ export class Spelers {
     this.kaarten = new Map();
     /** Per app, per apparaat: de schermen (null = nooit gestuurd). @type {Map<string, Map<string, (Uint8Array|null)[]>>} */
     this.schermen = new Map();
+    /**
+     * Per apparaat, per app: wat nog niet in de ruststand staat (pitchbend, modulatie, kanaal-aftertouch), met het
+     * bericht dat het terugzet. Wisselt wie speelt of valt het apparaat weg, dan krijgt de oude app dat.
+     * @type {Map<string, Map<string, Map<string, number[]>>>}
+     */
+    this.uitRust = new Map(SPEELAPPARATEN.map((d) => [d, new Map()]));
+    /** Per apparaat+kanaal: wie het pedaal het laatst losliet (de staart van een half pedaal gaat daar ook heen). @type {Map<string, string>} */
+    this.pedaalNa = new Map();
   }
 
   /** Wie speelt nu op `dev` (of null). @param {string} dev */
@@ -96,9 +107,11 @@ export class Spelers {
     let veranderd = false;
     for (const dev of SPEELAPPARATEN) {
       const nieuw = this.#kies(dev);
-      if (nieuw === this.doel[dev]) continue;
+      const oud = this.doel[dev];
+      if (nieuw === oud) continue;
       this.doel[dev] = nieuw;
       veranderd = true;
+      if (oud) this.#naarRust(dev, oud);
       this.#teken(dev);
     }
     return veranderd;
@@ -127,6 +140,14 @@ export class Spelers {
     if (x.soort === 'los') {
       const app = vast.get(x.sleutel);
       vast.delete(x.sleutel);
+      if (x.sleutel.startsWith('cc:')) {
+        // Een half pedaal zakt in stappen (40, 20, 0): die staart gaat naar wie het pedaal losliet.
+        const k = `${dev}:${x.sleutel}`;
+        if (app) this.pedaalNa.set(k, app);
+        const naar = app ?? this.pedaalNa.get(k);
+        if (naar) stuur(naar, bytes);
+        return;
+      }
       if (app) stuur(app, bytes);
       return;
     }
@@ -153,8 +174,32 @@ export class Spelers {
       // Al ingedrukt bij een andere app (de focus wisselde, of er kwam nooit een loslaten): die eerst los.
       if (was && was !== doel) stuur(was, losVan(x.sleutel));
       vast.set(x.sleutel, doel);
-    }
+      if (x.sleutel.startsWith('cc:')) this.pedaalNa.delete(`${dev}:${x.sleutel}`);
+    } else this.#onthoudRust(dev, doel, bytes);
     stuur(doel, bytes);
+  }
+
+  /** Staat pitchbend, modulatie of kanaal-aftertouch van deze app nu buiten de ruststand? @param {string} dev @param {string} app @param {number[]} b */
+  #onthoudRust(dev, app, b) {
+    const st = b[0] & 0xf0, ch = b[0] & 0x0f;
+    /** @type {[string, boolean, number[]]|null} */
+    const x = st === 0xe0 ? [`buig:${ch}`, ((b[2] << 7) | b[1]) !== 8192, [0xe0 | ch, 0, 64]]
+      : st === 0xb0 && b[1] === 1 ? [`mod:${ch}`, b[2] > 0, [0xb0 | ch, 1, 0]]
+        : st === 0xd0 ? [`druk:${ch}`, b[1] > 0, [0xd0 | ch, 0]] : null;
+    if (!x) return;
+    const perApp = /** @type {Map<string, Map<string, number[]>>} */ (this.uitRust.get(dev));
+    let m = perApp.get(app);
+    if (!m) perApp.set(app, (m = new Map()));
+    if (x[1]) m.set(x[0], x[2]); else m.delete(x[0]);
+    if (!m.size) perApp.delete(app);
+  }
+  /** Zet bij `app` terug wat nog buiten de ruststand stond (pitchbend midden, modulatie 0, aftertouch 0). @param {string} dev @param {string} app */
+  #naarRust(dev, app) {
+    const perApp = this.uitRust.get(dev);
+    const m = perApp?.get(app);
+    if (!m) return;
+    perApp?.delete(app);
+    for (const b of m.values()) this.o.naar(app, { t: 'midi', dev, bytes: [...b] });
   }
 
   /** Het apparaat viel weg: elke app krijgt het loslaten van wat hij nog vasthield. @param {string} dev */
@@ -163,6 +208,8 @@ export class Spelers {
     if (!vast) return;
     for (const [k, app] of [...vast]) this.o.naar(app, { t: 'midi', dev, bytes: losVan(k) });
     vast.clear();
+    for (const app of [...(this.uitRust.get(dev)?.keys() ?? [])]) this.#naarRust(dev, app);
+    for (const k of [...this.pedaalNa.keys()]) if (k.startsWith(`${dev}:`)) this.pedaalNa.delete(k);
   }
 
   /**
@@ -199,6 +246,7 @@ export class Spelers {
   vergeetApp(app) {
     this.kaarten.delete(app);
     this.schermen.delete(app);
+    for (const m of this.uitRust.values()) m.delete(app);
     this.focusVolgorde = this.focusVolgorde.filter((x) => x !== app);
   }
 

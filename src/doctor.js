@@ -6,6 +6,7 @@ import dgram from 'node:dgram';
 import { zoekNaam, zoekIngang } from './ports/poort.js';
 import { laadHid, draaiendeNi, HINT } from './ports/hid.js';
 import { laadLpd8Profiel, laadXboardProfiel, HUB_MAP } from './config.js';
+import * as XB from './devices/xboard49.js';
 import * as A from './devices/apc40mk2.js';
 import * as L from './devices/lpd8.js';
 
@@ -118,10 +119,11 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
  */
 async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok }) {
   const xcfg = config.apparaten?.xboard49;
-  if (!xcfg) r.push('  - xboard49: niet in config.json (apparaten.xboard49) — de hub opent hem niet');
+  const xpatroon = XB.patroon(config);   // zoals de hub: zonder naam doet de Xboard niet mee
+  if (!xpatroon) r.push('  - xboard49: niet in config.json (apparaten.xboard49.naam) — de hub opent hem niet');
   else if (!systeem) r.push('  ✗ xboard49: geen MIDI (zie boven)');
   else {
-    const naam = zoekIngang(systeem.lijst(), new RegExp(xcfg.naam, 'i'));
+    const naam = zoekIngang(systeem.lijst(), xpatroon);
     const xprof = laadXboardProfiel();
     data.xboard49 = { naam, profiel: xprof ? xprof.bron : null };
     r.push(`  ${ok(!!naam)} xboard49: ${naam ?? `niet gevonden (geen MIDI-ingang met "${xcfg.naam}" in de naam; zie de ingangen hierboven en zet een stukje van de naam in config.json → apparaten.xboard49.naam)`}`);
@@ -134,7 +136,13 @@ async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs
   const ni = niProgrammas();
   data.maschine = { hid: !!hid.systeem, reden: hid.reden ?? null, ni };
   if (!hid.systeem) { r.push(`  ✗ maschine-mk2: geen HID: ${hid.reden} — npm install haalt node-hid binnen`); return; }
-  const gevonden = hid.systeem.apparaten().filter((a) => a.vid === vid && a.pid === pid);
+  /** @type {import('./ports/hid.js').HidApparaat[]} */
+  let gevonden = [];
+  try { gevonden = hid.systeem.apparaten().filter((a) => a.vid === vid && a.pid === pid); } catch (e) {
+    data.maschine.fout = /** @type {Error} */ (e).message;
+    r.push(`  ✗ maschine-mk2: HID-toestellen niet op te sommen (${/** @type {Error} */ (e).message})`);
+    return;
+  }
   data.maschine.gevonden = gevonden.map((a) => a.product ?? a.naam);
   r.push(`  ${ok(gevonden.length > 0)} maschine-mk2 (${mcfg.vid}:${mcfg.pid}): ${gevonden.length ? gevonden[0].product ?? 'gevonden' : 'niet gevonden — USB erin en aan?'}`);
   if (ni.length) r.push(`  ! draait nu: ${ni.join(', ')} — die kunnen de Maschine vasthouden; ${HINT.bezet}`);

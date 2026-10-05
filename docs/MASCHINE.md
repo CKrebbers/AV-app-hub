@@ -91,7 +91,7 @@ alles uit en dan wat de nieuwe app het laatst stuurde.
 
 | Wat je ziet | Waarom | Wat te doen |
 |---|---|---|
-| hubvenster: `Maschine: bezet (cannot open device …)`; cockpit: status `bezet` | een ander programma heeft hem (exclusief) open: Maschine 2, Controller Editor, NIHardwareAgent of NIHostIntegrationAgent | sluit Maschine 2 en Controller Editor; blijft hij bezet, stop de NI-agents in Activiteitenweergave. De hub probeert het elke paar seconden zelf opnieuw. `node src/cli.js doctor` zegt welke NI-programma's draaien |
+| hubvenster: `Maschine: bezet (cannot open device …)`; cockpit: status `bezet` (pas na twee mislukte rondes: één keer kan een kabel zijn die net losgaat) | een ander programma heeft hem (exclusief) open: Maschine 2, Controller Editor, NIHardwareAgent of NIHostIntegrationAgent | sluit Maschine 2 en Controller Editor; blijft hij bezet, stop de NI-agents in Activiteitenweergave. De hub probeert het elke paar seconden zelf opnieuw. `node src/cli.js doctor` zegt welke NI-programma's draaien |
 | hubvenster: `Maschine: open, maar er komt niets binnen`; status `geen-invoer` | macOS laat de invoer niet door (privacy: Invoermonitoring) | Systeeminstellingen → Privacy en beveiliging → Invoermonitoring → zet Terminal (of iTerm) aan, en start de hub opnieuw |
 | `Geen HID (node-hid niet geïnstalleerd …)` | node-hid ontbreekt | `npm install` (node-hid is optioneel, net als de MIDI-module) |
 | pads reageren te snel/te traag, of geven een slag in rust | drempels passen niet bij dit toestel | `pads.drempel`, `pads.los`, `pads.stijging_vol` in `config.json`; de rustopname van de proef laat de ruisvloer zien |

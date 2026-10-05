@@ -303,7 +303,10 @@ loslaten. Polyfone aftertouch volgt de noot (naar wie hem indrukte; van een noot
 weg (uittrekken), dan krijgt elke app het loslaten van wat hij nog vasthield. Paniek van de Xboard (CC120/123) gaat naar
 wie nu speelt én naar elke app die op dat kanaal nog iets vasthoudt; daarna zijn die noten los (een loslaten gaat
 nergens meer heen), het pedaal niet (CC123 laat sustain staan: het loslaten daarvan blijft bij wie het indrukte). Al het andere (CC, pitchbend, kanaal-aftertouch,
-SysEx, programmawissel) gaat naar wie nu speelt.
+SysEx, programmawissel) gaat naar wie nu speelt. Staan pitchbend, modulatie (CC1) of kanaal-aftertouch van een app
+nog uit de ruststand als wie speelt wisselt (of het apparaat wegvalt), dan stuurt de hub die app de ruststand (pitchbend
+midden `E0 00 40`, CC1 0, aftertouch 0). Een half pedaal dat in stappen zakt (40, 20, 0): ook die staart gaat naar wie
+het pedaal losliet.
 
 **Lampjes en schermen van de Maschine.** De hub bewaart per app wat hij stuurde (laatste per adres, en per scherm) en
 toont het zolang die app speelt. Wisselt wie speelt, dan eerst alles uit en daarna wat de nieuwe app het laatst stuurde
@@ -313,7 +316,7 @@ precies 2048 bytes; anders `{t:"fout"}`). Bij stoppen gaan lampjes en schermen u
 
 **Status voor de cockpit** (`beeld.apparaten.xboard49` en `beeld.apparaten["maschine-mk2"]`, alleen als `config.json`
 ze noemt): `{verbonden, naam}`, voor de Maschine ook `status` (`"geen-hid"` node-hid ontbreekt · `"zoekt"` niet
-aangesloten · `"bezet"` openen mislukt, een NI-programma heeft hem · `"verbonden"` · `"geen-invoer"` open, maar binnen
+aangesloten · `"bezet"` openen mislukte twee rondes na elkaar terwijl het toestel er is, een NI-programma heeft hem · `"verbonden"` · `"geen-invoer"` open, maar binnen
 `stil_ms` geen enkel rapport: macOS-Invoermonitoring) en `hint` (wat te doen). In het hubvenster één regel per storing
 (§16): `Maschine: bezet (…) — sluit Maschine 2 en Controller Editor; …` of `Maschine: open, maar er komt niets binnen — …`.
 De hub probeert het bij elke hotplug-ronde opnieuw.

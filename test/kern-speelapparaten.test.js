@@ -201,6 +201,46 @@ describe('kern: speelapparaten — niets blijft hangen', () => {
     expect(midi(dj, 'xboard49')).toEqual([[0xb0, 123, 0]]);
     expect(midi(ms, 'xboard49')).toEqual([[0xb0, 123, 0]]);
   });
+  it('pitchbend en modulatie uit de ruststand bij een focuswissel: de oude app krijgt ze terug (midden, 0)', () => {
+    const { kern, xb } = opzet();
+    const dj = meldAan(kern, SPELER);
+    const ms = meldAan(kern, ALLEEN_XB);
+    kern.focus('varve-dj');
+    xb([0xe0, 0, 100]);     // gebogen
+    xb([0xb0, 1, 90]);      // modulatie open
+    xb([0xd0, 70]);         // kanaal-aftertouch
+    xb([0xd0, 0]);          // en weer los: hoeft niet terug
+    kern.focus('medisynth');
+    expect(midi(dj, 'xboard49').slice(-2)).toEqual([[0xe0, 0, 64], [0xb0, 1, 0]]);
+    leeg(dj, ms);
+    xb([0xe0, 0, 64]);      // het wiel veert terug: nu naar de nieuwe speler
+    expect(midi(ms, 'xboard49')).toEqual([[0xe0, 0, 64]]);
+    expect(van(dj, 'midi')).toEqual([]);
+  });
+  it('valt het keyboard weg met het wiel gebogen, dan gaat het wiel bij de app terug naar het midden', () => {
+    const { kern, xb } = opzet();
+    const dj = meldAan(kern, SPELER);
+    xb([0xe3, 0, 0]);
+    leeg(dj);
+    kern.apparaatWeg('xboard49');
+    expect(midi(dj, 'xboard49')).toEqual([[0xe3, 0, 64]]);
+  });
+  it('een half pedaal dat in stappen zakt: ook de staart gaat naar wie het pedaal indrukte', () => {
+    const { kern, xb } = opzet();
+    const dj = meldAan(kern, SPELER);
+    const ms = meldAan(kern, ALLEEN_XB);
+    kern.focus('varve-dj');
+    xb([0xb0, 64, 127]);
+    kern.focus('medisynth');
+    leeg(dj, ms);
+    xb([0xb0, 64, 40]);
+    xb([0xb0, 64, 20]);
+    xb([0xb0, 64, 0]);
+    expect(midi(dj, 'xboard49')).toEqual([[0xb0, 64, 40], [0xb0, 64, 20], [0xb0, 64, 0]]);
+    expect(van(ms, 'midi')).toEqual([]);
+    xb([0xb0, 64, 100]);    // opnieuw intrappen: nu voor de nieuwe speler
+    expect(midi(ms, 'xboard49')).toEqual([[0xb0, 64, 100]]);
+  });
   it('paniek laat het pedaal staan: wie het indrukte krijgt de paniek, en later ook het loslaten', () => {
     const { kern, xb } = opzet();
     const dj = meldAan(kern, SPELER);

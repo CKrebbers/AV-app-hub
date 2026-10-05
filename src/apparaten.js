@@ -60,7 +60,7 @@ class Sessie extends Zender {
       bijFout: (e) => this.storing(e, 'openen'),
       // Sturen bleef mislukken na een keer opnieuw openen: de poort blijft open (de ingang werkt misschien nog), het
       // apparaat wordt alleen opnieuw geïnitialiseerd.
-      bijOpnieuw: (p) => { if (this.poort === p) this.bijAansluiten(); },
+      bijOpnieuw: (p) => { if (this.poort === p) this.bijHerinit(); },
     });
   }
   /** Meldt 'fout' (e, soort: 'sturen' | 'openen' | 'invoer'), één keer per storing. @param {Error} e @param {'sturen'|'openen'|'invoer'} soort */
@@ -97,6 +97,8 @@ class Sessie extends Zender {
   /** @param {number[]} b @returns {any} */
   ontleed(b) { return { dev: this.dev, el: null, kind: 'onbekend', bytes: b }; }
   bijAansluiten() {}
+  /** Sturen bleef mislukken maar de poort blijft open: het apparaat opnieuw initialiseren (standaard als bij aansluiten). */
+  bijHerinit() { this.bijAansluiten(); }
 }
 
 export class ApcSessie extends Sessie {
@@ -216,7 +218,7 @@ export class MaschineSessie extends Sessie {
       zoek: () => {
         const naam = hid ? hid.zoek(vid, pid) : null;
         // Was hij bezet en is hij nu weg (uitgetrokken): weer 'zoekt', en een volgende 'bezet' krijgt weer een regel.
-        if (!naam && this.status === 'bezet') { this.gemeld.openen = false; this.#zetStatus('zoekt', null); }
+        if (!naam) { this.openFouten = 0; if (this.status === 'bezet') { this.gemeld.openen = false; this.#zetStatus('zoekt', null); } }
         return naam;
       },
       open: (naam) => /** @type {any} */ (/** @type {HidSysteem} */ (hid).open(naam, { nietExclusief: cfg.niet_exclusief === true })),
@@ -249,8 +251,24 @@ export class MaschineSessie extends Sessie {
     this.statusReden = this.geenHid;
     /** @type {any} */ this.planTimer = null;
     /** @type {any} */ this.waakTimer = null;
+    /** Openen mislukt na elkaar (bezet pas na twee: één keer kan ook een kabel zijn die net losgaat). */
+    this.openFouten = 0;
     this.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => { if (soort === 'openen') this.#zetStatus('bezet', e?.message ?? String(e)); });
     this.bij('weg', () => { this.#wisWaak(); this.#zetStatus('zoekt', null); });
+  }
+  /**
+   * Openen mislukt: alleen 'bezet' (met een melding) als het toestel er nog is én het de tweede keer op rij is.
+   * Eén keer kan een kabel zijn die net losgaat; een fout van de opsomming of een toestel dat weg is, is 'zoekt'.
+   * @param {Error} e @param {'sturen'|'openen'|'invoer'} soort
+   */
+  storing(e, soort) {
+    if (soort === 'openen') {
+      /** @type {string|null} */ let nog = null;
+      try { nog = this.hid ? this.hid.zoek(/** @type {number} */ (this.vid), /** @type {number} */ (this.pid)) : null; } catch { nog = null; }
+      if (!nog) { this.openFouten = 0; this.#zetStatus('zoekt', null); return; }
+      if (++this.openFouten < 2) return;
+    }
+    super.storing(e, soort);
   }
   /** Naam voor mensen: het product (node-hid), anders het pad. */
   get naam() { return /** @type {any} */ (this.poort)?.product ?? this.poort?.naam ?? null; }
@@ -277,11 +295,10 @@ export class MaschineSessie extends Sessie {
     this.knopStaat = MS.nieuweKnopStaat();
     this.padStaten = MS.nieuwePadStaten();
     this.frames = 0;
+    this.openFouten = 0;
     this.gemeld.invoer = false;
     this.#zetStatus('verbonden', null);
-    this.leds.vergeet();
-    this.schermVerstuurd = [Array(8).fill(null), Array(8).fill(null)];
-    this.#spoel();
+    this.bijHerinit();
     this.#wisWaak();
     this.waakTimer = this.klok.zet(() => {
       this.waakTimer = null;
@@ -289,6 +306,17 @@ export class MaschineSessie extends Sessie {
       this.#zetStatus('geen-invoer', null);
       this.storing(new Error('open, maar er komt geen enkel rapport binnen'), 'invoer');
     }, this.inst.stilMs);
+  }
+
+  /**
+   * Alles opnieuw tekenen (lampjes en schermen), zonder de invoerstaat aan te raken: sturen bleef mislukken maar de
+   * poort is open, dus wat er ingedrukt is, is nog steeds ingedrukt (anders zou een loslaten wegvallen).
+   */
+  bijHerinit() {
+    this.rij.wis();   // wat nog wachtte is verouderd: alles gaat opnieuw
+    this.leds.vergeet();
+    this.schermVerstuurd = [Array(8).fill(null), Array(8).fill(null)];
+    this.#spoel();
   }
 
   /** Eén HID-rapport. @param {Uint8Array|number[]} f */
@@ -347,17 +375,23 @@ export class MaschineSessie extends Sessie {
   /** Toon wat er in `leds` (MaschineLeds) gezet is: voor de proef, die lampjes ook rechtstreeks zet. */
   toon() { this.#plan(); }
   /** Nu versturen wat er klaarstaat; belooft als alles over de draad is (de proef meet zo hoe lang schrijven duurt). */
-  spoelNu() {
+  async spoelNu() {
     if (this.planTimer !== null) { this.klok.wis(this.planTimer); this.planTimer = null; }
+    await this.rij.leeg();
     this.#spoel();
     return this.rij.leeg();
   }
-  #plan() {
+  #plan(ms = 0) {
     if (this.planTimer !== null) return;
-    this.planTimer = this.klok.zet(() => { this.planTimer = null; this.#spoel(); }, 0);
+    this.planTimer = this.klok.zet(() => { this.planTimer = null; this.#spoel(); }, ms);
   }
+  /**
+   * Wat veranderde de draad op. Staat er nog iets in de rij (HID-schrijven is traag), dan eerst die leeg laten lopen
+   * en het dan opnieuw proberen: zo gaat altijd de nieuwste stand, en groeit de rij niet met verouderde beelden.
+   */
   #spoel() {
     if (!this.poort) return;   // niet aangesloten: het model wacht tot bijAansluiten (dan gaat alles)
+    if (this.rij.lengte > 0) { this.#plan(this.rij.burstMs); return; }
     for (const r of this.leds.rapporten()) this.stuur(r);
     for (const nr of /** @type {const} */ ([0, 1])) {
       MS.schermRapporten(nr, this.schermen[nr]).forEach((stuk, i) => {
@@ -370,9 +404,10 @@ export class MaschineSessie extends Sessie {
   }
   /** Bij afsluiten: lampjes uit en schermen leeg (de panelen houden hun beeld vast), wachten tot het verstuurd is. */
   async uitEnWacht(maxMs = 500) {
-    this.leeg();
     if (this.planTimer !== null) { this.klok.wis(this.planTimer); this.planTimer = null; }
-    this.#spoel();
+    this.leds.uit();
+    this.schermen = [MS.leegScherm(), MS.leegScherm()];
+    this.bijHerinit();   // wat nog wachtte weg, en alles (uit) opnieuw: ook als er een achterstand was
     /** @type {any} */ let h;
     await Promise.race([this.rij.leeg(), new Promise((r) => { h = this.klok.zet(() => r(undefined), maxMs); })]);
     this.klok.wis(h);

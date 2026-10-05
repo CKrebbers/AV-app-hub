@@ -45,7 +45,7 @@ kleinste herstel: §2.3.
 | **manifest-app** via WS `/app` | app kan een WebSocket openen en zijn waarden melden | `hallo` + `manifest` + `staat`, `zet`/`trig` uitvoeren | PROTOCOL §3–§4, `src/transports/server.js` |
 | **driver** in de hub | app kan zich niet aanmelden (TD, Logic, HTTP-API) | niets; de hub spreekt de taal van de app | PROTOCOL §2, `src/drivers/`, `apps/<app>.json` |
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
-| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:98` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
+| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:99` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
 Nieuwe driver-soorten komen bij `src/drivers/index.js:28` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.

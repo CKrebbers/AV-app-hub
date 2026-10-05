@@ -123,11 +123,13 @@ describe('Maschine-sessie', () => {
       ['enc3', 'delta', [0xb0, 18, 12]],
     ]);
   });
-  it('bezet (een NI-programma heeft hem): één fout-melding, en elke ronde opnieuw proberen', () => {
+  it('bezet (een NI-programma heeft hem): pas na de tweede mislukte poging, één fout-melding, en elke ronde opnieuw', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
     hid.zetBezet(m.naam, true);
     app.start(); klok.loop(50);
+    expect(app.maschine.status).toBe('zoekt');   // één keer mislukt kan ook een kabel zijn die net losgaat
+    klok.loop(2000);
     expect(app.maschine.status).toBe('bezet');
     klok.loop(10000);
     expect(meldingen.filter((x) => x[1] === 'fout')).toEqual([['maschine-mk2', 'fout', `cannot open device with path ${m.naam}`, 'openen']]);
@@ -140,13 +142,48 @@ describe('Maschine-sessie', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
     hid.zetBezet(m.naam, true);
-    app.start(); klok.loop(50);
-    m.uittrekken(); klok.loop(2100);
+    app.start(); klok.loop(2050);
+    expect(app.maschine.status).toBe('bezet');
+    m.uittrekken(); klok.loop(2000);
     expect(app.maschine.status).toBe('zoekt');
     const nieuw = m.insteken();
     hid.zetBezet(nieuw.naam, true);
-    klok.loop(2100);
+    klok.loop(4000);
     expect(meldingen.filter((x) => x[1] === 'fout')).toHaveLength(2);
+  });
+  it('blijft sturen mislukken (opnieuw initialiseren zonder sluiten): wat ingedrukt is, blijft ingedrukt en gaat netjes los', () => {
+    const { klok, hid, app, gebeurtenissen } = opzet();
+    const m = nepMaschine(hid);
+    app.start(); klok.loop(50);
+    m.poort.kapot = true;
+    app.maschine.led([0x90, 36, 5]); klok.loop(20);   // eerste fout: sluiten en opnieuw openen
+    m.druk('shift');
+    klok.loop(1000);                                    // daarna alleen opnieuw initialiseren (met pauzes): de poort blijft open
+    expect(app.maschine.verbonden).toBe(true);
+    m.los('shift');
+    expect(gebeurtenissen.filter(([g]) => g.el === 'shift').map(([g]) => g.kind)).toEqual(['druk', 'los']);
+  });
+  it('schermen sneller dan de draad: de rij groeit niet, en de nieuwste stand komt aan', () => {
+    const { klok, hid, app } = opzet();
+    const m = nepMaschine(hid);
+    app.start(); klok.loop(50);
+    m.poort.verstuurd.length = 0;
+    for (let i = 1; i <= 100; i++) { app.maschine.scherm(0, new Uint8Array(2048).fill(i)); klok.loop(1); }
+    expect(app.maschine.rij.lengte).toBeLessThanOrEqual(8);
+    klok.loop(100);
+    const laatste = m.laatste();
+    for (let i = 0; i < 8; i++) expect(laatste[`e0:${i}`].slice(9).every((x) => x === 100)).toBe(true);
+    expect(m.poort.verstuurd.length).toBeLessThan(100 * 8 / 2);
+  });
+  it('openen mislukt terwijl het toestel al uit de lijst is (net uitgetrokken): geen "bezet"', () => {
+    const { klok, hid, app, meldingen } = opzet();
+    const m = nepMaschine(hid);
+    const echtOpen = hid.open.bind(hid);
+    hid.open = (naam, o) => { hid.verwijder(naam); return echtOpen(naam, o); };   // weg op het moment van openen
+    app.start(); klok.loop(10000);
+    expect(app.maschine.status).toBe('zoekt');
+    expect(meldingen.filter((x) => x[1] === 'fout')).toEqual([]);
+    expect(m.poort.open).toBe(false);
   });
   it('open maar geen enkel rapport (macOS-Invoermonitoring): geen-invoer, één melding; komt er toch iets, dan weer verbonden', () => {
     const { klok, hid, app, meldingen } = opzet();
@@ -237,7 +274,9 @@ describe('Maschine-sessie', () => {
     const klaar = app.stop();
     klok.loop(50);
     await klaar;
-    expect(m.poort.verstuurd.map((r) => r[0])).toEqual([0x80, ...Array(8).fill(0xe1)]);
+    // alles opnieuw (uit), ook wat al uit stond: zo staat het er ook na een achterstand in de rij zeker
+    expect(m.poort.verstuurd.map((r) => r[0])).toEqual([0x80, 0x81, 0x82, ...Array(8).fill(0xe0), ...Array(8).fill(0xe1)]);
+    expect(m.poort.verstuurd.filter((r) => r.length === 265).every((r) => r.slice(9).every((x) => x === 0))).toBe(true);
     expect(m.poort.open).toBe(false);
   });
   it('een pad die bij het aansluiten al ingedrukt is: na twee rapporten een slag, en hij gaat netjes los', () => {
