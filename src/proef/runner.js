@@ -9,7 +9,8 @@ import { laadConfig } from '../config.js';
 
 /**
  * @typedef {{ toon: (t: string) => void, regel: () => { p: Promise<string>, annuleer: () => void } }} IO
- * @typedef {{ id: string, titel: string, vereist?: ('apc40'|'lpd8')[], doe: (h: Hulp) => Promise<void> }} Stap
+ * @typedef {'apc40'|'lpd8'|'xboard49'|'maschine-mk2'} Dev
+ * @typedef {{ id: string, titel: string, vereist?: Dev[], doe: (h: Hulp) => Promise<void> }} Stap
  * @typedef {{ naam: string, titel: string, stappen: Stap[] }} Protocol
  * @typedef {ReturnType<typeof maakHulp>} Hulp
  */
@@ -18,7 +19,8 @@ import { laadConfig } from '../config.js';
  * @param {Protocol} protocol
  * @param {{ apparaten: ReturnType<typeof import('../apparaten.js').maakApparaten>, io: IO, klok: import('../core/klok.js').Klok,
  *           logboek: import('../core/logboek.js').Logboek, schaal?: number, gebruiker?: Zender, bewaarProfiel?: (p: any) => void,
- *           config?: Record<string, any> }} ctx  config: standaard config.json (voor bv. de hubtoets)
+ *           config?: Record<string, any>, niProgrammas?: () => string[] }} ctx  config: standaard config.json (voor bv. de hubtoets);
+ *           niProgrammas: welke NI-programma's draaien (src/ports/hid.js; tests geven een eigen lijst)
  */
 export async function voerUit(protocol, ctx) {
   const h = maakHulp(ctx);
@@ -29,7 +31,7 @@ export async function voerUit(protocol, ctx) {
     h.toon(`  ⚠ config.json kon niet gelezen worden (${h.configFout}); de proef gebruikt de standaardwaarden. Herstel config.json (of haal hem weg) en draai de proef opnieuw.`);
   }
   for (const [i, stap] of protocol.stappen.entries()) {
-    const ontbreekt = (stap.vereist ?? []).filter((d) => !(d === 'apc40' ? ctx.apparaten.apc : ctx.apparaten.lpd8).verbonden);
+    const ontbreekt = (stap.vereist ?? []).filter((d) => !sessieVan(ctx.apparaten, d)?.verbonden);
     if (ontbreekt.length) {
       ctx.logboek.regel('stap', { id: stap.id, status: 'overgeslagen', reden: `geen ${ontbreekt.join(', ')}` });
       h.toon(`\n[${i + 1}/${protocol.stappen.length}] ${stap.titel} — overgeslagen (geen ${ontbreekt.join(', ')})`);
@@ -49,6 +51,15 @@ export async function voerUit(protocol, ctx) {
   }
   ctx.logboek.regel('samenvatting', { bevindingen: h.bevindingen });
   return h.bevindingen;
+}
+
+/**
+ * De sessie van een apparaat (de APC en de LPD8 zijn er altijd; de speelapparaten alleen als config.json ze noemt).
+ * @param {any} apparaten @param {string} dev @returns {any}
+ */
+function sessieVan(apparaten, dev) {
+  if (typeof apparaten.sessie === 'function') return apparaten.sessie(dev);
+  return dev === 'apc40' ? apparaten.apc : dev === 'lpd8' ? apparaten.lpd8 : null;
 }
 
 /** @param {Parameters<typeof voerUit>[1]} ctx */
@@ -77,9 +88,21 @@ function maakHulp(ctx) {
     return { p, annuleer: () => { actief = false; annuleerHuidige(); } };
   };
 
+  /** @param {string} dev */
+  const sessie = (dev) => {
+    const s = sessieVan(apparaten, dev);
+    if (!s) throw new Error(`geen ${dev} in config.json (apparaten.${dev})`);
+    return s;
+  };
   const h = {
     apc: apparaten.apc,
     lpd8: apparaten.lpd8,
+    /** @type {any} */ xboard: /** @type {any} */ (apparaten).xboard ?? null,
+    /** @type {any} */ maschine: /** @type {any} */ (apparaten).maschine ?? null,
+    /** Het MIDI- en HID-systeem (poortlijsten voor de proef speelapparaten). */
+    systemen: { midi: /** @type {any} */ (apparaten).systeem ?? null, hid: /** @type {any} */ (apparaten).hid ?? null },
+    /** Welke NI-programma's draaien (die kunnen de Maschine vasthouden). */
+    niProgrammas: ctx.niProgrammas ?? null,
     klok,
     /** Tijdschaal (1 = echt; tests versnellen). Gemeten tijden vergelijk je met `drempel * h.schaal`. */
     schaal,
@@ -120,10 +143,10 @@ function maakHulp(ctx) {
 
     /**
      * Wacht tot alle ids "klaar" zijn. Standaard: één druk/beweging per id.
-     * @param {{ dev: 'apc40'|'lpd8', ids: string[], tekst: string, klaar?: (g: any, mem: any) => boolean, bijElk?: (g: any) => void }} o
+     * @param {{ dev: Dev, ids: string[], tekst: string, klaar?: (g: any, mem: any) => boolean, bijElk?: (g: any) => void }} o
      */
     async wachtOp({ dev, ids, tekst, klaar = (g) => g.kind !== 'los', bijElk }) {
-      const sessie = dev === 'apc40' ? apparaten.apc : apparaten.lpd8;
+      const s = sessie(dev);
       const open = new Set(ids), gezien = [], vreemd = new Set();
       /** @type {Map<string, any>} */
       const mem = new Map();
@@ -134,7 +157,7 @@ function maakHulp(ctx) {
       let stopLuister = () => {};
       const allemaal = new Promise((klaarAlles) => {
         if (!open.size) return klaarAlles(undefined);
-        stopLuister = sessie.bij('gebeurtenis', (/** @type {any} */ g) => {
+        stopLuister = s.bij('gebeurtenis', (/** @type {any} */ g) => {
           if (!g.el) return;
           if (!ids.includes(g.el)) { if (g.kind !== 'los' && !vreemd.has(g.el)) { vreemd.add(g.el); io.toon(`    · ${g.el} hoort niet bij deze stap`); } return; }
           if (!open.has(g.el)) return;
@@ -159,18 +182,18 @@ function maakHulp(ctx) {
 
     /**
      * Eerstvolgende gebeurtenis die aan het filter voldoet (of null bij overslaan/time-out).
-     * @param {{ dev: 'apc40'|'lpd8', filter?: (g: any, bytes: number[]) => boolean, timeoutMs?: number, verwacht?: Record<string, unknown> }} o
+     * @param {{ dev: Dev, filter?: (g: any, bytes: number[]) => boolean, timeoutMs?: number, verwacht?: Record<string, unknown> }} o
      * @returns {Promise<{ g: any, bytes: number[] } | null>}
      */
     async eerste({ dev, filter = (g) => g.kind !== 'los', timeoutMs = 0, verwacht = {} }) {
-      const sessie = dev === 'apc40' ? apparaten.apc : apparaten.lpd8;
+      const s = sessie(dev);
       h.verwacht({ soort: 'eerste', dev, ...verwacht });
       const regel = overslaan();
       /** @type {() => void} */
       let stop = () => {};
       let timer = null;
       const treffer = new Promise((r) => {
-        stop = sessie.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { if (filter(g, b)) r({ g, bytes: b }); });
+        stop = s.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { if (filter(g, b)) r({ g, bytes: b }); });
         if (timeoutMs) timer = klok.zet(() => r(null), timeoutMs * schaal);
       });
       let overgeslagen = false;
@@ -182,9 +205,9 @@ function maakHulp(ctx) {
       return /** @type {any} */ (uit);
     },
 
-    /** Wacht tot een apparaat 'weg' of 'verbonden' meldt. @param {'apc40'|'lpd8'} dev @param {'weg'|'verbonden'} wat @param {number} timeoutMs */
+    /** Wacht tot een apparaat 'weg' of 'verbonden' meldt. @param {Dev} dev @param {'weg'|'verbonden'} wat @param {number} timeoutMs */
     async wachtMelding(dev, wat, timeoutMs) {
-      const sessie = dev === 'apc40' ? apparaten.apc : apparaten.lpd8;
+      const s = sessie(dev);
       h.verwacht({ soort: 'melding', dev, wat });
       const regel = overslaan();
       /** @type {() => void} */
@@ -192,7 +215,7 @@ function maakHulp(ctx) {
       let timer = null;
       const t0 = klok.nu();
       const gebeurd = new Promise((r) => {
-        stop = sessie.bij(wat, () => r(true));
+        stop = s.bij(wat, () => r(true));
         timer = klok.zet(() => r(false), timeoutMs * schaal);
       });
       const ok = await Promise.race([gebeurd, regel.p.then(() => false)]);

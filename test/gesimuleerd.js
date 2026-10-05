@@ -1,8 +1,9 @@
 // Gesimuleerde gebruiker + nep-APC40 + nep-LPD8 mk2: doorloopt een proef zonder hardware.
 // Luistert naar 'verwacht'-meldingen van de runner en doet wat een mens zou doen.
-import { NepSysteem } from '../src/ports/nep.js';
+import { NepSysteem, NepHidSysteem } from '../src/ports/nep.js';
 import { Zender } from '../src/core/zender.js';
 import * as A from '../src/devices/apc40mk2.js';
+import { nepMaschine, rustFrame, XBOARD_NAAM } from './nep-speelapparaten.js';
 
 const later = (fn) => setTimeout(fn, 1);
 
@@ -48,17 +49,28 @@ function akkoordBerichten(ids) {
   return [...c.map((x) => [0x90 | x.ch, x.n, 127]), ...[...c].reverse().map((x) => [0x80 | x.ch, x.n, 127])];
 }
 
+/** SysEx Master Volume van de Xboard-schuif. @param {number} w 0..16383 */
+const masterVolume = (w) => [0xf0, 0x7f, 0x7f, 0x04, 0x01, w & 0x7f, (w >> 7) & 0x7f, 0xf7];
+
 /**
- * @param {{ antwoorden?: Record<string, string>, schaal?: number, lpd8Toggle?: boolean, padBasis?: number, knopBasis?: number }} o
+ * @param {{ antwoorden?: Record<string, string>, schaal?: number, lpd8Toggle?: boolean, padBasis?: number, knopBasis?: number,
+ *   speel?: boolean, xbKnopBasis?: number }} o
  *   antwoorden per stap-id (standaard "j"); schaal: dezelfde als de runner (vasthouden duurt houdMs·schaal);
  *   lpd8Toggle: de LPD8-pads staan in TOGGLE-modus, zoals de echte: elke druk wisselt tussen note-on (aan) en
  *   note-off (uit), loslaten stuurt niets. De stand per pad staat in `padAan` en gaat bij opnieuw aansluiten terug naar uit;
- *   padBasis/knopBasis: noot van pad 1 en CC van knop 1 (standaard de mk2-fabrieksstand 36 en 70).
+ *   padBasis/knopBasis: noot van pad 1 en CC van knop 1 (standaard de mk2-fabrieksstand 36 en 70);
+ *   speel: ook de speelapparaten (proef speelapparaten): een Xboard49 (alleen ingang, knoppen op CC xbKnopBasis..+15)
+ *   en een Maschine MK2 op een NepHidSysteem (`hid`, `maschine`), die bij openen meteen een rustrapport stuurt.
  * Met `onderschep(fn)` vervangt een test wat de gebruiker doet: geeft fn true terug, dan doet de simulatie niets.
  */
-export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, padBasis = 36, knopBasis = 70 } = {}) {
+export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, padBasis = 36, knopBasis = 70, speel = false, xbKnopBasis = 102 } = {}) {
   const systeem = new NepSysteem();
-  const poorten = { apc: sluitApcAan(systeem), lpd8: sluitLpd8Aan(systeem, padBasis, knopBasis) };
+  const poorten = { apc: sluitApcAan(systeem), lpd8: sluitLpd8Aan(systeem, padBasis, knopBasis), xboard: null };
+  const hid = speel ? new NepHidSysteem() : null;
+  const maschine = hid ? nepMaschine(hid) : null;
+  if (hid) hid.bijOpen = (p) => later(() => p.injecteer(rustFrame()));
+  if (speel) poorten.xboard = systeem.voegToe(XBOARD_NAAM, { uitgang: false });
+  const xb = (/** @type {number[][]} */ ...b) => later(() => { for (const x of b) poorten.xboard?.injecteer(x); });
   /** @type {((w: any) => boolean)[]} */
   const onderscheppers = [];
   /** TOGGLE: welke pads (nootnummer) nu 'aan' staan. */
@@ -82,6 +94,8 @@ export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, 
   gebruiker.bij('verwacht', (w) => {
     if (onderscheppers.some((f) => f(w))) return;
     if (w.soort === 'vraag') return typ(antwoorden[w.stap] ?? 'j');
+    if (w.dev === 'xboard49') return xboardDoet(w);
+    if (w.dev === 'maschine-mk2') return maschineDoet(w);
     if (w.soort === 'controls') {
       later(() => {
         for (const id of w.ids) {
@@ -121,5 +135,51 @@ export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, 
       if (w.wat === 'verbonden') later(() => { padAan.clear(); poorten.lpd8 = sluitLpd8Aan(systeem, padBasis, knopBasis); });
     }
   });
-  return { systeem, poorten, gebruiker, io, getoond, typ, padAan, onderschep: (fn) => onderscheppers.push(fn) };
+  /** De Xboard49: wat een mens doet bij elke vraag van de proef speelapparaten. */
+  function xboardDoet(w) {
+    if (w.soort === 'controls') {
+      for (const id of w.ids) {
+        if (id === 'buiging') xb([0xe0, 0, 127], [0xe0, 0, 0], [0xe0, 0, 64]);
+        else if (id === 'mod') xb([0xb0, 1, 127], [0xb0, 1, 0]);
+        else if (id === 'schuif') xb(masterVolume(0), masterVolume(8000), masterVolume(16383));
+        else if (/^k\d+$/.test(id)) xb([0xb0, xbKnopBasis + Number(id.slice(1)) - 1, 64]);
+      }
+      return;
+    }
+    if (w.soort !== 'eerste') return;
+    const noot = (/** @type {number} */ n, /** @type {number} */ v) => xb([0x90, n, v], [0x80, n, 0]);
+    if (w.wat === 'laag') return noot(36, 64);
+    if (w.wat === 'hoog') return noot(84, 64);
+    if (w.wat === 'zacht') return noot(60, 18);
+    if (w.wat === 'hard') return noot(60, 122);
+    if (w.wat === 'knop') return xb([0xb0, xbKnopBasis + w.nr - 1, 64], [0xb0, xbKnopBasis + w.nr - 1, 70]);
+    if (w.wat === 'aftertouch') return xb([0x90, 60, 90], [0xd0, 80], [0xd0, 0], [0x80, 60, 0]);
+    if (w.wat === 'pedaal') return w.loslaten ? undefined : xb([0xb0, 64, 127], [0xb0, 64, 0]);
+    if (w.wat === 'patch') return xb([0xb0, 0, 0], [0xb0, 32, 1], [0xc0, 5]);
+    if (w.wat === 'paniek') return xb(...Array.from({ length: 16 }, (_, ch) => [[0xb0 | ch, 120, 0], [0xb0 | ch, 123, 0]]).flat());
+  }
+
+  /** De Maschine MK2. */
+  function maschineDoet(w) {
+    if (!maschine) return;
+    if (w.soort === 'hid-rust') return later(() => maschine.rust(w.n));
+    if (w.soort === 'melding') return later(() => { if (w.wat === 'weg') maschine.uittrekken(); else maschine.insteken(); });
+    if (w.soort === 'eerste') {
+      if (w.plek === 'linksboven') return later(() => maschine.plek(0));
+      if (w.plek === 'rechtsonder') return later(() => maschine.plek(15));
+      if (w.kracht) return later(() => maschine.pad(6, w.kracht));
+      return;
+    }
+    if (w.soort !== 'controls') return;
+    later(() => {
+      for (const id of w.ids) {
+        if (/^pad\d+$/.test(id)) maschine.pad(Number(id.slice(3)));
+        else if (/^enc\d$/.test(id)) { maschine.draai(Number(id.slice(3)) - 1, 40); maschine.draai(Number(id.slice(3)) - 1, -40); }
+        else if (id === 'masterwiel') { maschine.wiel(1); maschine.wiel(-1); }
+        else maschine.tik(id);
+      }
+    });
+  }
+
+  return { systeem, poorten, hid, maschine, gebruiker, io, getoond, typ, padAan, onderschep: (fn) => onderscheppers.push(fn) };
 }
