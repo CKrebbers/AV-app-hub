@@ -1,5 +1,12 @@
 # Varve DJ — koppeling met de hub (patch)
 
+> **Bijgewerkt 5 okt (middag): niet meer toepassen.** De regel "Nooit committen" in Varve DJ ging alleen over de
+> iCloud-conflictkopieën (bestanden met " 2" in de naam), niet over committen zelf. Beide patches staan nu als
+> commits in `youtube-mixer`, op de tak `studio/integratie` (PR #5, samen met de koptelefoon, stems als kanalen,
+> instrumenten en patronen). Daar komt ook de Varve-kant van de speelapparaten bij (Xboard49 en Maschine MK2,
+> `speelt` in het manifest). Start alles met `npm start -- studio` (docs/SETS.md). Wat hieronder staat is de
+> geschiedenis.
+
 Varve DJ (`youtube-mixer`) heeft de huisregel **"Nooit committen"**: de repo staat op je Bureaublad (iCloud) en jij commit zelf. Daarom staat deze koppeling hier als patch en níet als branch in die repo.
 
 ## Wat zit erin

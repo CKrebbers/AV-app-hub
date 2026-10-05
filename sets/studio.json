@@ -1,0 +1,17 @@
+{
+  "_doc": "Studio: Varve DJ als muziekprogramma (stems als kanalen, instrumenten op tracks, patronen, koptelefoon; youtube-mixer docs/STUDIO.md). De APC is van Varve DJ (lease); de Xboard49 en de Maschine MK2 speelt hij ook (speelt in zijn manifest, PROTOCOL.md §17). Uitleg: docs/SETS.md. Paden: sets/paden.json. Poorten: config.json.",
+  "naam": "Studio",
+  "beschrijving": "Varve DJ alleen: mixen, stems, instrumenten en patronen, met de APC, LPD8, Xboard49 en Maschine.",
+  "time_out_s": 60,
+  "apps": {
+    "varve-dj": {
+      "start": { "commando": "node server/index.js", "omgeving": { "PORT": "{poort}" } },
+      "url": "http://localhost:{poort}/?hub={hub}",
+      "opmerking": "de hub-koppeling met speelapparaten staat in youtube-mixer op de tak studio/integratie (PR #5) tot die gemerged is"
+    }
+  },
+  "snapshot": {
+    "varve-dj": { "master": 0.8 }
+  },
+  "focus": "varve-dj"
+}

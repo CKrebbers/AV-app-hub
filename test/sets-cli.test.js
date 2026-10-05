@@ -30,7 +30,7 @@ describe('cli start [set]', () => {
     const r = cli(['start', 'feest', '--zonder-midi', '--geen-drivers', '--poort', '0']);
     await tot(() => r.code !== undefined);
     expect(r.code).toBe(1);
-    expect(r.uit).toMatch(/onbekende set "feest" — beschikbaar: dj, meditatie, scene-kit/);
+    expect(r.uit).toMatch(/onbekende set "feest" — beschikbaar: dj, meditatie, scene-kit, studio/);
     expect(r.uit).not.toMatch(/varve-hub draait/);
   });
 

@@ -1,6 +1,6 @@
 {
   "_doc": "Kopieer naar sets/paden.json (staat niet in git) en zet er de mappen van jouw repo's in. Sleutel = repo-naam uit config.json → apps.<id>.repo. ~ = je thuismap. Kijk elk pad na: av-kern staat bv. in ~/src/av-kern (README van av-kern) of ~/AI/src/av-kern (START.md van waterschaal).",
-  "youtube-mixer": "~/Desktop/youtube-mixer",
+  "youtube-mixer": "~/Projects/Youtube mixer",
   "formula-lab": "~/Projects/formula-lab",
   "medisynth": "~/Projects/medisynth",
   "waterschaal": "~/Projects/waterschaal",

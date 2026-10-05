@@ -9,7 +9,7 @@ import { laadConfig, HUB_MAP } from '../src/config.js';
 import { laadSet, valideerSet, lijstSets, laadPaden, vulIn, thuisPad, SETS_MAP } from '../src/sets/index.js';
 
 const config = laadConfig();
-const SETS = ['dj', 'meditatie', 'scene-kit'];
+const SETS = ['dj', 'meditatie', 'scene-kit', 'studio'];
 const lees = (/** @type {string} */ pad) => JSON.parse(readFileSync(join(HUB_MAP, pad), 'utf8'));
 
 /** Een kleine geldige set om stuk te maken. @param {Record<string, any>} [x] */
@@ -22,7 +22,7 @@ const basis = (x = {}) => ({
 const fouten = (s) => { const r = valideerSet(s, config); return r.ok ? [] : r.fouten; };
 
 describe('de sets in sets/', () => {
-  it('meditatie, dj en scene-kit bestaan en kloppen met config.json', () => {
+  it('meditatie, dj, scene-kit en studio bestaan en kloppen met config.json', () => {
     expect(lijstSets()).toEqual(SETS);
     for (const n of SETS) {
       const s = laadSet(n, { config });
@@ -121,7 +121,7 @@ describe('valideerSet', () => {
   });
 
   it('laadSet: een onbekende set noemt de sets die er wel zijn', () => {
-    expect(() => laadSet('feest', { config })).toThrow(/onbekende set "feest" — beschikbaar: dj, meditatie, scene-kit/);
+    expect(() => laadSet('feest', { config })).toThrow(/onbekende set "feest" — beschikbaar: dj, meditatie, scene-kit, studio/);
   });
 
   it('laadSet: een set die niet klopt noemt elke fout', () => {
