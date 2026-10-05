@@ -25,7 +25,8 @@
     "duurtest": "node --expose-gc tools/duurtest.mjs"
   },
   "optionalDependencies": {
-    "@julusian/midi": "^3.8.1"
+    "@julusian/midi": "^3.8.1",
+    "node-hid": "^3.4.0"
   },
   "devDependencies": {
     "playwright-core": "^1.63.0",
@@ -35,6 +36,7 @@
     "ws": "^8.22.0"
   },
   "allowScripts": {
-    "@julusian/midi@3.8.1": true
+    "@julusian/midi@3.8.1": true,
+    "node-hid@3.4.0": true
   }
 }
