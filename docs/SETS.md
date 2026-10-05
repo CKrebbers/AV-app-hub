@@ -16,6 +16,7 @@ Zonder set gedraagt `start` zich precies als altijd.
 | `meditatie` | MediSynth, Waterschaal, Uurwerk, av-kern | Waterschaal |
 | `dj` | Varve DJ, Formula Lab | Varve DJ |
 | `scene-kit` | Scene Kit (TouchDesigner), Varve DJ | Scene Kit |
+| `studio` | Varve DJ als muziekprogramma (stems, instrumenten, patronen; met Xboard49 en Maschine) | Varve DJ |
 
 ## Eenmalig: waar staan je repo's?
 
