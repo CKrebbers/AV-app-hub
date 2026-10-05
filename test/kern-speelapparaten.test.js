@@ -201,6 +201,19 @@ describe('kern: speelapparaten — niets blijft hangen', () => {
     expect(midi(dj, 'xboard49')).toEqual([[0xb0, 123, 0]]);
     expect(midi(ms, 'xboard49')).toEqual([[0xb0, 123, 0]]);
   });
+  it('paniek laat het pedaal staan: wie het indrukte krijgt de paniek, en later ook het loslaten', () => {
+    const { kern, xb } = opzet();
+    const dj = meldAan(kern, SPELER);
+    const ms = meldAan(kern, ALLEEN_XB);
+    kern.focus('varve-dj');
+    xb([0xb0, 64, 127]);
+    kern.focus('medisynth');
+    leeg(dj, ms);
+    xb([0xb0, 123, 0]);
+    xb([0xb0, 64, 0]);
+    expect(midi(dj, 'xboard49')).toEqual([[0xb0, 123, 0], [0xb0, 64, 0]]);
+    expect(midi(ms, 'xboard49')).toEqual([[0xb0, 123, 0]]);
+  });
 });
 
 describe('kern: speelapparaten — lampjes en schermen terug', () => {

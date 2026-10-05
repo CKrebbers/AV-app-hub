@@ -141,7 +141,8 @@ export class Spelers {
       for (const [k, app] of vast) {
         if (Number(k.split(':')[1]) !== x.ch) continue;
         apps.add(app);
-        vast.delete(k);
+        // De noten zijn hiermee los; het pedaal niet (CC123 laat sustain staan): dat loslaten blijft bij wie het indrukte.
+        if (k.startsWith('n:')) vast.delete(k);
       }
       for (const app of apps) stuur(app, bytes);
       return;

@@ -301,7 +301,8 @@ naar de app die het indrukken kreeg, ook na een focuswissel. Een loslaten van ie
 heen. Wordt dezelfde toets nog eens ingedrukt terwijl hij bij een andere app in staat, dan krijgt die eerst een
 loslaten. Polyfone aftertouch volgt de noot (naar wie hem indrukte; van een noot die niet in is: weg). Valt het apparaat
 weg (uittrekken), dan krijgt elke app het loslaten van wat hij nog vasthield. Paniek van de Xboard (CC120/123) gaat naar
-wie nu speelt én naar elke app die op dat kanaal nog iets vasthoudt. Al het andere (CC, pitchbend, kanaal-aftertouch,
+wie nu speelt én naar elke app die op dat kanaal nog iets vasthoudt; daarna zijn die noten los (een loslaten gaat
+nergens meer heen), het pedaal niet (CC123 laat sustain staan: het loslaten daarvan blijft bij wie het indrukte). Al het andere (CC, pitchbend, kanaal-aftertouch,
 SysEx, programmawissel) gaat naar wie nu speelt.
 
 **Lampjes en schermen van de Maschine.** De hub bewaart per app wat hij stuurde (laatste per adres, en per scherm) en

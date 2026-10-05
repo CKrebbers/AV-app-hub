@@ -62,7 +62,7 @@ export function opnameMeldingen(zet) {
 }
 
 /**
- * Wat de cockpit (en `npm run check`) bij de Maschine zegt: status plus wat te doen.
+ * Wat de cockpit bij de Maschine zegt (beeld.apparaten["maschine-mk2"].hint): wat te doen bij deze status.
  * @param {string} status @param {string|null} [reden]
  */
 export function maschineHint(status, reden = null) {
