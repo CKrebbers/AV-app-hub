@@ -2,7 +2,7 @@
   "name": "varve-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "E\u00e9n hub die APC40 mkII + LPD8 bezit en al je Varve-projecten bespeelbaar maakt",
+  "description": "Eén hub die APC40 mkII + LPD8 bezit en al je Varve-projecten bespeelbaar maakt",
   "type": "module",
   "bin": {
     "varve-hub": "src/cli.js"
@@ -33,5 +33,8 @@
   },
   "dependencies": {
     "ws": "^8.22.0"
+  },
+  "allowScripts": {
+    "@julusian/midi@3.8.1": true
   }
 }
