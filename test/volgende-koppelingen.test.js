@@ -169,7 +169,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/http.js', regel: 206, bevat: 'globaal' },
     { pad: 'src/drivers/http.js', regel: 236, bevat: 'tabs === 0' },
     { pad: 'src/drivers/index.js', regel: 28, bevat: 'DRIVER_SOORTEN' },
-    { pad: 'src/doctor.js', regel: 97, bevat: "'osc'" },
+    { pad: 'src/doctor.js', regel: 98, bevat: "'osc'" },
     { pad: 'src/transports/server.js', regel: 88, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
@@ -177,8 +177,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
     { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
     { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
-    { pad: 'config.json', regel: 55, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 119, bevat: '"koppeling": "td"' },
+    { pad: 'config.json', regel: 56, bevat: '"td-lab"' },
+    { pad: 'config.json', regel: 120, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.

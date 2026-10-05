@@ -44,8 +44,8 @@ describe('de hele hub met de speelapparaten', () => {
     expect(hub.kern.beeld().apparaten).toMatchObject({ xboard49: { verbonden: true, naam: XBOARD_NAAM }, 'maschine-mk2': { verbonden: true, status: 'verbonden', hint: null } });
 
     // het scherm dat de nep-speler bij het openen stuurde, staat op het linkerscherm
-    await tot(() => m.poort.verstuurd.some((r) => r[0] === 0xe0 && r.slice(9).some((x) => x)));
     const verwacht = MS.schermRapporten(0, Buffer.from(nepScherm(), 'base64'));
+    await tot(() => verwacht.every((r, i) => JSON.stringify(m.laatste()[`e0:${i}`]) === JSON.stringify(r)));
     const laatste = m.laatste();
     for (let i = 0; i < 8; i++) expect(laatste[`e0:${i}`]).toEqual(verwacht[i]);
 

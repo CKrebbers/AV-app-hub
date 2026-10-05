@@ -80,7 +80,7 @@ describe('Maschine-sessie', () => {
   it('vindt hem op VID:PID, opent (exclusief, tenzij niet_exclusief) en tekent alles één keer', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     expect(app.maschine.verbonden).toBe(true);
     expect(app.maschine.naam).toBe('Maschine Controller MK2');
     expect(m.poort.opties).toEqual({ nietExclusief: false });
@@ -89,16 +89,27 @@ describe('Maschine-sessie', () => {
     expect(m.poort.verstuurd.map((r) => r.length).sort()).toEqual([...Array(16).fill(265), 32, 49, 57].sort());
     expect(m.poort.verstuurd.filter((r) => r.length !== 265).every((r) => r.slice(1).every((x) => x === 0))).toBe(true);
   });
+  it('HID-schrijven gaat in kleine porties: standaard 4 rapporten per burst_ms (per_burst in config.json)', () => {
+    const { klok, hid, app } = opzet();
+    const m = nepMaschine(hid);
+    app.start();
+    klok.loop(0);
+    expect(m.poort.verstuurd).toHaveLength(4);
+    klok.loop(4);
+    expect(m.poort.verstuurd).toHaveLength(8);
+    const anders = opzet({ config: { ...CONFIG, apparaten: { ...CONFIG.apparaten, 'maschine-mk2': { ...MASCHINE, per_burst: 2 } } } });
+    expect(anders.app.maschine.rij.perBurst).toBe(2);
+  });
   it('niet_exclusief: true gaat mee naar het openen', () => {
     const { klok, hid, app } = opzet({ config: { ...CONFIG, apparaten: { ...CONFIG.apparaten, 'maschine-mk2': { ...MASCHINE, niet_exclusief: true } } } });
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     expect(m.poort.opties).toEqual({ nietExclusief: true });
   });
   it('rapporten → virtuele MIDI: pads, knoppen, draaiknoppen, masterwiel', () => {
     const { klok, hid, app, gebeurtenissen } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.rust(10);
     expect(gebeurtenissen).toEqual([]);
     m.pad(1);
@@ -116,7 +127,7 @@ describe('Maschine-sessie', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
     hid.zetBezet(m.naam, true);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     expect(app.maschine.status).toBe('bezet');
     klok.loop(10000);
     expect(meldingen.filter((x) => x[1] === 'fout')).toEqual([['maschine-mk2', 'fout', `cannot open device with path ${m.naam}`, 'openen']]);
@@ -129,7 +140,7 @@ describe('Maschine-sessie', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
     hid.zetBezet(m.naam, true);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.uittrekken(); klok.loop(2100);
     expect(app.maschine.status).toBe('zoekt');
     const nieuw = m.insteken();
@@ -152,7 +163,7 @@ describe('Maschine-sessie', () => {
   it('lampjes en schermen: samengevoegd per tik, alleen wat veranderde', () => {
     const { klok, hid, app } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.poort.verstuurd.length = 0;
     app.maschine.led([0x90, 36, 5]);
     app.maschine.led([0x90, 37, 21]);
@@ -162,20 +173,20 @@ describe('Maschine-sessie', () => {
     expect(m.poort.verstuurd.map((r) => r[0])).toEqual([0x80, 0x81]);
     const b = MS.testbeeld('schaak');
     m.poort.verstuurd.length = 0;
-    app.maschine.scherm(0, b); klok.loop(10);
+    app.maschine.scherm(0, b); klok.loop(50);
     expect(m.poort.verstuurd.map((r) => [r[0], r[3]])).toEqual(Array.from({ length: 8 }, (_, i) => [0xe0, i * 8]));
     m.poort.verstuurd.length = 0;
-    app.maschine.scherm(0, b); klok.loop(10);
+    app.maschine.scherm(0, b); klok.loop(50);
     expect(m.poort.verstuurd).toEqual([]);
-    app.maschine.leeg(); klok.loop(10);
+    app.maschine.leeg(); klok.loop(50);
     expect(m.poort.verstuurd.map((r) => r[0])).toEqual([0x80, 0x81, ...Array(8).fill(0xe0)]);
   });
   it('opnieuw insteken: alles opnieuw getekend (ook wat er al stond)', () => {
     const { klok, hid, app } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.rust(1);
-    app.maschine.led([0x90, 40, 45]); klok.loop(10);
+    app.maschine.led([0x90, 40, 45]); klok.loop(50);
     m.uittrekken(); klok.loop(2100);
     expect(app.maschine.verbonden).toBe(false);
     const nieuw = m.insteken(); klok.loop(2100);
@@ -188,7 +199,7 @@ describe('Maschine-sessie', () => {
   it('een kabel die even los was (leesfout: levend() false): sluiten, opnieuw openen', () => {
     const { klok, hid, app, meldingen } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.poort.sluit();          // de poort zegt dat hij dood is; het toestel staat nog in de lijst
     klok.loop(2100);
     expect(meldingen.filter((x) => x[0] === 'maschine-mk2' && (x[1] === 'weg' || x[1] === 'verbonden')).map((x) => x[1])).toEqual(['verbonden', 'weg', 'verbonden']);
@@ -196,7 +207,7 @@ describe('Maschine-sessie', () => {
   it('logboek: in rust niets van de 750 rapporten per seconde, behalve tijdens neemRuwOp; knoppen altijd', () => {
     const { klok, hid, app, regels } = opzet({ logboek: true });
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     const voor = regels.length;
     m.rust(750);
     expect(regels.length).toBe(voor);
@@ -218,10 +229,10 @@ describe('Maschine-sessie', () => {
   it('stop(): lampjes uit en schermen leeg, wachten tot het verstuurd is, dan dicht', async () => {
     const { klok, hid, app } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     app.maschine.led([0x90, 36, 5]);
     app.maschine.scherm(1, MS.testbeeld('strepen'));
-    klok.loop(10);
+    klok.loop(50);
     m.poort.verstuurd.length = 0;
     const klaar = app.stop();
     klok.loop(50);
@@ -232,7 +243,7 @@ describe('Maschine-sessie', () => {
   it('een pad die bij het aansluiten al ingedrukt is: na twee rapporten een slag, en hij gaat netjes los', () => {
     const { klok, hid, app, gebeurtenissen } = opzet();
     const m = nepMaschine(hid);
-    app.start(); klok.loop(10);
+    app.start(); klok.loop(50);
     m.stuur(padFrame([900]));
     m.stuur(padFrame([900]));
     expect(gebeurtenissen.map(([g]) => g.kind)).toEqual(['druk']);

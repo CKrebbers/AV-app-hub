@@ -84,10 +84,11 @@ describe('HID-laag', () => {
 
 describe('doctor: speelapparaten', () => {
   const config = laadConfig();
-  async function draai({ midi = new NepSysteem(), hid = new NepHidSysteem(), ni = [], hidReden = null } = {}) {
+  async function draai({ midi = new NepSysteem(), hid = new NepHidSysteem(), ni = [], hidReden = null, hub = false } = {}) {
     return doctor({
       config, laadMidi: async () => ({ systeem: midi }),
       laadHid: async () => (hid ? { systeem: hid } : { systeem: null, reden: hidReden }), niProgrammas: () => ni, wachtMs: 20,
+      hubDraait: async () => hub,
     });
   }
   it('Xboard49 als MIDI-ingang, Maschine gevonden en er komt invoer', async () => {
@@ -119,6 +120,14 @@ describe('doctor: speelapparaten', () => {
     nepMaschine(hid);
     const { tekst } = await draai({ hid });
     expect(tekst).toContain(`✗ open, maar er komt niets binnen — ${HINT.invoer}`);
+  }, 15000);
+  it('draait de hub, dan opent doctor de Maschine niet (de hub heeft hem; anders zou hij "bezet" zeggen)', async () => {
+    const hid = new NepHidSysteem();
+    const m = nepMaschine(hid);
+    const { tekst, data } = await draai({ hid, hub: true });
+    expect(tekst).toMatch(/niet geopend: de hub draait/);
+    expect(data.maschine.hubDraait).toBe(true);
+    expect(m.poort.opties).toBe(null);
   }, 15000);
   it('geen node-hid en geen keyboard: ✗ met wat te doen', async () => {
     const { tekst } = await draai({ hid: null, hidReden: 'node-hid niet geïnstalleerd (x)' });

@@ -34,10 +34,11 @@ export const vrij = (poort, soort) => new Promise((r) => {
 /**
  * @param {{ config: any, laadMidi: () => Promise<{ systeem: import('./ports/poort.js').Systeem|null, reden?: string }>,
  *   laadHid?: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>, niProgrammas?: () => string[],
- *   wachtMs?: number }} o  laadHid/niProgrammas/wachtMs: tests geven nep
+ *   wachtMs?: number, hubDraait?: () => Promise<boolean> }} o  laadHid/niProgrammas/wachtMs/hubDraait: tests geven nep
  * @returns {Promise<{ tekst: string, data: any }>}
  */
-export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600 }) {
+export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600,
+  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')) }) {
   const r = [];
   const data = /** @type {any} */ ({});
   const ok = (/** @type {boolean|null|undefined} */ b) => (b ? '✔' : '✗');
@@ -91,7 +92,7 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
   r.push(`  LPD8-profiel: ${prof ? `${prof.bron} (lpd8-profiel.json)` : 'nog niet geleerd — draai de proef'}`);
 
   r.push('', 'Speelapparaten (PROTOCOL §17)');
-  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, r, data, ok });
+  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok });
 
   r.push('', 'Poorten van de hub');
   for (const [naam, poort, soort] of [['http/ws', config.poorten.http, 'tcp'], ['osc', config.poorten.osc, 'udp']]) {
@@ -113,9 +114,9 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
  * Xboard49 (een MIDI-ingang) en Maschine MK2 (USB-HID): gevonden, bezet, komt er invoer? De Maschine wordt kort
  * geopend (zoals de APC hierboven), en wat Clay moet doen staat erbij (NI-programma's, Invoermonitoring).
  * @param {{ config: any, systeem: import('./ports/poort.js').Systeem|null, hidLader: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>,
- *   niProgrammas: () => string[], wachtMs: number, r: string[], data: any, ok: (b: boolean) => string }} o
+ *   niProgrammas: () => string[], wachtMs: number, hubDraait: () => Promise<boolean>, r: string[], data: any, ok: (b: boolean) => string }} o
  */
-async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, r, data, ok }) {
+async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok }) {
   const xcfg = config.apparaten?.xboard49;
   if (!xcfg) r.push('  - xboard49: niet in config.json (apparaten.xboard49) — de hub opent hem niet');
   else if (!systeem) r.push('  ✗ xboard49: geen MIDI (zie boven)');
@@ -138,6 +139,12 @@ async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs
   r.push(`  ${ok(gevonden.length > 0)} maschine-mk2 (${mcfg.vid}:${mcfg.pid}): ${gevonden.length ? gevonden[0].product ?? 'gevonden' : 'niet gevonden — USB erin en aan?'}`);
   if (ni.length) r.push(`  ! draait nu: ${ni.join(', ')} — die kunnen de Maschine vasthouden; ${HINT.bezet}`);
   if (!gevonden.length) return;
+  // Draait de hub, dan heeft die de Maschine (exclusief): openen zou "bezet" zeggen. Zijn status staat in de cockpit.
+  if (await hubDraait()) {
+    data.maschine.hubDraait = true;
+    r.push(`  - niet geopend: de hub draait (poort ${config.poorten.http}) en heeft hem; zijn status staat in de cockpit (beeld.apparaten)`);
+    return;
+  }
   let frames = 0;
   try {
     const p = hid.systeem.open(gevonden[0].naam, { nietExclusief: mcfg.niet_exclusief === true });

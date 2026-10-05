@@ -391,13 +391,18 @@ const stappen = [
     id: 'ms-scherm', titel: 'Maschine: de twee schermen', vereist: ['maschine-mk2'],
     async doe(h) {
       const m = h.maschine;
+      // Hoe lang duurt het schrijven van twee volle schermen (16 stukken van 265 bytes)? HID-schrijven is synchroon.
+      const t0 = h.klok.nu();
       m.scherm(0, MS.testbeeld('schaak'));
       m.scherm(1, MS.testbeeld('strepen'));
+      await m.spoelNu();
+      const schrijfMs = Math.round((h.klok.nu() - t0) * 10) / 10;
+      h.toon(`  twee schermen geschreven in ${schrijfMs} ms`);
       const beeld = await h.jn('Staat er LINKS een schaakbord en RECHTS liggende strepen, allebei met een rand eromheen?');
       m.leeg();
       await h.pauze(200);
       const leeg = await h.jn('Zijn beide schermen nu leeg (zwart)?');
-      h.bevinding('ms-scherm', { beeld, leeg });
+      h.bevinding('ms-scherm', { beeld, leeg, schrijfMs, perBurst: m.rij.perBurst });
     },
   },
   {

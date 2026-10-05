@@ -41,7 +41,7 @@ geen eindregel. Liep de opname, dan gaat hij na de herstart meteen verder in een
 |---|---|
 | 1 (kop) | `{ v:1, soort:"avond", begon, "hub-git", apps: { <app>: { naam, status, manifest: <hash> } }, lpd8: <profiel> }` |
 | 2 | `{ ms:0, e:"beginstand", focus, globaal, apps: { <app>: { <param>: waarde } }, snapshots: { <nr>: … } }` |
-| | `[ms, "in", dev, bytes]` — elke controller-invoer; `dev` is `apc40`, `lpd8`, `apc40-virtueel` of `lpd8-virtueel` |
+| | `[ms, "in", dev, bytes]` — elke controller-invoer; `dev` is `apc40`, `lpd8`, `apc40-virtueel`, `lpd8-virtueel`, `xboard49` of `maschine-mk2` (de virtuele MIDI van de Maschine, uitgedund; PROTOCOL §17). `herhaal` speelt de speelapparaten niet af: ze gaan alleen naar lease-apps, die niet in de eindstand staan |
 | | `[ms, "naar", app, bericht]` — elke `zet`, `trig`, `scene` en `focus` die naar een app ging |
 | | `{ ms, e:"lpd8profiel", profiel }` — het LPD8-profiel veranderde (nodig om latere LPD8-bytes te lezen) |
 | laatste | `{ ms, e:"eind", duur_ms, "hub-git", apps: { <app>: { waarden, hash } }, rust? }` — de eindstand en zijn staat-hash; `rust:false` = er liep nog een slew (hub gestopt) |

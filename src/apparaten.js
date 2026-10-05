@@ -199,7 +199,7 @@ export class MaschineSessie extends Sessie {
   /**
    * @param {{ hid: HidSysteem|null, reden?: string|null, instellingen: any, klok: Klok, intervalMs?: number,
    *   logboek?: Logboek|null, led?: { per_burst: number, burst_ms: number } }} o
-   *   instellingen: config.json → apparaten.maschine-mk2 (vid, pid, niet_exclusief, stil_ms, pads, encoder_drempel, led_max)
+   *   instellingen: config.json → apparaten.maschine-mk2 (vid, pid, niet_exclusief, stil_ms, pads, encoder_drempel, led_max, per_burst)
    */
   constructor(o) {
     const cfg = o.instellingen ?? {};
@@ -207,7 +207,9 @@ export class MaschineSessie extends Sessie {
     const geldig = Number.isFinite(vid) && Number.isFinite(pid);
     const hid = geldig ? o.hid : null;
     super({
-      dev: 'maschine-mk2', klok: o.klok, logboek: o.logboek, led: o.led, intervalMs: o.intervalMs,
+      dev: 'maschine-mk2', klok: o.klok, logboek: o.logboek, intervalMs: o.intervalMs,
+      // HID-schrijven is synchroon (een schermstuk is 265 bytes): minder rapporten per burst dan de MIDI-controllers.
+      led: { per_burst: typeof cfg.per_burst === 'number' && cfg.per_burst >= 1 ? cfg.per_burst : 4, burst_ms: o.led?.burst_ms ?? 4 },
       // Een HID-opsomming is een USB-ronde: alleen in de gewone hotplug-ronde, niet elke 250 ms. Uittrekken ziet de
       // poort zelf (een leesfout: levend() false).
       lijstMs: o.intervalMs ?? 2000,
@@ -344,6 +346,12 @@ export class MaschineSessie extends Sessie {
   leeg() { this.leds.uit(); this.schermen = [MS.leegScherm(), MS.leegScherm()]; this.#plan(); }
   /** Toon wat er in `leds` (MaschineLeds) gezet is: voor de proef, die lampjes ook rechtstreeks zet. */
   toon() { this.#plan(); }
+  /** Nu versturen wat er klaarstaat; belooft als alles over de draad is (de proef meet zo hoe lang schrijven duurt). */
+  spoelNu() {
+    if (this.planTimer !== null) { this.klok.wis(this.planTimer); this.planTimer = null; }
+    this.#spoel();
+    return this.rij.leeg();
+  }
   #plan() {
     if (this.planTimer !== null) return;
     this.planTimer = this.klok.zet(() => { this.planTimer = null; this.#spoel(); }, 0);

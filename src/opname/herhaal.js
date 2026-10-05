@@ -92,6 +92,8 @@ export function vertaal(dev, bytes, lpd8Ontleder) {
     const b = naarFabriek(g);
     return b ? { dev: 'lpd8', bytes: b } : { overslaan: 'onbekend' };
   }
+  // Speelapparaten (PROTOCOL §17) spelen alleen voor lease-apps; die staan niet in de eindstand: niet afspelen.
+  if (dev === 'xboard49' || dev === 'maschine-mk2') return { overslaan: 'speelapparaat' };
   return { overslaan: 'onbekend apparaat' };
 }
 

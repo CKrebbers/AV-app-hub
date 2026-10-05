@@ -45,7 +45,7 @@ kleinste herstel: §2.3.
 | **manifest-app** via WS `/app` | app kan een WebSocket openen en zijn waarden melden | `hallo` + `manifest` + `staat`, `zet`/`trig` uitvoeren | PROTOCOL §3–§4, `src/transports/server.js` |
 | **driver** in de hub | app kan zich niet aanmelden (TD, Logic, HTTP-API) | niets; de hub spreekt de taal van de app | PROTOCOL §2, `src/drivers/`, `apps/<app>.json` |
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
-| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:97` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
+| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:98` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
 Nieuwe driver-soorten komen bij `src/drivers/index.js:28` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
@@ -577,8 +577,8 @@ Bedienbaar in `/genesis` (custom parameters, parentshortcut `Genesis`, `scripts/
 
 ### 6.2 Huidige hub-stand
 **Golf 6: gebouwd** — `src/drivers/td.js` (driver-soort `td`), `apps/td-lab.json`, `docs/TDLAB.md`,
-`test/driver-td.test.js`. `config.json:119` zegt nu `"koppeling": "td"`; de poort is `bekende_apps.td-lab` tcp 9981
-(`config.json:55`), met `apps.td-lab.poort` als afwijking. De driver staat uit tot Clay `apps.td-lab.autostart` op
+`test/driver-td.test.js`. `config.json:120` zegt nu `"koppeling": "td"`; de poort is `bekende_apps.td-lab` tcp 9981
+(`config.json:56`), met `apps.td-lab.poort` als afwijking. De driver staat uit tot Clay `apps.td-lab.autostart` op
 true zet. Afwijkend van het voorstel in §6.3: geen `url` in het manifest (de poort staat alleen in `config.json`).
 
 *Stand vóór golf 6 (historisch):* `apps.td-lab` had `"koppeling": "osc"`, er was geen `apps/td-lab.json` en geen OSC
@@ -599,7 +599,7 @@ in de hub (§1); td-lab deed nergens mee.
 - `driver = { soort:"td", url:"http://127.0.0.1:9981", comp:"/genesis", gezond_s:2, max_hz:10, pars:{ id: {par, bereik?} | {puls} }, paniek?: { <id>: 0..1 } }`.
   **Poort uit `config.json`** (huisregel 6), zoals `src/drivers/http.js:75-77` al doet: `apps.td-lab.poort` wint; de
   `url` in het manifest is alleen de terugval. (Bij voorkeur zet de hub-config de poort dan ook in `apps.td-lab`, naast
-  `bekende_apps.td-lab.tcp`, `config.json:55`.)
+  `bekende_apps.td-lab.tcp`, `config.json:56`.)
 - **Per tik één POST `/exec`** met alle gewijzigde parameters (`c=op('/genesis')\nc.par.Speed=0.7\n…`), laatste
   waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:168-192`, maar per batch i.p.v. per param):
   TD's hoofddraad krijgt hooguit 10 verzoeken per seconde. Waarde = `bereik[0] + v·(bereik[1]-bereik[0])`;
@@ -697,7 +697,7 @@ verandert niets aan scripts of .toe, en overleeft een rebuild (id-check).
   wél een antwoord: 200 met `ok:false` (zie het ontwerp).
 - **Het contract (golf 6: bijgewerkt).** `PROTOCOL.md` §2 beloofde "OSC-apps: hub luistert op 7701" en `config.json`
   zei voor td-lab `"koppeling": "osc"`. Nu staat driver-soort `td` in §2 (`PROTOCOL.md:20`), zegt de OSC-rij "bestaat
-  niet" (`PROTOCOL.md:21`) en zegt `config.json:119` `"koppeling": "td"`.
+  niet" (`PROTOCOL.md:21`) en zegt `config.json:120` `"koppeling": "td"`.
 
 ### 6.6 Open vragen voor Clay
 1. Welke COMP bespeel je: `/genesis` (aangenomen), of ook `/world` / `/screensaver`?
