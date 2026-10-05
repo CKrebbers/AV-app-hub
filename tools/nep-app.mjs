@@ -2,7 +2,8 @@
 // @ts-check
 // Nep-app: een app die het protocol netjes volgt. Voor tests van de hub, voor demo's,
 // en als voorbeeld voor elke echte koppeling (PROTOCOL.md §3).
-//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app]
+//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app] [--speelt]
+//   --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (PROTOCOL §17): pads lichten op, een scherm
 import WebSocket from 'ws';
 import { leesNaarApp, nieuweInst } from '../src/protocol/berichten.js';
 import { Zender } from '../src/core/zender.js';
@@ -22,6 +23,24 @@ export const voorbeeldManifest = (app = 'nep-app') => ({
     { id: 'paniek', naam: 'Paniek', soort: 'trigger' },
   ],
 });
+
+/**
+ * Een lease-app die de speelapparaten speelt (PROTOCOL §17): de Xboard49 en de Maschine MK2. Geen parameters.
+ * @param {string} app @returns {Manifest}
+ */
+export const speelManifest = (app = 'nep-speler') => ({
+  v: 1, app, naam: 'Nep-speler', kleur: '#ff7a1a', truth: 'app', hb_s: 1, lease: true, rings: 'host',
+  speelt: ['xboard49', 'maschine-mk2'], scenes: [], params: [],
+});
+
+/** Een scherm van de Maschine: een rand en een diagonaal (2048 bytes, rij voor rij, hoogste bit = links), base64. */
+export function nepScherm() {
+  const b = new Uint8Array(2048);
+  const zet = (/** @type {number} */ x, /** @type {number} */ y) => { b[32 * y + (x >> 3)] |= 0x80 >> (x & 7); };
+  for (let x = 0; x < 256; x++) { zet(x, 0); zet(x, 63); zet(x, Math.floor(x / 4)); }
+  for (let y = 0; y < 64; y++) { zet(0, y); zet(255, y); }
+  return Buffer.from(b).toString('base64');
+}
 
 export class NepApp extends Zender {
   /** @param {{ url: string, manifest?: Manifest, inst?: string, herverbind?: boolean }} o */
@@ -56,6 +75,7 @@ export class NepApp extends Zender {
       this.#stuur({ t: 'manifest', manifest: this.manifest });
       this.#stuur({ t: 'staat', waarden: this.waarden });
       this.hb = setInterval(() => this.#stuur({ t: 'hb' }), this.manifest.hb_s * 1000 * 0.8);
+      if (this.manifest.speelt?.includes('maschine-mk2')) this.#stuur({ t: 'scherm', dev: 'maschine-mk2', nr: 0, data: nepScherm() });
       this.meld('open');
     });
     ws.on('message', (data) => {
@@ -64,6 +84,11 @@ export class NepApp extends Zender {
       const b = r.bericht;
       this.ontvangen.push(b);
       if (b.t === 'zet') this.waarden[b.id] = b.v;
+      // Speelapparaten (§17): een pad van de Maschine licht groen op zolang hij in is (LED terug als noot, kanaal 0).
+      if (b.t === 'midi' && b.dev === 'maschine-mk2' && this.manifest.speelt?.includes('maschine-mk2')) {
+        const [st, n, v] = b.bytes;
+        if ((st === 0x90 || st === 0x80) && n >= 36 && n <= 51) this.#stuur({ t: 'led', dev: 'maschine-mk2', bytes: [[0x90, n, st === 0x90 && v > 0 ? 21 : 0]] });
+      }
       this.meld('bericht', b);
     });
     ws.on('close', (code) => {
@@ -81,7 +106,10 @@ export class NepApp extends Zender {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (/** @type {string} */ n, /** @type {string} */ s) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : s; };
-  const app = new NepApp({ url: arg('--url', 'ws://localhost:7700/app'), manifest: voorbeeldManifest(arg('--app', 'nep-app')) }).start();
+  // --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (§17) in plaats van een manifest-app.
+  const naam = arg('--app', process.argv.includes('--speelt') ? 'nep-speler' : 'nep-app');
+  const manifest = process.argv.includes('--speelt') ? speelManifest(naam) : voorbeeldManifest(naam);
+  const app = new NepApp({ url: arg('--url', 'ws://localhost:7700/app'), manifest }).start();
   app.bij('open', () => console.log('verbonden'));
   app.bij('dicht', () => console.log('verbinding weg, opnieuw proberen…'));
   app.bij('bericht', (/** @type {any} */ b) => console.log(JSON.stringify(b)));

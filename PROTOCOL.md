@@ -34,13 +34,14 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | app → hub | `{t:"staat", waarden:{id:v}}` | huidige waarden (0..1) van alle niet-trigger-parameters; ook later, gedeeltelijk mag |
 | app → hub | `{t:"zet", id, v}` | de app veranderde zelf een waarde (muis, automatie) — hub werkt LEDs en pickup bij |
 | app → hub | `{t:"hb"}` | hartslag, minstens elke `hb_s` seconden |
-| app → hub | `{t:"led", bytes:[[…],…]}` | alleen lease: LED-berichten voor de APC |
+| app → hub | `{t:"led", dev?, bytes:[[…],…]}` | alleen lease: LED-berichten. Zonder `dev` (of `"apc40"`) voor de APC; `dev:"maschine-mk2"` voor de Maschine (§17); `"xboard49"` wordt bewaard maar nergens getoond (het keyboard ontvangt niets); een onbekend apparaat: genegeerd |
+| app → hub | `{t:"scherm", dev:"maschine-mk2", nr, data}` | alleen lease, met `maschine-mk2` in `speelt`: scherm `nr` (0 = links, 1 = rechts), `data` = base64 van precies 2048 bytes (§17) |
 | hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"` |
 | hub → app | `{t:"trig", id, aan}` | trigger in (`aan:true`) en uit (`aan:false`) |
 | hub → app | `{t:"scene", i}` | scène `i` (0-based) uit `manifest.scenes` |
 | hub → app | `{t:"focus", aan}` | de app kreeg of verloor de APC-focus |
 | hub → app | `{t:"globaal", waarden}` | globale macro's en klokken (§6), alleen gewijzigde sleutels |
-| hub → app | `{t:"midi", dev, bytes}` | alleen lease: ruw MIDI-bericht van de APC (`dev:"apc40"`) |
+| hub → app | `{t:"midi", dev, bytes}` | alleen lease: ruw MIDI-bericht van de APC (`dev:"apc40"`, §5), of van een speelapparaat (`"xboard49"`, `"maschine-mk2"`, §17) |
 | hub → app | `{t:"fout", reden}` | bv. ongeldig manifest; de verbinding blijft open, behalve bij close-code 4001 (§11) en 4003 (§13) |
 
 **Hartslag:** na 3 s zonder bericht is een app `stil` (LED knippert), na 10 s `weg` (LED uit, waarden blijven bewaard). Elk bericht telt als hartslag.
@@ -78,6 +79,7 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | `hb_s` | nee | hartslag-interval, standaard 1 |
 | `lease` | nee | `true` = deze app krijgt ruwe APC-MIDI (§5) |
 | `rings` | nee | alleen lease: `"host"` (app tekent ringen, standaard) of `"auto"` (hub tekent ringen mee met de knop — voor apps gebouwd op APC-modus 0x41, zoals av-kern) |
+| `speelt` | nee | alleen lease: de speelapparaten die deze app bespeelt, bv. `["xboard49", "maschine-mk2"]` (§17). Max 8 namen; een naam die de hub niet kent valt weg |
 | `scenes` | nee | namen; komen op de scene-knoppen |
 | `params` | ja (mag leeg bij lease) | max 128 |
 
@@ -186,7 +188,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - Een keuze met meer dan 5 opties: pad stapt door de opties.
 
 **Cockpit (§8)**
-- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`).
+- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`, plus de speelapparaten en `spelers`, §17).
 - Bij verbinden krijgt een cockpit `beeld` én een volledig `leds`. Ongeldige cockpitberichten → `{ t:"fout", reden }`.
 - Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
 - Valt een cockpit weg (sluiten, fout of geen pong) terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los; zo ook elke trigger die hij met `zet` (`v > 0`) indrukte en niet losliet (golf 8): `zet v:0` → `trig aan:false`. Niet zolang iemand anders hem nog vasthoudt: een andere cockpit (die laat hem los, of de hub als ook die wegvalt) of de hardware (LPD8 P1 op `paniek`, Stop All op de paniek-trigger van die app, een APC-pad; de kern laat hem los bij het loslaten daarvan). Een nette `v:0` van een cockpit laat hem wel direct los, ook als een ander hem nog vasthoudt (de kern telt de bronnen van een cockpit-trigger niet: een bekende grens, docs/DUURTEST.md golf 8 punt 1); daarna houdt niemand hem meer vast en volgt bij wegvallen geen tweede `aan:false`. Is de id na een nieuw manifest geen trigger meer (een waarde, of weg) of is de app vergeten, dan stuurt de hub niets (een `zet` zou een waarde op 0 zetten); is de app op dat moment weg, dan valt het loslaten weg, zoals bij de APC (kwam hij al terug, dan hoort hij het).
@@ -278,3 +280,48 @@ Uit een avond van uren in een paar minuten. Ze begrenzen wat de hub onthoudt ove
   - **Blijft sturen daarna mislukken**, dan blijft de poort open (de ingang werkt misschien nog: knoppen en pads blijven aankomen, geen `weg`, de LPD8-waarden en een lopende paniek blijven staan) en initialiseert de hub het apparaat alleen opnieuw, met pauzes van 0,25 s die steeds verdubbelen tot 30 s (`HERSTEL`). Lukte sturen weer 10 s, of was het apparaat echt uit de lijst, dan begint het weer bij meteen opnieuw openen.
 - **Eén logregel per storing, niet per bericht of per poging**, via de log van `src/hub.js`: `APC: sturen mislukt — kabel los? de hub probeert opnieuw` (voorbij zodra er weer iets verstuurd is) en `APC: openen mislukt (<reden>) — de hub probeert opnieuw` (voorbij zodra de poort weer open is); voor de LPD8 met `LPD8:`. De twee soorten staan los van elkaar: de ene onderdrukt de andere niet. Een hikje in de poortlijst terwijl de poort open is, is geen storing en geeft geen regel.
 - **Sessie-API (§9):** `ApcSessie`/`Lpd8Sessie` melden `fout` als `(e, soort)` met `soort` `'sturen'` of `'openen'`; in het logboek een `melding` met `wat:"fout"`, `soort` en `fout` (de tekst van de fout).
+
+## 17. Speelapparaten: Xboard49 en Maschine MK2 (golf 9)
+
+Twee controllers om op te spelen, naast de APC40 en de LPD8. De hub opent ze (huisregel 1) en geeft ze door aan één
+lease-app tegelijk; ze staan buiten de laagstapel van de APC (§7) en de globale laag (§6).
+
+| Apparaat | Hoe de hub hem opent | Wat de app krijgt (`{t:"midi", dev, bytes}`) | Terug |
+|---|---|---|---|
+| **E-MU Xboard49** (`xboard49`) | MIDI, alleen de ingang (class-compliant; het keyboard ontvangt niets). Poortnaam: `config.json` → `apparaten.xboard49.naam` | de ruwe bytes, ongewijzigd: noten, kanaal-aftertouch, pitchbend, CC1, CC64, bank select + programmawissel, CC120/123 (paniek), de 16 knoppen (CC of NRPN), en de schuif als SysEx Master Volume `F0 7F 7F 04 01 ll mm F7` | niets |
+| **Maschine MK2** (`maschine-mk2`) | USB-HID (`src/ports/hid.js`, node-hid, optioneel), VID:PID uit `config.json` → `apparaten.maschine-mk2` | **virtuele MIDI** (docs/MASCHINE.md): pads noot 36–51 kanaal 0 met velocity, polyfone aftertouch (hooguit ±30×/s per pad, alleen bij verandering); knoppen noot = bitnummer (0–47) op kanaal 1; 8 draaiknoppen CC 16–23 relatief; masterwiel CC 24 relatief (tweecomplement) | `{t:"led", dev:"maschine-mk2"}`: noot aan op hetzelfde nummer, pads en groepknoppen velocity = APC-paletindex, andere knoppen velocity = helderheid; `{t:"scherm"}` |
+
+**Wie speelt** (per apparaat apart): de app met APC-focus als die het apparaat in `speelt` heeft; anders de laatst
+gefocuste app die het heeft; anders de eerste in slotvolgorde die het heeft. Alleen verbonden lease-apps tellen (niet
+`weg`). Niemand: de invoer gaat nergens heen. De hubtoets (Bank) doet hier niets: het keyboard speelt door terwijl je
+focus wisselt. `beeld.spelers` (§8) zegt per apparaat wie er speelt.
+
+**Niets blijft hangen** (zoals §11): een loslaten (noot uit, of noot aan met velocity 0; pedaal CC64 < 64) gaat altijd
+naar de app die het indrukken kreeg, ook na een focuswissel. Een loslaten van iets dat niemand vasthield, gaat nergens
+heen. Wordt dezelfde toets nog eens ingedrukt terwijl hij bij een andere app in staat, dan krijgt die eerst een
+loslaten. Polyfone aftertouch volgt de noot (naar wie hem indrukte; van een noot die niet in is: weg). Valt het apparaat
+weg (uittrekken), dan krijgt elke app het loslaten van wat hij nog vasthield. Paniek van de Xboard (CC120/123) gaat naar
+wie nu speelt én naar elke app die op dat kanaal nog iets vasthoudt. Al het andere (CC, pitchbend, kanaal-aftertouch,
+SysEx, programmawissel) gaat naar wie nu speelt.
+
+**Lampjes en schermen van de Maschine.** De hub bewaart per app wat hij stuurde (laatste per adres, en per scherm) en
+toont het zolang die app speelt. Wisselt wie speelt, dan eerst alles uit en daarna wat de nieuwe app het laatst stuurde
+(volledige repaint). Een app die het apparaat niet in `speelt` heeft, kan er niets op zetten. Scherm: 256×64 pixels,
+1 bit, rij voor rij van boven, 32 bytes per rij, het hoogste bit is de meest linkse pixel, 1 = aan (`data` base64,
+precies 2048 bytes; anders `{t:"fout"}`). Bij stoppen gaan lampjes en schermen uit (de panelen houden anders hun beeld).
+
+**Status voor de cockpit** (`beeld.apparaten.xboard49` en `beeld.apparaten["maschine-mk2"]`, alleen als `config.json`
+ze noemt): `{verbonden, naam}`, voor de Maschine ook `status` (`"geen-hid"` node-hid ontbreekt · `"zoekt"` niet
+aangesloten · `"bezet"` openen mislukt, een NI-programma heeft hem · `"verbonden"` · `"geen-invoer"` open, maar binnen
+`stil_ms` geen enkel rapport: macOS-Invoermonitoring) en `hint` (wat te doen). In het hubvenster één regel per storing
+(§16): `Maschine: bezet (…) — sluit Maschine 2 en Controller Editor; …` of `Maschine: open, maar er komt niets binnen — …`.
+De hub probeert het bij elke hotplug-ronde opnieuw.
+
+**Kern-API (§9):** `new Kern({ …, speelOppervlakken: { "maschine-mk2": { led(m), scherm(nr, data), leeg() } } })`;
+`kern.invoer(g, bytes)` ook voor `XboardSessie`/`MaschineSessie` (`src/apparaten.js`); `kern.apparaatWeg("xboard49" |
+"maschine-mk2")` laat los wat er vastgehouden werd. De routering zelf staat in `src/core/spelers.js` (puur).
+
+**Opname en logboek:** de avondmap (`docs/OPNAME.md`) neemt `xboard49` en `maschine-mk2` op (bij de Maschine de virtuele
+MIDI, al uitgedund); `herhaal` speelt ze niet af (ze gaan alleen naar lease-apps, die niet in de eindstand staan).
+In een proeflogboek: elk knoppenrapport van de Maschine ruw (`maschine-mk2`), padrapporten alleen als ze iets deden of
+tijdens de rustopname, en de virtuele MIDI als `maschine-mk2-midi` (golden test, `test/herspeel.js`).
