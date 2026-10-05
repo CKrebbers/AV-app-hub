@@ -45,13 +45,13 @@ kleinste herstel: §2.3.
 | **manifest-app** via WS `/app` | app kan een WebSocket openen en zijn waarden melden | `hallo` + `manifest` + `staat`, `zet`/`trig` uitvoeren | PROTOCOL §3–§4, `src/transports/server.js` |
 | **driver** in de hub | app kan zich niet aanmelden (TD, Logic, HTTP-API) | niets; de hub spreekt de taal van de app | PROTOCOL §2, `src/drivers/`, `apps/<app>.json` |
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
-| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:91` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
+| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:97` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
 Nieuwe driver-soorten komen bij `src/drivers/index.js:28` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
-manifest hebben (`src/core/kern.js:830-835`; Stop All: `src/core/kern.js:740`). Bij dit onderzoek had geen enkele
+manifest hebben (`src/core/kern.js:858-863`; Stop All: `src/core/kern.js:768`). Bij dit onderzoek had geen enkele
 driver-app die (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:230`, `src/drivers/http.js:206`).
 **LPD8-P1 deed toen dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder. *Sinds
 golf 6 hebben uurwerk, Sediment en td-lab een trigger `paniek` in hun statische manifest; Scene Kit volgt na de

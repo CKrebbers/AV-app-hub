@@ -7,6 +7,7 @@
 //   1. LPD8 → globale laag (altijd, los van focus)
 //   2. hubtoets ingedrukt → hublaag (focus, hub-snapshots); niets gaat naar een app
 //   3. anders → app met focus: lease (ruwe bytes) of manifest-indeling
+// Speelapparaten (Xboard49, Maschine MK2) staan buiten die stapel: ze spelen voor één lease-app (src/core/spelers.js, §17).
 // Een 'los' gaat altijd naar waar de bijbehorende 'druk' heen ging; een toets is in of uit, ook van twee bronnen (§11).
 //
 // Geheugen: `exporteer()`/`importeer(data)` (puur) geven en nemen de snapshots en de waarden van apps met
@@ -19,6 +20,7 @@ import { Zender } from './zender.js';
 import { maakIndeling, toewijzingen, controlsVoor } from './indeling.js';
 import { nieuwePickup, beweeg, zetDoel, volg } from './pickup.js';
 import { maakSlew, slewWaarde, slewKlaar, SLEW_TIK_MS } from './slew.js';
+import { Spelers, SPEELAPPARATEN } from './spelers.js';
 
 /** @typedef {import('./klok.js').Klok} Klok
  *  @typedef {import('../devices/apc40mk2.js').LedStaat} LedStaat @typedef {import('../devices/apc40mk2.js').Control} Control
@@ -142,8 +144,11 @@ export function decodeer(c, regel) {
 }
 
 export class Kern extends Zender {
-  /** @param {{ klok: Klok, config?: any, oppervlak: Oppervlak }} o */
-  constructor({ klok, config = {}, oppervlak }) {
+  /**
+   * @param {{ klok: Klok, config?: any, oppervlak: Oppervlak, speelOppervlakken?: Record<string, import('./spelers.js').SpeelOppervlak> }} o
+   *   speelOppervlakken: lampjes en schermen van een speelapparaat (de Maschine-sessie), per apparaat (§17)
+   */
+  constructor({ klok, config = {}, oppervlak, speelOppervlakken = {} }) {
     super();
     this.klok = klok;
     this.config = config ?? {};
@@ -221,7 +226,17 @@ export class Kern extends Zender {
     this.alles = false;
     /** Na stop(): geen nieuwe verbindingen, invoer of timers meer (de hub sluit nog af). */
     this.gestopt = false;
-    /** Stand van de fysieke controllers voor de cockpit (gezet door de hub-bedrading). @type {Record<string, { verbonden: boolean, naam?: string|null, model?: string|null }>} */
+    /** Wie de speelapparaten bespeelt en wat apps hun terugsturen (§17). */
+    this.spel = new Spelers({
+      apps: () => [...this.apps.values()].map((a) => ({
+        app: a.app, speelt: a.manifest?.lease ? a.manifest.speelt ?? [] : [], verbonden: a.v !== null && a.status !== 'weg',
+      })),
+      focus: () => this.focusApp,
+      slots: () => this.slots,
+      naar: (app, b) => { const a = this.apps.get(app); if (a) this.#naar(a, b); },
+      oppervlakken: speelOppervlakken,
+    });
+    /** Stand van de fysieke controllers voor de cockpit (gezet door de hub-bedrading). @type {Record<string, { verbonden: boolean, naam?: string|null, model?: string|null, status?: string, hint?: string|null }>} */
     this.apparaatInfo = { apc40: { verbonden: false }, lpd8: { verbonden: false } };
     // Een ApcSessie meldt zelf wanneer hij (opnieuw) is aangesloten of wegvalt.
     /** @type {(() => void)[]} */
@@ -256,7 +271,12 @@ export class Kern extends Zender {
       case 'manifest': return this.#manifest(a, b.manifest);
       case 'staat': return this.#staat(a, b.waarden ?? {});
       case 'zet': if (typeof b.id === 'string' && typeof b.v === 'number') this.#zetWaarde(a, b.id, b.v, { naarApp: false, bron: 'app' }); return;
-      case 'led': if (Array.isArray(b.bytes)) this.#leaseLed(a, b.bytes); return;
+      case 'led':
+        if (!Array.isArray(b.bytes)) return;
+        if (typeof b.dev === 'string' && b.dev !== 'apc40') this.spel.led(a.app, b.dev, b.bytes);
+        else this.#leaseLed(a, b.bytes);
+        return;
+      case 'scherm': if (b.data instanceof Uint8Array && (b.nr === 0 || b.nr === 1)) this.spel.scherm(a.app, b.dev, b.nr, b.data); return;
       default: return; // hb en onbekende types: alleen hartslag
     }
   }
@@ -282,6 +302,8 @@ export class Kern extends Zender {
   #vergeet(a) {
     this.apps.delete(a.app);
     this.appPaniekTot.delete(a.app);
+    this.spel.vergeetApp(a.app);
+    this.spel.bijwerken();
     if (a.slot !== null && this.slots[a.slot - 1] === a.app) this.slots[a.slot - 1] = null;
     a.slot = null;
     // Niet via focus(null): dat is een keuze van Clay (of de set). Hier valt alleen een app weg; wat de hub nog
@@ -343,6 +365,7 @@ export class Kern extends Zender {
     if (this.focusApp === null || (terug && this.focusApp !== a.app)) this.#zetFocus(a.app);
     else if (this.focusApp === a.app) { this.#naar(a, { t: 'focus', aan: true }); this.#teken(); }
     else if (this.hubIn) this.#teken();
+    this.spel.bijwerken();
     this.#startAdem();
     this.#beeldGewijzigd();
   }
@@ -449,6 +472,7 @@ export class Kern extends Zender {
       a.replay = true;
     }
     if (man.truth === 'hub' || vergeten) this.meld('geheugen');
+    this.spel.bijwerken();   // een (nieuw) manifest kan `speelt` erbij of eraf halen
     // `getekend` blijft staan: was het oppervlak door een lease getekend, dan neemt #tekenManifest het vergeet-pad.
     if (this.focusApp === a.app) this.#teken();
     else if (this.hubIn) this.#teken();
@@ -484,6 +508,7 @@ export class Kern extends Zender {
   #statusGewijzigd(a) {
     // Een lease-app met focus die wegvalt: oppervlak uit (geen bevroren beeld); terug = zijn kaart terug.
     if (this.hubIn || (a && a.app === this.focusApp && a.manifest?.lease)) this.#teken();
+    this.spel.bijwerken();   // wie speelt kan wegvallen (of terugkomen)
     this.#beeldGewijzigd();
   }
 
@@ -593,6 +618,7 @@ export class Kern extends Zender {
     const a = app ? this.apps.get(app) : undefined;
     if (a) { a.pickups = new Map(); this.#naar(a, { t: 'focus', aan: true }); }
     this.#teken();
+    this.spel.focusGewijzigd(app);
     this.#beeldGewijzigd();
     return true;
   }
@@ -607,6 +633,8 @@ export class Kern extends Zender {
     if (this.gestopt) return;
     this.meld('invoer', g);
     if (g.dev === 'lpd8') return this.#lpd8(g);
+    // Speelapparaten: buiten de laagstapel, naar de lease-app die speelt (§17). Ook met de hubtoets ingedrukt.
+    if (SPEELAPPARATEN.includes(/** @type {any} */ (g.dev))) { if (bytes) this.spel.invoer(g.dev, bytes); return; }
     if (g.dev !== 'apc40') return;
     const el = g.el;
     if (!el) {
@@ -1108,11 +1136,13 @@ export class Kern extends Zender {
   }
 
   /**
-   * Een controller viel weg ('apc40' | 'lpd8'): niets mag blijven hangen. Ingedrukte toetsen krijgen hun 'los',
-   * de hubtoets is los, een lopende paniek eindigt. De ApcSessie meldt zijn eigen 'weg'; voor de LPD8 roept de server dit aan.
+   * Een controller viel weg ('apc40' | 'lpd8' | 'xboard49' | 'maschine-mk2'): niets mag blijven hangen. Ingedrukte
+   * toetsen krijgen hun 'los' (bij een speelapparaat: elke app wat hij nog vasthield), de hubtoets is los, een lopende
+   * paniek eindigt. De ApcSessie meldt zijn eigen 'weg'; voor de andere roept de hub-bedrading dit aan.
    * @param {string} dev
    */
   apparaatWeg(dev) {
+    if (SPEELAPPARATEN.includes(/** @type {any} */ (dev))) { this.spel.apparaatWeg(dev); return; }
     if (dev === 'apc40') {
       this.hubIn = false;
       this.shiftIn = false;
@@ -1419,8 +1449,11 @@ export class Kern extends Zender {
         app: a.app, naam: a.naam, kleur: a.kleurHex, status: a.status, focus: a.app === this.focusApp, slot: a.slot,
         lease: !!a.manifest?.lease, params: a.manifest?.params ?? [], waarden: { ...a.waarden },
         pagina: a.pagina, paginas: a.indeling?.paginaNamen ?? [],
+        ...(a.manifest?.speelt?.length ? { speelt: [...a.manifest.speelt] } : {}),
       })),
       focus: this.focusApp,
+      // §17: per speelapparaat de app die er nu op speelt (null = niemand).
+      spelers: this.spel.doelen(),
       globaal: { ...this.globaal },
       apparaten: { ...this.apparaatInfo },
       snapshots: [...this.snapshots.keys()].sort((x, y) => x - y),
