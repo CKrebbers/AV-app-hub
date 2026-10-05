@@ -599,6 +599,9 @@ describe('avondmap: losse onderdelen', () => {
     expect(vertaal('lpd8-virtueel', [0x99, 39, 100], ont)).toEqual({ overslaan: 'opname-knop' });
     expect(vertaal('lpd8-virtueel', [0xb0, 70, 5], ont)).toEqual({ dev: 'lpd8', bytes: [0xb0, 70, 5] });
     expect(vertaal('apc40', [0xf0, 0x7e, 0, 6, 2, 0xf7], ont)).toEqual({ overslaan: 'sysex' });
+    expect(vertaal('xboard49', [0x90, 60, 100], ont)).toEqual({ overslaan: 'speelapparaat' });
+    expect(vertaal('maschine-mk2', [0x90, 36, 100], ont)).toEqual({ overslaan: 'speelapparaat' });
+    expect(vertaal('theremin', [0x90, 36, 100], ont)).toEqual({ overslaan: 'onbekend apparaat' });
     expect(vertaal('apc40-virtueel', [0xb0, 7, 64], ont)).toEqual({ dev: 'apc40', bytes: [0xb0, 7, 64] });
     expect(naarFabriek({ el: null, kind: 'onbekend' })).toBe(null);
   });

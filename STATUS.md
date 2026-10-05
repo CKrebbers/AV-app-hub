@@ -135,6 +135,29 @@ Klaar als (op jouw Mac):
 Klaar als (op jouw Mac):
 - [ ] APC en LPD8 kort los (`docs/HARDWARE-AVOND.md`, blok 4): binnen ±2 s weer verbonden en het LED-beeld terug; blijft hij donker, noteer hoe lang de kabel los was
 
+## Golf 9 — speelapparaten: Xboard49 en Maschine MK2 (gebouwd en getest zonder hardware)
+De hub opent ook het keyboard (E-MU Xboard49) en de Maschine MK2 en geeft ze door aan de lease-app die speelt (PROTOCOL §17).
+- [x] **Protocol** — manifestveld `speelt`, `{t:"midi", dev:"xboard49"|"maschine-mk2"}`, `{t:"led", dev}`, `{t:"scherm"}`; de conformiteitstoets (`node tools/nep-hub.mjs --toets`) toetst ook een app die speelt, `node tools/nep-app.mjs --speelt` is er een voorbeeld van
+- [x] **Wie speelt** — de app met APC-focus als die het apparaat speelt, anders de laatst gefocuste die het speelt; een loslaten gaat altijd naar wie het indrukken kreeg (ook na een focuswissel), een apparaat dat wegvalt laat alles los (`src/core/spelers.js`)
+- [x] **Xboard49** — alleen de MIDI-ingang, hotplug zoals de LPD8; profiel met de 16 knoppen (tot de proef ze leert: de gok 21–28/31–38) en de schuif (SysEx Master Volume)
+- [x] **Maschine MK2 via HID** — node-hid, optioneel (zonder start de hub gewoon); virtuele MIDI-indeling in `docs/MASCHINE.md` (pads 36–51 met velocity en gedunde aftertouch, knoppen op kanaal 1, draaiknoppen en masterwiel relatief); lampjes in APC-kleuren, schermen; "bezet" en "geen invoer" met wat te doen, elke ronde opnieuw proberen
+- [x] **`doctor`** — beide apparaten, de NI-programma's die draaien, of er invoer van de Maschine komt (Invoermonitoring)
+- [x] **Proef `speelapparaten`** — 21 stappen, doorloopbaar door de gesimuleerde gebruiker; golden test op het logboek (`test/fixtures/synthetisch-speelapparaten.jsonl`)
+- [ ] **Varve DJ** — de nep-poorten "Xboard49 (hub)" en "Maschine MK2 (hub)" in `HubMidi` en `speelt` in het manifest: nog niet gebouwd, wacht op jouw OK (`koppelingen/varve-dj/LEESMIJ.md`)
+
+Klaar als (op jouw Mac):
+- [ ] `npm install` haalt node-hid binnen; `node src/cli.js doctor` toont onder "Speelapparaten" de Xboard49 en de Maschine (17cc:1140), en "invoer komt binnen"
+- [ ] `node src/cli.js proef speelapparaten` loopt door (`docs/HARDWARE-AVOND.md`, blok 8); proef-logboek en `xboard49-profiel.json` gepusht
+- [ ] uit de proef bekend: poortnaam van de Xboard, CC's (of NRPN) van de 16 knoppen, aftertouch aan/uit, de schuif als SysEx
+- [ ] uit de proef bekend: opent de Maschine met de NI-agents aan (of "bezet")? vraagt macOS om Invoermonitoring? ruisvloer in rust, oriëntatie (linksboven = pad 13), drempels en velocity, `led_max` (127 of 255), twee zones per groepknop, schermen
+- [ ] `npm start` + `node tools/nep-app.mjs --speelt`: een pad op de Maschine licht groen op zolang je hem indrukt, het linkerscherm toont een rand en een schuine lijn; Maschine eruit en erin → binnen ±2 s terug
+- [ ] (na de Varve-patch) Varve DJ speelt op het keyboard en de pads, ook als av-kern de APC-focus heeft
+
+Keuzes om na te lopen (zeg het als je het anders wilt):
+- De Maschine geeft **virtuele MIDI** (geen eigen HID-berichten naar apps): zo gebruikt Varve DJ hem met hetzelfde MIDI-pad als de APC.
+- De hubtoets (Bank) doet niets met de speelapparaten: het keyboard speelt door terwijl je focus wisselt.
+- De schuif van de Xboard gaat als ruwe SysEx naar de app (niet omgezet naar een CC).
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten

@@ -1,11 +1,11 @@
 # varve-hub — werkafspraken
 
-Eén Node-daemon die als **enige** de APC40 mkII en de LPD8 opent en al Clay's Varve-projecten bespeelbaar maakt. Achtergrond: `ONDERZOEK.md` (wat er is, wat ontbreekt), `PLAN.md` (fasen, rolverdeling). Voortgang: `STATUS.md`.
+Eén Node-daemon die als **enige** de APC40 mkII en de LPD8 opent (en de speelapparaten Xboard49 en Maschine MK2) en al Clay's Varve-projecten bespeelbaar maakt. Achtergrond: `ONDERZOEK.md` (wat er is, wat ontbreekt), `PLAN.md` (fasen, rolverdeling). Voortgang: `STATUS.md`.
 
 ## Huisregels
 1. **De hub is de enige die een controller opent.** Geen app roept met hub-vlag `requestMIDIAccess` aan. Mode-SysEx van apps wordt ingeslikt.
 2. **`src/core/` heeft geen I/O en geen eigen klok** — tijd komt binnen via `Klok` (`echteKlok` / `NepKlok`). Alles in `core/` is te testen zonder poorten.
-3. **MIDI alleen via de `Poort`/`Systeem`-interface** (`src/ports/poort.js`). Tests gebruiken `NepSysteem`; `@julusian/midi` wordt lazy geladen en mag ontbreken (de cloud heeft geen `/dev/snd`).
+3. **MIDI alleen via de `Poort`/`Systeem`-interface** (`src/ports/poort.js`). Tests gebruiken `NepSysteem`; `@julusian/midi` wordt lazy geladen en mag ontbreken (de cloud heeft geen `/dev/snd`). HID (de Maschine) net zo via `HidSysteem` (`src/ports/hid.js`, node-hid lazy, mag ontbreken); tests met `NepHidSysteem`.
 4. **Op de draad naar apps altijd 0..1**, triggers boolean; de app schaalt zelf.
 5. **Elke app-adapter zit achter een vlag** (`?hub=ws://localhost:7700`), standaard uit. Zonder hub werkt elke app als nu. Respecteer de regels van elk repo (av-kern-kern bevroren, Varve DJ geen build/deps, formula-lab geen backend/TS, waterschaal één HTML-bestand, NEXUS niet aanraken).
 6. **`config.json` is de enige bron** voor poorten, apparaatnamen, hubtoets, LED-tempo. Nooit hardcoden.
@@ -29,3 +29,4 @@ Eén Node-daemon die als **enige** de APC40 mkII en de LPD8 opent en al Clay's V
 - RGB: velocity = paletindex; kanaal 0 vast, 1-5 one-shot, 6-10 puls, 11-15 knipper.
 - Ringen: type op CC 24-31 / 56-63, waarde op de CC van de knop zelf.
 - Uitgaand max 16 berichten per 4 ms (`Wachtrij`).
+- Speelapparaten (PROTOCOL §17, `docs/MASCHINE.md`): de Xboard49 heeft alleen een MIDI-ingang; de Maschine MK2 is USB-HID 17CC:1140 (rapport 0x01 knoppen/draaiknoppen, 0x20 pads ±750/s ook in rust → uitdunnen vóór logboek en opname). Wat nog niet op Clay's toestel gemeten is, staat in `docs/MASCHINE.md`.

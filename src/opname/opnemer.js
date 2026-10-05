@@ -3,7 +3,8 @@
 // Bij aan komt er een map <avondmap>/<datum-tijd>/ met gebaren.jsonl (logboek-formaat, zie core/logboek.js):
 //   regel 1  kop     { v:1, soort:'avond', begon, 'hub-git', apps: { <app>: { naam, status, manifest: <hash> } }, lpd8 }
 //   regel 2  { ms:0, e:'beginstand', focus, globaal, apps: { <app>: waarden }, snapshots: { <nr>: … } }
-//   daarna   [ms, 'in', dev, bytes]          elke controller-invoer (dev: apc40, lpd8, apc40-virtueel, lpd8-virtueel)
+//   daarna   [ms, 'in', dev, bytes]          elke controller-invoer (dev: apc40, lpd8, apc40-virtueel, lpd8-virtueel,
+//                                            xboard49, maschine-mk2 = de virtuele MIDI van de Maschine, al uitgedund)
 //            [ms, 'naar', app, bericht]      elke zet/trig/scene/focus naar een app
 //            { ms, e:'lpd8profiel', profiel } als het LPD8-profiel verandert (nodig om LPD8-bytes te lezen)
 //   laatste  { ms, e:'eind', duur_ms, 'hub-git', apps: { <app>: { waarden, hash } }, rust? }

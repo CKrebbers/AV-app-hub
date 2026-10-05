@@ -12,7 +12,7 @@
 //   check [set] [--json] [--lan] [--poort N]
 //                            vlak vóór een optreden: alles nalopen, per punt ✓/!/✗ en wat te doen (docs/CHECK.md);
 //                            exitcode 1 als er iets ✗ is
-//   proef [naam]             begeleide hardwareproef (standaard f0-hardware), opgenomen in proef/
+//   proef [naam]             begeleide hardwareproef (standaard f0-hardware; ook speelapparaten), opgenomen in proef/
 //   testpatroon              regenboog op de APC + live wat binnenkomt (Ctrl-C stopt)
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
 //   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
@@ -23,8 +23,9 @@ import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, 
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import readline from 'node:readline';
-import { laadConfig, laadLpd8Profiel, HUB_MAP, LPD8_PROFIEL_PAD } from './config.js';
+import { laadConfig, laadLpd8Profiel, laadXboardProfiel, HUB_MAP, LPD8_PROFIEL_PAD, XBOARD_PROFIEL_PAD } from './config.js';
 import { laadRtMidi } from './ports/rtmidi.js';
+import { laadHid, draaiendeNi } from './ports/hid.js';
 import { maakApparaten } from './apparaten.js';
 import { echteKlok } from './core/klok.js';
 import { Logboek } from './core/logboek.js';
@@ -99,6 +100,17 @@ function zonderMidi() {
 
 /** @param {string} naam */
 const optie = (naam) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
+
+/**
+ * HID voor de Maschine MK2 (src/ports/hid.js), lazy. Zonder node-hid of zonder HID draait alles verder, zonder Maschine.
+ * @param {(t: string) => void} [log] wat te zeggen als het niet lukt (alleen als config.json een Maschine noemt)
+ * @returns {Promise<{ hid: import('./ports/hid.js').HidSysteem|null, hidReden: string|null }>}
+ */
+async function hidOfNiet(log = () => {}) {
+  const r = await laadHid();
+  if (!r.systeem && config.apparaten?.['maschine-mk2']) log(`Geen HID (${r.reden}) — de Maschine MK2 doet niet mee (npm install haalt node-hid binnen).`);
+  return { hid: r.systeem, hidReden: r.reden ?? null };
+}
 
 /**
  * Start de apps van een set naast een hub (in dit proces of een die al draaide). Ctrl-C ruimt op wat de
@@ -188,11 +200,14 @@ const opdrachten = {
       try { set = laadSet(naam, { config }); } catch (e) { console.error(/** @type {Error} */ (e).message); process.exit(1); }
     }
     let systeem;
+    /** @type {{ hid: import('./ports/hid.js').HidSysteem|null, hidReden: string|null }} */
+    let hidDeel = { hid: null, hidReden: 'gestart met --zonder-midi' };
     if (args.includes('--zonder-midi')) systeem = zonderMidi();
     else {
       const r = await laadRtMidi();
       if (r.systeem) systeem = r.systeem;
       else { console.log(`Geen MIDI (${r.reden}) — de hub draait zonder controllers; gebruik de virtuele in de cockpit.`); systeem = zonderMidi(); }
+      hidDeel = await hidOfNiet((t) => console.log(t));
     }
     const log = (/** @type {unknown[]} */ ...x) => console.log(...x);
     const poort = optie('--poort') ? Number(optie('--poort')) : config.poorten.http;
@@ -212,8 +227,8 @@ const opdrachten = {
     const begin = new Date();
     try {
       hub = await startHub({
-        config: hubConfig, systeem, poort, host, token,
-        drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), log,
+        config: hubConfig, systeem, ...hidDeel, poort, host, token,
+        drivers: !args.includes('--geen-drivers'), lpd8Profiel: laadLpd8Profiel(), xboardProfiel: laadXboardProfiel(), log,
         // Snapshots en truth:"hub"-waarden over een herstart heen (config.json → geheugen.pad, $VARVE_HUB_STAAT).
         geheugen: args.includes('--zonder-geheugen') ? null : geheugenPad(config),
       });
@@ -267,10 +282,13 @@ const opdrachten = {
     process.on('unhandledRejection', valOm);
     const overleef = () => omgevallen && !!loop && !loop.ander;
 
-    for (const [dev, s] of [['APC40', hub.apparaten.apc], ['LPD8', hub.apparaten.lpd8]]) {
-      /** @type {any} */ (s).bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
-      /** @type {any} */ (s).bij('weg', () => console.log(`${dev} weg`));
+    for (const [dev, s] of [['APC40', hub.apparaten.apc], ['LPD8', hub.apparaten.lpd8], ['Xboard49', hub.apparaten.xboard]]) {
+      /** @type {any} */ (s)?.bij('verbonden', (/** @type {string} */ n) => console.log(`${dev} verbonden: ${n}`));
+      /** @type {any} */ (s)?.bij('weg', () => console.log(`${dev} weg`));
     }
+    const ms = hub.apparaten.maschine;
+    ms?.bij('verbonden', () => console.log(`Maschine MK2 verbonden: ${ms.naam}`));
+    ms?.bij('weg', () => console.log('Maschine MK2 weg'));
     hub.kern.bij('naarApp', () => {});
     const lokaal = `http://localhost:${hub.server.poort}`;
     console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren; valt de hub om, dan weet hij bij de volgende start niets meer en stoppen de apps van de set mee.');
@@ -379,28 +397,35 @@ const opdrachten = {
     if (!protocol) { console.error(`Onbekende proef "${naam}". Beschikbaar: ${Object.keys(PROTOCOLLEN).join(', ')}`); process.exit(1); }
     await geenHubErnaast('proef');
     const systeem = await midiOfStop();
+    const hidDeel = await hidOfNiet((t) => console.log(t));
     const { pad, logboek, sluit } = nieuwLogboek('proef', naam);
-    const apparaten = maakApparaten({ systeem, klok: echteKlok, config, logboek, lpd8Profiel: laadLpd8Profiel() });
+    const apparaten = maakApparaten({ systeem, ...hidDeel, klok: echteKlok, config, logboek, lpd8Profiel: laadLpd8Profiel(), xboardProfiel: laadXboardProfiel() });
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const opruimen = async () => { await apparaten.stop(); rl.close(); await sluit(); console.log(`\nLogboek: ${pad}`); };
     bijStoppen(opruimen);
     apparaten.start();
-    const bevindingen = await voerUit(protocol, { apparaten, io: terminalIO(rl), klok: echteKlok, logboek, config });
+    const bevindingen = await voerUit(protocol, { apparaten, io: terminalIO(rl), klok: echteKlok, logboek, config, niProgrammas: () => draaiendeNi() });
     const prof = /** @type {any} */ (bevindingen['lpd8-profiel'])?.profiel;
     if (prof && !prof.pads.some((/** @type {any} */ p) => p.n < 0)) {
       writeFileSync(LPD8_PROFIEL_PAD, JSON.stringify(prof, null, 2) + '\n');
       console.log(`LPD8-profiel bewaard in ${LPD8_PROFIEL_PAD}`);
     }
+    // De Xboard49: alleen als alle 16 knoppen geleerd zijn (zoals de LPD8).
+    const xb = /** @type {any} */ (bevindingen['xboard49-profiel'])?.profiel;
+    if (xb && !xb.knoppen.some((/** @type {any} */ k) => k.n < 0)) {
+      writeFileSync(XBOARD_PROFIEL_PAD, JSON.stringify(xb, null, 2) + '\n');
+      console.log(`Xboard49-profiel bewaard in ${XBOARD_PROFIEL_PAD}`);
+    }
     console.log('\nSamenvatting:\n' + JSON.stringify(bevindingen, null, 2));
     await opruimen();
     console.log('\nPush dit bestand zodat Claude het kan verwerken (zie ook docs/HARDWARE-AVOND.md, blok 6):\n' +
-      `  git add proef/\n  git add lpd8-profiel.json   # als dat bestand er is\n  git commit -m "proef ${naam}" && git push`);
+      `  git add proef/\n  git add lpd8-profiel.json xboard49-profiel.json   # als die bestanden er zijn\n  git commit -m "proef ${naam}" && git push`);
     process.exit(0);
   },
 
   async testpatroon() {
     const systeem = await midiOfStop();
-    const apparaten = maakApparaten({ systeem, klok: echteKlok, config, lpd8Profiel: laadLpd8Profiel() });
+    const apparaten = maakApparaten({ systeem, ...(await hidOfNiet((t) => console.log(t))), klok: echteKlok, config, lpd8Profiel: laadLpd8Profiel(), xboardProfiel: laadXboardProfiel() });
     const kleuren = [5, 9, 13, 21, 37, 45, 49, 53];
     const teken = () => {
       for (const c of A.CONTROLS) {
@@ -421,6 +446,12 @@ const opdrachten = {
       if (/^(dk|tk)\d$/.test(g.el)) { apparaten.apc.zet(g.el, { waarde: g.v }); apparaten.apc.teken(); }
     });
     apparaten.lpd8.bij('gebeurtenis', toon);
+    // Speelapparaten: wat ze sturen, live (de Maschine als virtuele MIDI, docs/MASCHINE.md).
+    apparaten.xboard?.bij('verbonden', (/** @type {string} */ n) => console.log(`Xboard49 verbonden: ${n}`));
+    apparaten.xboard?.bij('gebeurtenis', toon);
+    apparaten.maschine?.bij('verbonden', () => console.log(`Maschine verbonden: ${apparaten.maschine?.naam}`));
+    apparaten.maschine?.bij('status', (/** @type {string} */ s, /** @type {string|null} */ r) => console.log(`Maschine: ${s}${r ? ` (${r})` : ''}`));
+    apparaten.maschine?.bij('gebeurtenis', toon);
     bijStoppen(() => apparaten.stop());
     apparaten.start();
     console.log('Testpatroon actief. Druk, draai en schuif; Ctrl-C stopt (LEDs gaan uit).');
@@ -431,12 +462,13 @@ const opdrachten = {
     await geenHubErnaast('opname');
     const systeem = await midiOfStop();
     const { pad, logboek, sluit } = nieuwLogboek('opname', naam);
-    const lpd8Profiel = laadLpd8Profiel();
+    const lpd8Profiel = laadLpd8Profiel(), xboardProfiel = laadXboardProfiel();
     // Het profiel in het logboek, zodat de golden test de LPD8-bytes van deze opname met hetzelfde profiel leest.
     if (lpd8Profiel) logboek.regel('bevinding', { id: 'lpd8-profiel', data: { profiel: lpd8Profiel } });
-    const apparaten = maakApparaten({ systeem, klok: echteKlok, config, logboek, lpd8Profiel });
+    if (xboardProfiel) logboek.regel('bevinding', { id: 'xboard49-profiel', data: { profiel: xboardProfiel } });
+    const apparaten = maakApparaten({ systeem, ...(await hidOfNiet((t) => console.log(t))), klok: echteKlok, config, logboek, lpd8Profiel, xboardProfiel });
     let n = 0;
-    for (const s of [apparaten.apc, apparaten.lpd8]) s.bij('gebeurtenis', () => { n++; if (n % 50 === 0) process.stdout.write(`\r${n} gebeurtenissen`); });
+    for (const s of [apparaten.apc, apparaten.lpd8, apparaten.xboard, apparaten.maschine]) s?.bij('gebeurtenis', () => { n++; if (n % 50 === 0) process.stdout.write(`\r${n} gebeurtenissen`); });
     bijStoppen(async () => { await apparaten.stop(); await sluit(); console.log(`\nOpname: ${pad}`); });
     apparaten.start();
     console.log(`Opname loopt naar ${pad}. Ctrl-C stopt.`);

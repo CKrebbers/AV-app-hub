@@ -29,14 +29,14 @@ export async function laadRtMidi() {
   const systeem = {
     soort: 'rtmidi',
     lijst: () => ({ ingangen: namen(probeIn), uitgangen: namen(probeUit) }),
-    open(naam) {
+    open(naam, { alleenIngang = false } = {}) {
       const ii = namen(probeIn).indexOf(naam);
-      const ui = namen(probeUit).findIndex((n) => kern(n) === kern(naam));
-      if (ii < 0 || ui < 0) throw new Error(`poort niet gevonden: ${naam}`);
-      const inn = new midi.Input(), uit = new midi.Output();
+      const ui = alleenIngang ? -1 : namen(probeUit).findIndex((n) => kern(n) === kern(naam));
+      if (ii < 0 || (!alleenIngang && ui < 0)) throw new Error(`poort niet gevonden: ${naam}`);
+      const inn = new midi.Input(), uit = alleenIngang ? null : new midi.Output();
       inn.ignoreTypes(false, true, true); // SysEx wél, clock en active sensing niet
       inn.openPort(ii);
-      uit.openPort(ui);
+      uit?.openPort(ui);
       return maakPoort(naam, inn, uit);
     },
     virtueel(naam) {
@@ -60,7 +60,7 @@ export async function laadRtMidi() {
  * apparaat weg is geweest. Daarom kijkt aansluiting.js elke LIJST_MS (250 ms) in de lijst, los van het openen (elke
  * `hotplug_ms`); een kabel die korter los is dan dat, blijft onzichtbaar (de APC blijft dan donker in modus 0x40).
  * Of het apparaat bij kort uittrekken echt uit de lijst verdwijnt, en hoe lang, meten we op de hardware-avond.
- * @param {string} naam @param {any} inn @param {any} uit @returns {Poort}
+ * @param {string} naam @param {any} inn @param {any} uit null = alleen een ingang @returns {Poort}
  */
 function maakPoort(naam, inn, uit) {
   /** @type {Set<(b: number[]) => void>} */
@@ -68,8 +68,9 @@ function maakPoort(naam, inn, uit) {
   inn.on('message', (/** @type {number} */ _dt, /** @type {number[]} */ b) => { for (const fn of luisteraars) fn(b); });
   return {
     naam,
-    stuur: (b) => uit.sendMessage(b),
+    // Alleen een ingang (alleenIngang): sturen kan niet; de sessie van zo'n apparaat stuurt ook niets.
+    stuur: (b) => { if (!uit) throw new Error(`${naam}: alleen een ingang geopend`); uit.sendMessage(b); },
     bijBericht: (fn) => { luisteraars.add(fn); return () => luisteraars.delete(fn); },
-    sluit: () => { try { inn.closePort(); } catch { /* al dicht */ } try { uit.closePort(); } catch { /* al dicht */ } luisteraars.clear(); },
+    sluit: () => { try { inn.closePort(); } catch { /* al dicht */ } try { uit?.closePort(); } catch { /* al dicht */ } luisteraars.clear(); },
   };
 }

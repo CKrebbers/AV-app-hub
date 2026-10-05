@@ -24,7 +24,7 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 | `npm run check -- meditatie` | **alles nalopen vlak vóór een optreden**: hub, controllers, LPD8-profiel, de statische manifesten in `apps/`, F0-proef, geheugen, avondmap (vrije ruimte), Chrome, token, en per app van de set map/node_modules/poort/hub-koppeling. ✓/!/✗ met wat te doen. Zie `docs/CHECK.md` |
 | http://localhost:7700/oefen | **oefenen**: 14 korte lessen om de basis onder de knie te krijgen (focus, pickup, pads, LPD8-rollen, slew, snapshots, paniek, tempo, glijden zien), met twee oefen-apps (Zon en Zee). Werkt met je echte APC40/LPD8 of met de virtuele op de pagina. Start eerst de hub. Zie `docs/OEFENEN.md` |
 | `npm run spiekbrief -- <set>` | **wat doet welke knop**, per set (of `alle`): één A4 liggend om te printen, in `tools/uitvoer/`. Met de hub aan ook op http://localhost:7700/spiekbrief. Zie `docs/SPIEKBRIEF.md` |
-| `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
+| `node src/cli.js doctor` | overzicht: MIDI-poorten, APC/LPD8 (model + programma 1), de speelapparaten (Xboard49, Maschine: bezet? komt er invoer?), poorten 7700/7701, welke apps draaien. `--json` voor machineleesbaar |
 | `node src/cli.js proef` | **begeleide hardwareproef F0** (±35-45 min; volg `docs/HARDWARE-AVOND.md`). Neemt alles op in `proef/…jsonl` en leert je LPD8 (`lpd8-profiel.json`) |
 | `node src/cli.js testpatroon` | regenboog op de APC, en live in de terminal wat elke knop stuurt. Ctrl-C = alles uit |
 | `node src/cli.js opname [naam]` | speelsessie opnemen in `proef/` — voor hardwareproeven (wordt een golden test), niet om een avond te bewaren |
@@ -35,6 +35,11 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 **Paniek** (LPD8-pad 1 een seconde vasthouden): wat een app daarna zelf verandert (bv. volume naar 0) koppelt de LPD8-knoppen niet los; `paniek.naloop_s` in `config.json` (standaard 5) bepaalt hoe lang na het loslaten (PROTOCOL §14). Ook de driver-apps doen mee: uurwerk zet het volume op 0 (terug met de trigger `master_terug`), Sediment zet alle noten uit (CC 123), Scene Kit zet de master dicht (na de TD-patch in `koppelingen/av-scene-kit/`).
 
 **td-lab** doet mee als driver over zijn eigen bridge, standaard uit: zie `docs/TDLAB.md`.
+
+**Speelapparaten** (golf 9): het keyboard (E-MU Xboard49) en de Maschine MK2 spelen voor de lease-app die ze in zijn
+manifest noemt (`speelt`, PROTOCOL §17). De Maschine leest de hub zelf via USB-HID (node-hid, optioneel), zonder
+NI-software: de indeling die een app ziet staat in `docs/MASCHINE.md`. Meten op jouw toestellen:
+`node src/cli.js proef speelapparaten` (`docs/HARDWARE-AVOND.md`, blok 8).
 
 **Geheugen.** De hub onthoudt de snapshots en de waarden van TD, Sediment en andere `truth:"hub"`-apps over een herstart heen, in `~/.varve-hub/staat.json` (bij de start staat in de terminal waar). Leeg beginnen: gooi dat bestand weg terwijl de hub uit staat, of start met `--zonder-geheugen`. Een `staat.json.kapot` is een oud bestand dat de hub niet kon lezen; je kunt het weggooien. Een ander pad: `geheugen.pad` in `config.json`, of `VARVE_HUB_STAAT=/pad/naar/staat.json npm start`.
 
@@ -56,4 +61,4 @@ npm run repetitie   # generale repetitie: de hub met de échte app-koppelingen, 
 npm run duurtest -- --minuten 3 --seed 7   # duurtest: een hele avond in een paar minuten, lekken en invarianten (docs/DUURTEST.md)
 ```
 
-Indeling: `src/devices/` (APC40, LPD8) · `src/ports/` (poort-interface, nep, RtMidi) · `src/core/` (kern, indeling, pickup, slew, klok, wachtrij, LED-beeld, hotplug, logboek) · `src/protocol/` (het contract, PROTOCOL.md) · `src/transports/` (HTTP- en WebSocket-server) · `src/drivers/` (MIDI, HTTP, TD) · `src/sets/`, `src/opname/`, `src/check/` · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/hub.js` (alles samen) · `src/cli.js` · `ui/` (cockpit en oefenruimte). Werkafspraken in `CLAUDE.md`.
+Indeling: `src/devices/` (APC40, LPD8, Xboard49, Maschine MK2) · `src/ports/` (poort-interface, nep, RtMidi, HID) · `src/core/` (kern, indeling, pickup, slew, klok, wachtrij, LED-beeld, hotplug, logboek, spelers) · `src/protocol/` (het contract, PROTOCOL.md) · `src/transports/` (HTTP- en WebSocket-server) · `src/drivers/` (MIDI, HTTP, TD) · `src/sets/`, `src/opname/`, `src/check/` · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/hub.js` (alles samen) · `src/cli.js` · `ui/` (cockpit en oefenruimte). Werkafspraken in `CLAUDE.md`.

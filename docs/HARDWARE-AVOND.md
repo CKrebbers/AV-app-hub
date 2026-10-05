@@ -15,6 +15,7 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 | 5 | Opnemen met LPD8-pad 4 | 5 min |
 | 6 | Pushen | 5 min |
 | 7 | Als iets niet werkt | (naslag) |
+| 8 | Xboard49 en Maschine MK2: de proef speelapparaten (mag een andere avond) | 25–30 min |
 
 ---
 
@@ -367,3 +368,68 @@ de apps van de set stoppen mee als de hub omvalt.
 daarvoor in `<app>.vorige.log` (daar staat wat de app zei rond een crash). Met `--uitvoer` zie je het ook in het
 hubvenster. Zo draaien de apps door als de hub wegvalt. Lukt het opnieuw starten niet met "poort 7700 is bezet",
 dan draait de oude hub nog half: `lsof -i :7700` laat zien welk proces; stop dat en start opnieuw.
+
+---
+
+## 8. Xboard49 en Maschine MK2: de proef speelapparaten (±25–30 min)
+
+Het keyboard (E-MU Xboard49) en de Maschine MK2 doen mee als **speelapparaten** (PROTOCOL §17): de hub opent ze en geeft
+ze door aan de lease-app die speelt (Varve DJ, zodra die de koppeling heeft: `koppelingen/varve-dj/LEESMIJ.md`). Deze
+proef meet wat alleen jouw toestellen kunnen zeggen. Hij staat los van de F0-proef: doe hem wanneer het uitkomt.
+
+**Voorbereiden**
+
+- [ ] Bijwerken zoals in blok 1 (`npm install` haalt nu ook node-hid binnen: daarmee leest de hub de Maschine).
+- [ ] Sluit **Maschine 2** en **Controller Editor** van Native Instruments. De achtergrondprogramma's NIHardwareAgent en
+  NIHostIntegrationAgent mag je laten draaien: de proef kijkt of de hub de Maschine dan toch krijgt (anders zegt hij
+  "bezet" en wat te doen).
+- [ ] Geen hub ernaast (`npm start` dicht): de proef opent de apparaten zelf.
+- [ ] Sluit de Xboard49 en de Maschine aan (USB) en zet ze aan.
+- [ ] `node src/cli.js doctor` laat onder "Speelapparaten" zien of de hub ze vindt, welke NI-programma's draaien en of er
+  invoer van de Maschine binnenkomt.
+
+```bash
+node src/cli.js proef speelapparaten
+```
+
+Mist er één (geen keyboard bij de hand)? Dan slaat de proef dat blok over, of typ je `o`.
+
+| # | Stap | Wat je doet |
+|---|---|---|
+| 1 | Voorbereiding | lezen, Enter |
+| 2 | Xboard49: welke MIDI-poort? | niets; vindt de hub hem niet, dan typ je welke ingang het is |
+| 3 | Xboard49: toetsen en velocity | laagste toets, hoogste toets, één heel zacht, één heel hard |
+| 4 | Xboard49: de 16 knoppen leren | knop 1 tot en met 16 om de beurt een stukje draaien |
+| 5 | Xboard49: pitchbend en modulatie | pitchbend op en neer, modulatie helemaal open |
+| 6 | Xboard49: aftertouch | een toets indrukken en stevig verder duwen (of `o`) |
+| 7 | Xboard49: pedaal (optioneel) | pedaal intrappen en loslaten, of `o` |
+| 8 | Xboard49: de schuif (SysEx Master Volume) | de schuif helemaal omlaag en omhoog |
+| 9 | Xboard49: van patch wisselen | een ander programma kiezen op het keyboard |
+| 10 | Xboard49: paniek (beide octaafknoppen) | beide octaafknoppen tegelijk |
+| 11 | Maschine: is hij zichtbaar (17CC:1140)? | niets |
+| 12 | Maschine: openen (zonder NI-programma's) en Invoermonitoring | eventueel Maschine 2/Controller Editor sluiten; vraagt macOS om Invoermonitoring, zeg wat je deed |
+| 13 | Maschine: rustopname (pads niet aanraken) | handen van de Maschine, Enter |
+| 14 | Maschine: welke pad is welke? | de pad linksboven, dan rechtsonder |
+| 15 | Maschine: alle 16 pads, zacht en hard | elke pad één keer; dan één heel zacht, één heel hard |
+| 16 | Maschine: alle 48 knoppen | elke knop één keer (ook F1–F8, groep A–H, het masterwiel indrukken) |
+| 17 | Maschine: de 8 draaiknoppen en het masterwiel | elk een stukje rechts- en linksom |
+| 18 | Maschine: lampjes (oriëntatie, bereik, twee zones) | kijken en vier vragen beantwoorden |
+| 19 | Maschine: de twee schermen | kijken: links een schaakbord, rechts strepen |
+| 20 | Maschine: USB eruit en erin | de Maschine-kabel eruit en er weer in |
+| 21 | Klaar | — |
+
+Aan het eind staan er twee bestanden: `proef/<datum-tijd>-speelapparaten.jsonl` (het logboek; de rustopname en wat je
+speelde worden er een golden test van) en `xboard49-profiel.json` (welke CC elke knop van de Xboard stuurt; alleen als
+alle 16 geleerd zijn). Push ze zoals in blok 6, met `xboard49-profiel.json` erbij (en commitboodschap
+`proef speelapparaten`).
+
+**Als de Maschine niet wil** (meer in `docs/MASCHINE.md`):
+
+- *"bezet"*: een NI-programma heeft hem. Sluit Maschine 2 en Controller Editor; helpt dat niet, stop NIHardwareAgent en
+  NIHostIntegrationAgent in Activiteitenweergave. De hub probeert het elke paar seconden zelf opnieuw.
+- *"open, maar er komt niets binnen"*: macOS houdt de invoer tegen. Systeeminstellingen → Privacy en beveiliging →
+  Invoermonitoring → zet Terminal (of iTerm) aan, en start de proef opnieuw.
+- *"Geen HID"*: node-hid ontbreekt; draai `npm install` opnieuw.
+
+**Als de Xboard niet gevonden wordt:** `node src/cli.js doctor` toont alle MIDI-ingangen. Zet een stukje van de naam van
+het keyboard bij `apparaten.xboard49.naam` in `config.json` (nu `xboard`).

@@ -17,6 +17,12 @@ export function laadLpd8Profiel(pad = LPD8_PROFIEL_PAD) {
   return existsSync(pad) ? JSON.parse(readFileSync(pad, 'utf8')) : null;
 }
 
+/** Wat de proef "speelapparaten" van de Xboard49 leerde (welke CC per knop); null als dat er nog niet is. */
+export const XBOARD_PROFIEL_PAD = join(HUB_MAP, 'xboard49-profiel.json');
+export function laadXboardProfiel(pad = XBOARD_PROFIEL_PAD) {
+  return existsSync(pad) ? JSON.parse(readFileSync(pad, 'utf8')) : null;
+}
+
 /** Kaarten per app (maps/<app>.json): { <control-id>: { id, takeover? } } — PROTOCOL.md §7. */
 export function laadKaarten(map = join(HUB_MAP, 'maps')) {
   if (!existsSync(map)) return {};

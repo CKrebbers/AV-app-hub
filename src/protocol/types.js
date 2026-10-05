@@ -11,7 +11,7 @@
  * }} Param
  * @typedef {{
  *   v: 1, app: string, naam: string, kleur?: string, truth: 'app'|'hub', hb_s: number,
- *   lease: boolean, rings?: 'host'|'auto', scenes: string[], params: Param[],
+ *   lease: boolean, rings?: 'host'|'auto', speelt?: ('xboard49'|'maschine-mk2')[], scenes: string[], params: Param[],
  * }} Manifest
  *
  * Berichten app → hub
@@ -20,8 +20,9 @@
  * @typedef {{ t: 'staat', waarden: Record<string, number> }} Staat
  * @typedef {{ t: 'zet', id: string, v: number }} AppZet
  * @typedef {{ t: 'hb' }} Hartslag
- * @typedef {{ t: 'led', bytes: number[][] }} Led
- * @typedef {Hallo|ManifestBericht|Staat|AppZet|Hartslag|Led} VanApp
+ * @typedef {{ t: 'led', dev?: 'apc40'|'xboard49'|'maschine-mk2', bytes: number[][] }} Led
+ * @typedef {{ t: 'scherm', dev: 'maschine-mk2', nr: 0|1, data: Uint8Array }} Scherm  (op de draad: data in base64, 2048 bytes; §17)
+ * @typedef {Hallo|ManifestBericht|Staat|AppZet|Hartslag|Led|Scherm} VanApp
  *
  * Berichten hub → app
  * @typedef {{ t: 'welkom', hub: 'varve-hub', v: 1 }} Welkom
@@ -30,7 +31,7 @@
  * @typedef {{ t: 'scene', i: number }} Scene
  * @typedef {{ t: 'focus', aan: boolean }} Focus
  * @typedef {{ t: 'globaal', waarden: Record<string, number|string> }} Globaal
- * @typedef {{ t: 'midi', dev: 'apc40', bytes: number[] }} Midi
+ * @typedef {{ t: 'midi', dev: 'apc40'|'xboard49'|'maschine-mk2', bytes: number[] }} Midi
  * @typedef {{ t: 'fout', reden: string }} Fout
  * @typedef {Welkom|HubZet|Trig|Scene|Focus|Globaal|Midi|Fout} NaarApp
  *

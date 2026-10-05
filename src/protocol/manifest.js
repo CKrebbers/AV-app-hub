@@ -14,6 +14,8 @@ export const ROLLEN = /** @type {const} */ ([
   'macro.kleur', 'macro.dichtheid', 'klok.adem_periode', 'macro.balans',
 ]);
 export const MAX_PARAMS = 128;
+/** Speelapparaten die een lease-app in `speelt` kan noemen (§17). Een onbekende naam valt weg (grondregel 5). */
+export const SPEELAPPARATEN = /** @type {const} */ (['xboard49', 'maschine-mk2']);
 
 const is01 = (/** @type {unknown} */ x) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
 const isTekst = (/** @type {unknown} */ x, max = 64) => typeof x === 'string' && x.length > 0 && x.length <= max;
@@ -36,6 +38,10 @@ export function valideerManifest(m) {
   if (x.lease !== undefined && typeof x.lease !== 'boolean') f.push('lease moet true/false zijn');
   if (x.rings !== undefined && x.rings !== 'host' && x.rings !== 'auto') f.push('rings moet "host" of "auto" zijn');
   if (x.scenes !== undefined && !(Array.isArray(x.scenes) && x.scenes.length <= 5 && x.scenes.every((s) => isTekst(s, 32)))) f.push('scenes: max 5 namen');
+  if (x.speelt !== undefined) {
+    if (!(Array.isArray(x.speelt) && x.speelt.length <= 8 && x.speelt.every((d) => typeof d === 'string' && APP_ID.test(d)))) f.push('speelt moet een lijst apparaatnamen zijn (max 8), bv. ["xboard49", "maschine-mk2"]');
+    else if (x.lease !== true && x.speelt.length) f.push('speelt kan alleen met lease: true (de app krijgt ruwe MIDI van die apparaten)');
+  }
   const lease = x.lease === true;
   if (!Array.isArray(x.params)) { if (!lease) f.push('params moet een lijst zijn'); }
   else if (x.params.length > MAX_PARAMS) f.push(`max ${MAX_PARAMS} params`);
@@ -66,6 +72,8 @@ export function valideerManifest(m) {
     manifest: {
       v: 1, app: x.app, naam: x.naam, ...(x.kleur ? { kleur: x.kleur.toLowerCase() } : {}),
       truth: x.truth ?? 'app', hb_s: x.hb_s ?? 1, lease, ...(lease ? { rings: x.rings ?? 'host' } : {}),
+      // Alleen de apparaten die de hub kent, elk één keer (een nieuwere app mag er een noemen die deze hub niet kent).
+      ...(lease && Array.isArray(x.speelt) ? { speelt: [...new Set(x.speelt.filter((/** @type {any} */ d) => SPEELAPPARATEN.includes(d)))] } : {}),
       scenes: x.scenes ?? [], params,
     },
   };

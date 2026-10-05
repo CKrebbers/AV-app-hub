@@ -11,6 +11,12 @@ import { valideerManifest } from '../src/protocol/manifest.js';
 
 /** @typedef {{ naam: string, ok: boolean, detail?: string }} Uitslag */
 
+/** Wat de toets een app stuurt per speelapparaat (§17): een noot aan en uit, en wat elk apparaat eigens heeft. */
+const SPEEL_MIDI = {
+  xboard49: [[0x90, 60, 100], [0xd0, 40], [0xe0, 0, 80], [0xb0, 64, 127], [0xb0, 64, 0], [0x80, 60, 0], [0xf0, 0x7f, 0x7f, 0x04, 0x01, 0, 0x40, 0xf7]],
+  'maschine-mk2': [[0x90, 36, 100], [0xa0, 36, 60], [0x80, 36, 0], [0x91, 39, 127], [0x81, 39, 0], [0xb0, 16, 3], [0xb0, 24, 127]],
+};
+
 /**
  * @param {{ poort: number (0 = vrije poort), start?: (url: string) => Promise<unknown>|unknown, timeoutMs?: number, herverbindMs?: number }} o
  * @returns {Promise<{ ok: boolean, uitslagen: Uitslag[], app: string|null }>}
@@ -72,11 +78,22 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
       s0.send(JSON.stringify({ t: 'focus', aan: true }));
       s0.send(JSON.stringify({ t: 'globaal', waarden: { 'macro.ruimte': 0.5, adem: 0.1, grondtoon: 'D' } }));
       s0.send(JSON.stringify({ t: 'iets-nieuws-uit-de-toekomst', x: 1 }));
+      // §17: een app die speelapparaten speelt, krijgt hun MIDI (ook de schuif van de Xboard als SysEx), en een
+      // apparaat dat hij niet kent.
+      for (const dev of manifest.speelt ?? []) {
+        for (const bytes of SPEEL_MIDI[dev] ?? []) s0.send(JSON.stringify({ t: 'midi', dev, bytes }));
+      }
+      s0.send(JSON.stringify({ t: 'midi', dev: 'apparaat-uit-de-toekomst', bytes: [0x90, 1, 1] }));
       await new Promise((r) => setTimeout(r, 400));
       noteer('overleeft zet/trig/focus/globaal en onbekende berichten', s0.readyState === s0.OPEN);
+      if (manifest.speelt?.length) noteer(`speelt ${manifest.speelt.join(', ')}: overleeft hun MIDI`, s0.readyState === s0.OPEN);
       if (manifest.lease) {
         const leds = log.filter((x) => x.b.t === 'led');
         noteer('lease: stuurt geen mode-SysEx', !leds.some((x) => x.b.bytes.some(isModeSysex)));
+        const vreemd = leds.filter((x) => x.b.dev && !(manifest.speelt ?? []).includes(x.b.dev));
+        if (manifest.speelt?.length || vreemd.length) noteer('LED\'s met dev alleen voor apparaten uit speelt', !vreemd.length, vreemd.length ? `ook voor ${vreemd.map((x) => x.b.dev).join(', ')}` : undefined);
+        const schermen = log.filter((x) => x.b.t === 'scherm');
+        if (schermen.length) noteer('scherm: alleen met maschine-mk2 in speelt', (manifest.speelt ?? []).includes('maschine-mk2'));
       }
       const voor = sockets.length;
       s0.close();

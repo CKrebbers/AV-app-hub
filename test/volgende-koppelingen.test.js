@@ -156,8 +156,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   // De dragende hub-verwijzingen op inhoud: draait ook in CI.
   /** @type {{ pad: string, regel: number, bevat: string }[]} */
   const hubClaims = [
-    { pad: 'src/core/kern.js', regel: 830, bevat: '#paniek(' },
-    { pad: 'src/core/kern.js', regel: 740, bevat: "'stopall'" },
+    { pad: 'src/core/kern.js', regel: 858, bevat: '#paniek(' },
+    { pad: 'src/core/kern.js', regel: 768, bevat: "'stopall'" },
     { pad: 'src/drivers/midi.js', regel: 156, bevat: '#uit(a)' },
     { pad: 'src/drivers/midi.js', regel: 206, bevat: '#meldPreset' },
     { pad: 'src/drivers/midi.js', regel: 230, bevat: 'globaal' },
@@ -169,7 +169,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/drivers/http.js', regel: 206, bevat: 'globaal' },
     { pad: 'src/drivers/http.js', regel: 236, bevat: 'tabs === 0' },
     { pad: 'src/drivers/index.js', regel: 28, bevat: 'DRIVER_SOORTEN' },
-    { pad: 'src/doctor.js', regel: 91, bevat: "'osc'" },
+    { pad: 'src/doctor.js', regel: 99, bevat: "'osc'" },
     { pad: 'src/transports/server.js', regel: 88, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
@@ -177,8 +177,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
     { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
     { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
-    { pad: 'config.json', regel: 34, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 98, bevat: '"koppeling": "td"' },
+    { pad: 'config.json', regel: 56, bevat: '"td-lab"' },
+    { pad: 'config.json', regel: 120, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.

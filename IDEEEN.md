@@ -6,3 +6,7 @@ Niet in de lopende fase. Pas oppakken als een speelavond laat zien dat het nodig
 - Open Stage Control als extra touch-UI (client van de hub via OSCQuery).
 - Gebarenlog als conditionering voor musicgen-video-glitch.
 - Cockpit-telefoonstand (staand op een iPhone): focus-app, LPD8 en snapshots bovenaan, de APC inklapbaar. Clay: "misschien later".
+- Speelapparaten (golf 9) in de cockpit: een lampje voor de Xboard49 en de Maschine naast APC/LPD8, en wie er speelt (`beeld.spelers` en `beeld.apparaten` hebben het al).
+- `npm run check` ook voor de speelapparaten (Maschine bezet of geen invoer → ✗ met wat te doen); `doctor` zegt het nu al.
+- Schermen van de Maschine vanuit de hub: een kleine letterset (zoals die van maschine-code/cabl) zodat apps tekst kunnen sturen in plaats van pixels.
+- De Maschine als virtuele controller in de cockpit (zoals de APC en de LPD8), om zonder toestel te oefenen.

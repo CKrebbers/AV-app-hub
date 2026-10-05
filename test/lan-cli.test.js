@@ -60,6 +60,8 @@ describe('varve-hub start --lan', () => {
     const poort = await vrijePoort();
     const r = start(['start', '--lan', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
     await wachtOp(() => /varve-hub draait/.test(r.uit), 8000);
+    // De mDNS-regel komt in een eigen schrijfactie ná "varve-hub draait": die kan een tik later binnenkomen.
+    await wachtOp(() => /mDNS/.test(r.uit), 1000);
     expect(statSync(tokenBestand()).mode & 0o777).toBe(0o600);
     const token = readFileSync(tokenBestand(), 'utf8').trim();
     expect(r.uit).toMatch(/Nieuw token aangemaakt/);
