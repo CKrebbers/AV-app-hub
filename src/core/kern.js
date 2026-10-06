@@ -8,6 +8,7 @@
 //   2. hubtoets ingedrukt → hublaag (focus, hub-snapshots); niets gaat naar een app
 //   3. anders → app met focus: lease (ruwe bytes) of manifest-indeling
 // Speelapparaten (Xboard49, Maschine MK2) staan buiten die stapel: ze spelen voor één lease-app (src/core/spelers.js, §17).
+// Wat een app aan de globale laag levert (de sectie, §18), loopt via src/core/bijdragen.js en gaat als globaal naar iedereen.
 // Een 'los' gaat altijd naar waar de bijbehorende 'druk' heen ging; een toets is in of uit, ook van twee bronnen (§11).
 //
 // Geheugen: `exporteer()`/`importeer(data)` (puur) geven en nemen de snapshots en de waarden van apps met
@@ -21,6 +22,7 @@ import { maakIndeling, toewijzingen, controlsVoor } from './indeling.js';
 import { nieuwePickup, beweeg, zetDoel, volg } from './pickup.js';
 import { maakSlew, slewWaarde, slewKlaar, SLEW_TIK_MS } from './slew.js';
 import { Spelers, SPEELAPPARATEN } from './spelers.js';
+import { Bijdragen } from './bijdragen.js';
 
 /** @typedef {import('./klok.js').Klok} Klok
  *  @typedef {import('../devices/apc40mk2.js').LedStaat} LedStaat @typedef {import('../devices/apc40mk2.js').Control} Control
@@ -170,8 +172,12 @@ export class Kern extends Zender {
     this.wegMs = (this.config.hartslag?.weg_s ?? 10) * 1000;
     this.hubIn = false;
     this.shiftIn = false;
+    // §18: wat apps aan globaal leveren (de sectie). Leveranciers in volgorde van aanmelden; `weg` telt niet.
+    this.bijdragen = new Bijdragen({
+      apps: () => [...this.apps.values()].map((a) => ({ app: a.app, levert: a.manifest?.levert ?? [], levend: a.status !== 'weg' })),
+    });
     /** @type {Record<string, number|string>} */
-    this.globaal = { grondtoon: 'D', bpm: 120, 'klok.adem_periode': 0.5, adem: 0 };
+    this.globaal = { grondtoon: 'D', bpm: 120, 'klok.adem_periode': 0.5, adem: 0, ...this.bijdragen.beginwaarden() };
     this.adem = { t: klok.nu(), fase: 0 };
     /** @type {Map<string, number>} laatst bekende fysieke stand per control (apc: id, lpd8: 'lpd8:k1') */
     this.fysiek = new Map();
@@ -277,6 +283,7 @@ export class Kern extends Zender {
         else this.#leaseLed(a, b.bytes);
         return;
       case 'scherm': if (b.data instanceof Uint8Array && (b.nr === 0 || b.nr === 1)) this.spel.scherm(a.app, b.dev, b.nr, b.data); return;
+      case 'globaal': this.#bijdrage(this.bijdragen.ontvang(a.app, b.waarden ?? {})); return;
       default: return; // hb en onbekende types: alleen hartslag
     }
   }
@@ -304,6 +311,8 @@ export class Kern extends Zender {
     this.appPaniekTot.delete(a.app);
     this.spel.vergeetApp(a.app);
     this.spel.bijwerken();
+    this.bijdragen.vergeet(a.app);
+    this.#bijdrage(this.bijdragen.bijwerken());
     if (a.slot !== null && this.slots[a.slot - 1] === a.app) this.slots[a.slot - 1] = null;
     a.slot = null;
     // Niet via focus(null): dat is een keuze van Clay (of de set). Hier valt alleen een app weg; wat de hub nog
@@ -342,7 +351,7 @@ export class Kern extends Zender {
     a.replay = false;
     a.status = a.manifest ? 'actief' : 'nieuw';
     this.#geefSlot(a);
-    if (herstart) a.pickups = new Map();
+    if (herstart) { a.pickups = new Map(); this.bijdragen.herstart(a.app); }
     this.#hartslag(a);
     this.#naar(a, { t: 'globaal', waarden: { ...this.globaal } });
     if (a.manifest?.truth === 'hub') {
@@ -366,6 +375,7 @@ export class Kern extends Zender {
     else if (this.focusApp === a.app) { this.#naar(a, { t: 'focus', aan: true }); this.#teken(); }
     else if (this.hubIn) this.#teken();
     this.spel.bijwerken();
+    this.#bijdrage(this.bijdragen.bijwerken()); // terug van weg: misschien weer de bron (§18)
     this.#startAdem();
     this.#beeldGewijzigd();
   }
@@ -473,6 +483,7 @@ export class Kern extends Zender {
     }
     if (man.truth === 'hub' || vergeten) this.meld('geheugen');
     this.spel.bijwerken();   // een (nieuw) manifest kan `speelt` erbij of eraf halen
+    this.#bijdrage(this.bijdragen.bijwerken()); // en `levert` (§18)
     // `getekend` blijft staan: was het oppervlak door een lease getekend, dan neemt #tekenManifest het vergeet-pad.
     if (this.focusApp === a.app) this.#teken();
     else if (this.hubIn) this.#teken();
@@ -509,6 +520,7 @@ export class Kern extends Zender {
     // Een lease-app met focus die wegvalt: oppervlak uit (geen bevroren beeld); terug = zijn kaart terug.
     if (this.hubIn || (a && a.app === this.focusApp && a.manifest?.lease)) this.#teken();
     this.spel.bijwerken();   // wie speelt kan wegvallen (of terugkomen)
+    this.#bijdrage(this.bijdragen.bijwerken()); // de bron van de sectie ook (§18)
     this.#beeldGewijzigd();
   }
 
@@ -875,6 +887,9 @@ export class Kern extends Zender {
     const bpm = Math.max(20, Math.min(300, Math.round((60000 / gem) * 10) / 10));
     this.#globaal({ bpm });
   }
+
+  /** Wat een app aan globaal leverde (§18), als er iets veranderde: één globaal naar iedereen. @param {Record<string, number|string>} delta */
+  #bijdrage(delta) { if (Object.keys(delta).length) this.#globaal(delta); }
 
   /** @param {Record<string, number|string>} delta */
   #globaal(delta) {
@@ -1462,6 +1477,8 @@ export class Kern extends Zender {
       pickup,
       // Lopende slews (§12): waar een parameter heen glijdt en wanneer hij er is (eindMs op de kern-klok, zie `nu`).
       slews: [...this.slews.values()].map((x) => ({ app: x.app, id: x.id, doel: x.slew.naar, eindMs: x.slew.start + x.slew.duurMs })),
+      // §18: per globale groep de app die hem nu levert (null = niemand; de waarden in globaal blijven dan staan).
+      bronnen: this.bijdragen.bronnen(),
       nu: this.klok.nu(),
     };
   }
