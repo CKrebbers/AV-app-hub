@@ -36,11 +36,12 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | app → hub | `{t:"hb"}` | hartslag, minstens elke `hb_s` seconden |
 | app → hub | `{t:"led", dev?, bytes:[[…],…]}` | alleen lease: LED-berichten. Zonder `dev` (of `"apc40"`) voor de APC; `dev:"maschine-mk2"` voor de Maschine (§17); `"xboard49"` wordt bewaard maar nergens getoond (het keyboard ontvangt niets); een onbekend apparaat: genegeerd |
 | app → hub | `{t:"scherm", dev:"maschine-mk2", nr, data}` | alleen lease, met `maschine-mk2` in `speelt`: scherm `nr` (0 = links, 1 = rechts), `data` = base64 van precies 2048 bytes (§17) |
+| app → hub | `{t:"globaal", waarden}` | alleen met `levert` in het manifest: de app levert iets aan de globale laag, nu de sectie van het nummer (`sectie.energie` 0..1, `sectie.label` tekst, `sectie.nieuw: true`; §18) |
 | hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"` |
 | hub → app | `{t:"trig", id, aan}` | trigger in (`aan:true`) en uit (`aan:false`) |
 | hub → app | `{t:"scene", i}` | scène `i` (0-based) uit `manifest.scenes` |
 | hub → app | `{t:"focus", aan}` | de app kreeg of verloor de APC-focus |
-| hub → app | `{t:"globaal", waarden}` | globale macro's en klokken (§6), alleen gewijzigde sleutels |
+| hub → app | `{t:"globaal", waarden}` | globale macro's, klokken en de sectie (§6, §18), alleen gewijzigde sleutels; bij elke `hallo` eerst alles |
 | hub → app | `{t:"midi", dev, bytes}` | alleen lease: ruw MIDI-bericht van de APC (`dev:"apc40"`, §5), of van een speelapparaat (`"xboard49"`, `"maschine-mk2"`, §17) |
 | hub → app | `{t:"fout", reden}` | bv. ongeldig manifest; de verbinding blijft open, behalve bij close-code 4001 (§11) en 4003 (§13) |
 
@@ -80,6 +81,7 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | `lease` | nee | `true` = deze app krijgt ruwe APC-MIDI (§5) |
 | `rings` | nee | alleen lease: `"host"` (app tekent ringen, standaard) of `"auto"` (hub tekent ringen mee met de knop — voor apps gebouwd op APC-modus 0x41, zoals av-kern) |
 | `speelt` | nee | alleen lease: de speelapparaten die deze app bespeelt, bv. `["xboard49", "maschine-mk2"]` (§17). Max 8 namen; een naam die de hub niet kent valt weg |
+| `levert` | nee | de groepen die deze app aan de globale laag levert (§18): nu alleen `["sectie"]`. Met of zonder lease. Max 8 namen; een groep die de hub niet kent valt weg |
 | `scenes` | nee | namen; komen op de scene-knoppen |
 | `params` | ja (mag leeg bij lease) | max 128 |
 
@@ -123,7 +125,7 @@ De LPD8 werkt altijd, los van focus. Knoppen 1–8 zetten globale macro's; elke 
 | P4 | gebaren opnemen aan/uit | hub-log |
 | P5–P8 | snapshot 1–4 (lang = opslaan) | `zet` naar alle apps |
 
-`globaal` bevat ook: `adem` (fase 0..1, ±10 Hz), `grondtoon` (`"D"`), `bpm`.
+`globaal` bevat ook: `adem` (fase 0..1, ±10 Hz), `grondtoon` (`"D"`), `bpm`, en de sectie van het nummer die een app aanlevert (`sectie.energie`, `sectie.label`, `sectie.nieuw`; §18).
 
 ## 7. APC-indeling voor manifest-apps
 
@@ -142,7 +144,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 
 | Richting | Bericht |
 |---|---|
-| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
+| hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], bronnen:{sectie}, nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `bronnen` = per globale groep de app die hem nu levert, of `null` (§18). `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
 | hub → cockpit | `{t:"leds", dev:"apc40", staat:{<control-id>: LedStaat}}` — alleen gewijzigde |
 | hub → cockpit | `{t:"invoer", g}` — elke controller-gebeurtenis (voor de live-weergave) |
 | cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam |
@@ -155,7 +157,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 Zodat transports, drivers en kern los van elkaar gebouwd kunnen worden. Types in `src/protocol/types.js`.
 
 - Een **Verbinding** is alles waarlangs de hub met één app praat: `{ app, stuur(bericht), sluit?() }`. De WS-server maakt er één per socket; een driver (MIDI, HTTP, TD) is er zelf één.
-- `kern.verbind(v)` → nieuwe verbinding (app nog onbekend); `kern.ontvang(v, bericht)` voor elk gecontroleerd bericht (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`) — bij `hallo` zet de kern `v.app`; `kern.verbreek(v)` bij sluiten.
+- `kern.verbind(v)` → nieuwe verbinding (app nog onbekend); `kern.ontvang(v, bericht)` voor elk gecontroleerd bericht (`hallo`, `manifest`, `staat`, `zet`, `hb`, `led`, `scherm`, `globaal`) — bij `hallo` zet de kern `v.app`; `kern.verbreek(v)` bij sluiten.
 - `kern.invoer(g, bytes)` voor elke gebeurtenis van `ApcSessie`/`Lpd8Sessie` en van de virtuele controllers (ruwe bytes zijn nodig voor lease).
 - `kern.cockpit(b)`, `kern.focus(app)`, `kern.bewaar(nr)`, `kern.laad(nr)`, `kern.herteken()` (na opnieuw aansluiten), `kern.apparaatWeg(dev)`, `kern.zetApparaat(dev, info)`, `kern.zetOpnameInfo({map, melding, fout, sinds})` (alleen de meegegeven velden veranderen; `beeld.opnameInfo`, §8), `kern.beeld()`, `kern.stop()`.
 - `kern.exporteer()` / `kern.importeer(data)`: het geheugen over een herstart heen (§12), puur; `src/opslag.js` schrijft en leest het.
@@ -175,7 +177,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - Hartslag: `config.hartslag.stil_s`/`weg_s` gelden voor `hb_s = 1`; een app met `hb_s = 2` krijgt twee keer zo lang.
 
 **Globaal (§6)**
-- Sleutels in `globaal` zijn de rolnamen (`macro.ruimte`, …), plus `adem` (fase 0..1), `klok.adem_periode` (0..1 → `4 + 12·v` seconden), `bpm`, `grondtoon`, `paniek` (1 tijdens paniek, 0 na loslaten van P1).
+- Sleutels in `globaal` zijn de rolnamen (`macro.ruimte`, …), plus `adem` (fase 0..1), `klok.adem_periode` (0..1 → `4 + 12·v` seconden), `bpm`, `grondtoon`, `paniek` (1 tijdens paniek, 0 na loslaten van P1), en sinds golf 10 de sectie (`sectie.energie`, `sectie.label`, `sectie.nieuw`; §18).
 - P3 zet `adem` terug op 0 (geen aparte `adem_fase`).
 - LPD8-knoppen werken met pickup tegen de huidige waarde (eerste app met die rol, anders 0,5): er springt nooit iets, ook niet bij de eerste aanraking (uitzondering na een paniek: §14).
 - P5–P8 en Bank+Scene: kort of lang wordt beslist bij loslaten (> 600 ms = bewaren). Snapshots bewaren app-waarden, geen globale macro's.
@@ -329,3 +331,69 @@ De hub probeert het bij elke hotplug-ronde opnieuw.
 MIDI, al uitgedund); `herhaal` speelt ze niet af (ze gaan alleen naar lease-apps, die niet in de eindstand staan).
 In een proeflogboek: elk knoppenrapport van de Maschine ruw (`maschine-mk2`), padrapporten alleen als ze iets deden of
 tijdens de rustopname, en de virtuele MIDI als `maschine-mk2-midi` (golden test, `test/herspeel.js`).
+
+## 18. Een app levert aan de globale laag: de sectie (golf 10)
+
+Tot golf 10 kwam alles in `globaal` van de hub zelf (LPD8, tap tempo, de adem-klok; alleen de adem-periode volgt een
+app, §14). Nu kan een app er ook iets aan leveren. Eerste en enige groep: **de sectie van het nummer**. Varve DJ weet
+of je in een intro, opbouw, drop, break of outro zit en wanneer er een nieuwe begint; de beeld-apps (av-kern,
+waterschaal, formula-lab, …) reageren daarop via `globaal`, zonder elkaar te kennen. Getoetst in
+`test/kern-sectie.test.js`, `test/protocol.test.js` en de cockpit-browsertest.
+
+**Aankondigen.** Een app die levert, zet de groep in zijn manifest: `"levert": ["sectie"]` (§4), met of zonder lease.
+Alleen dan neemt de hub zijn `globaal` aan; sleutels van een groep die niet in `levert` staat, en alles wat vóór het
+manifest komt, negeert de hub.
+
+**Van de app:** `{t:"globaal", waarden}`, elke sleutel optioneel.
+
+| Sleutel | Waarde | Betekenis |
+|---|---|---|
+| `sectie.energie` | 0..1 (geklemd) | hoeveel energie de sectie heeft: 0 = kaal of stil, 1 = de drop op zijn hardst. Mag binnen een sectie veranderen (een opbouw die stijgt) |
+| `sectie.label` | tekst, 1..32 tekens | de soort sectie; Varve DJ gebruikt `intro`, `opbouw`, `drop`, `break`, `outro`. Een ontvanger verdraagt elk ander label (zoals `grondtoon` tekst is) |
+| `sectie.nieuw` | `true` | trigger: er begint nú een nieuwe sectie (op de eerste tel). `false` = niets |
+
+- Bij een nieuwe sectie stuurt de app de drie samen in één bericht; de hub stuurt ze dan ook samen door, in één
+  `globaal`, zodat een ontvanger de klap, de energie en het label tegelijk heeft.
+- Een bekende sleutel met een verkeerd type (`sectie.nieuw: 1`, energie als tekst, een label van 40 tekens) →
+  `{t:"fout"}` en het hele bericht valt weg (zoals een `zet` zonder getal). Een onbekende sleutel: genegeerd (§1.5).
+- Alleen bij verandering, hooguit 10×/s (zoals de adem). De hub stuurt alleen door wat echt anders is; `nieuw` telt altijd.
+- Na elke (her)verbinding stuurt de app, na `hallo`/`manifest`/`staat`, zijn huidige sectie opnieuw: energie en label,
+  **zonder** `nieuw` (anders klapt elk beeld bij elke netwerkhapering).
+
+**Naar iedereen** (`globaal`, §6), ook naar de leverende app zelf:
+- `sectie.energie` en `sectie.label`: zodra een bron ze stuurde. Daarvoor ontbreken ze: een app weet zo dat er geen
+  sectie bekend is en doet zijn eigen ding.
+- `sectie.nieuw`: een **teller van de hub**, 0..1 in stappen van 1/16: `(aantal nieuwe secties mod 16) / 16`. Hij
+  staat vanaf de start in `globaal` (0) en verspringt bij elke `sectie.nieuw: true` van de bron. **Een ontvanger klapt
+  als de waarde anders is dan de vorige die hij zag; de allereerste (in de `globaal` bij `hallo`) is alleen het
+  vertrekpunt.** Wie per bericht werkt: na de eerste staat de sleutel alleen in een `globaal` als hij versprong.
+
+Waarom een teller en geen 1-dan-0 zoals `paniek`:
+- Een app die `globaal` bijhoudt en in zijn tekenlus uitleest (60 fps), mist een 1 en een 0 die vlak na elkaar
+  binnenkomen; een teller blijft staan tot de volgende sectie. Een 1 die de hub een tijd laat staan, zou elke frame
+  opnieuw klappen, of een tweede sectie binnen die tijd inslikken.
+- De cockpit krijgt `beeld` hooguit 10×/s (§8): een puls korter dan 100 ms ziet hij niet, een teller wel (twee secties
+  binnen 100 ms worden één flits).
+- Herverbinden: bij elke `hallo` krijgt een app heel `globaal`. Een herstarte app heeft geen vorige waarde: geen klap.
+  Een app die even weg was (dezelfde instantie) en intussen een nieuwe sectie miste, klapt precies één keer bij
+  terugkomen, met meteen de juiste energie en het juiste label; miste hij niets, dan klapt hij niet. Een puls zou hier
+  een klap missen (hij viel in het gat) of er een verzinnen (hij stond net op 1).
+- Geen timer in de hub, en op de draad 0..1 (§1.2). Van de app naar de hub is het wél een boolean trigger.
+- Bekende grenzen: na een herstart van de hub begint de teller weer bij 0, dus een app die doordraaide klapt dan
+  hooguit één keer; wie in één onderbreking precies 16 secties (of een veelvoud) mist, klapt niet (energie en label
+  kloppen wel).
+
+**Wie is de bron.** De eerste app, in volgorde van aanmelden bij deze hub (zoals de adem, §14), die `sectie` levert en
+niet `weg` is; `stil` telt nog als bron. Van een tweede leverancier bewaart de hub de laatste energie en het laatste
+label, maar stuurt hij niets door. Valt de bron weg (of stuurt hij een manifest zonder `sectie` in `levert`), dan wordt
+de volgende de bron: iedereen krijgt diens laatste energie en label (wat verschilt), zonder klap; stuurde die nog niets,
+dan blijft alles staan. Komt de eerste terug, dan is hij weer de bron, met wat hij het laatst stuurde; een herstarte app
+(nieuwe `inst`) begint zonder bewaarde waarden. `beeld.bronnen.sectie` (§8) zegt wie het nu is (`null` = niemand).
+
+**Bron stil of weg: bevriezen, niet terug naar 0.** De waarden blijven staan. De muziek van Varve DJ speelt in zijn eigen
+tabblad door als de verbinding met de hub hapert of de hub herstart; een val naar 0 zou bij elke hapering of herlaad
+alle beeld-apps laten dippen. Stopt de muziek echt, dan zegt de app dat zelf (`sectie.energie: 0`). Na een herstart van
+de hub ontbreken energie en label tot de bron weer stuurt.
+
+**Kern-API (§9):** de kern geeft een `globaal` van een app door aan `src/core/bijdragen.js` (puur: bron per groep,
+bewaarde waarden per app, de teller); wat daaruit komt, gaat als één `globaal` naar alle apps. `kern.beeld().bronnen`.

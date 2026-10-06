@@ -16,6 +16,8 @@ export const ROLLEN = /** @type {const} */ ([
 export const MAX_PARAMS = 128;
 /** Speelapparaten die een lease-app in `speelt` kan noemen (§17). Een onbekende naam valt weg (grondregel 5). */
 export const SPEELAPPARATEN = /** @type {const} */ (['xboard49', 'maschine-mk2']);
+/** Groepen die een app aan de globale laag kan leveren (`levert`, §18). Een onbekende groep valt weg (grondregel 5). */
+export const GROEPEN = /** @type {const} */ (['sectie']);
 
 const is01 = (/** @type {unknown} */ x) => typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 1;
 const isTekst = (/** @type {unknown} */ x, max = 64) => typeof x === 'string' && x.length > 0 && x.length <= max;
@@ -41,6 +43,9 @@ export function valideerManifest(m) {
   if (x.speelt !== undefined) {
     if (!(Array.isArray(x.speelt) && x.speelt.length <= 8 && x.speelt.every((d) => typeof d === 'string' && APP_ID.test(d)))) f.push('speelt moet een lijst apparaatnamen zijn (max 8), bv. ["xboard49", "maschine-mk2"]');
     else if (x.lease !== true && x.speelt.length) f.push('speelt kan alleen met lease: true (de app krijgt ruwe MIDI van die apparaten)');
+  }
+  if (x.levert !== undefined && !(Array.isArray(x.levert) && x.levert.length <= 8 && x.levert.every((g) => typeof g === 'string' && APP_ID.test(g)))) {
+    f.push('levert moet een lijst groepen zijn (max 8), bv. ["sectie"]');
   }
   const lease = x.lease === true;
   if (!Array.isArray(x.params)) { if (!lease) f.push('params moet een lijst zijn'); }
@@ -74,6 +79,8 @@ export function valideerManifest(m) {
       truth: x.truth ?? 'app', hb_s: x.hb_s ?? 1, lease, ...(lease ? { rings: x.rings ?? 'host' } : {}),
       // Alleen de apparaten die de hub kent, elk één keer (een nieuwere app mag er een noemen die deze hub niet kent).
       ...(lease && Array.isArray(x.speelt) ? { speelt: [...new Set(x.speelt.filter((/** @type {any} */ d) => SPEELAPPARATEN.includes(d)))] } : {}),
+      // §18: alleen de groepen die de hub kent, elk één keer.
+      ...(Array.isArray(x.levert) ? { levert: [...new Set(x.levert.filter((/** @type {any} */ g) => GROEPEN.includes(g)))] } : {}),
       scenes: x.scenes ?? [], params,
     },
   };
