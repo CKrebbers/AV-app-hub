@@ -4,12 +4,17 @@
 // controleert of een app zich aan PROTOCOL.md houdt. Voor elke app-koppeling:
 //   node tools/nep-hub.mjs --toets [--poort 7799]
 //   en open daarna de app met ?hub=ws://localhost:7799/app
+// Een app met `levert` (§18, de sectie) wordt ook daarop getoetst: globaal pas na het manifest, alleen voor groepen
+// uit levert, hooguit 10×/s, en na herverbinden de huidige sectie opnieuw zonder nieuw. Probeer: node tools/nep-app.mjs --sectie
 // Als bibliotheek: `const r = await toetsApp({ poort, start: async (url) => … })`.
 import { WebSocketServer } from 'ws';
-import { leesVanApp, isModeSysex } from '../src/protocol/berichten.js';
+import { leesVanApp, isModeSysex, groepVan, SECTIE_STAPPEN } from '../src/protocol/berichten.js';
 import { valideerManifest } from '../src/protocol/manifest.js';
 
 /** @typedef {{ naam: string, ok: boolean, detail?: string }} Uitslag */
+
+/** Hooguit zoveel `globaal` van een app binnen één seconde (§18: hooguit 10×/s, met wat speling voor de timing). */
+const GLOBAAL_PER_S = 12;
 
 /** Wat de toets een app stuurt per speelapparaat (§17): een noot aan en uit, en wat elk apparaat eigens heeft. */
 const SPEEL_MIDI = {
@@ -76,7 +81,7 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
       if (eerste) s0.send(JSON.stringify({ t: 'zet', id: eerste.id, v: 0.25, bron: 'apc40' }));
       if (trig) { s0.send(JSON.stringify({ t: 'trig', id: trig.id, aan: true })); s0.send(JSON.stringify({ t: 'trig', id: trig.id, aan: false })); }
       s0.send(JSON.stringify({ t: 'focus', aan: true }));
-      s0.send(JSON.stringify({ t: 'globaal', waarden: { 'macro.ruimte': 0.5, adem: 0.1, grondtoon: 'D' } }));
+      s0.send(JSON.stringify({ t: 'globaal', waarden: { 'macro.ruimte': 0.5, adem: 0.1, grondtoon: 'D', 'sectie.nieuw': 1 / SECTIE_STAPPEN, 'sectie.energie': 0.8, 'sectie.label': 'drop' } }));
       s0.send(JSON.stringify({ t: 'iets-nieuws-uit-de-toekomst', x: 1 }));
       // §17: een app die speelapparaten speelt, krijgt hun MIDI (ook de schuif van de Xboard als SysEx), en een
       // apparaat dat hij niet kent.
@@ -95,10 +100,36 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
         const schermen = log.filter((x) => x.b.t === 'scherm');
         if (schermen.length) noteer('scherm: alleen met maschine-mk2 in speelt', (manifest.speelt ?? []).includes('maschine-mk2'));
       }
+      // §18: stuurde een app die de sectie levert er al een, dan moet hij hem na herverbinden opnieuw sturen.
+      const levert = manifest.levert ?? [];
+      const hadSectie = levert.includes('sectie') && log.some((x) => x.s === 0 && x.b.t === 'globaal' && Object.keys(x.b.waarden).some((k) => k !== 'sectie.nieuw'));
       const voor = sockets.length;
       s0.close();
       const terug = await wachtOp(() => sockets.length > voor && log.find((x) => x.s === voor && x.b.t === 'hallo'), herverbindMs);
       noteer('verbindt opnieuw na wegvallen', !!terug, terug ? undefined : `niet binnen ${herverbindMs} ms`);
+      if (hadSectie) {
+        const opnieuw = terug ? await wachtOp(() => log.find((x) => x.s === voor && x.b.t === 'globaal' && Object.keys(x.b.waarden).length), 2000) : null;
+        const klapt = !!opnieuw && 'sectie.nieuw' in opnieuw.b.waarden;
+        noteer('levert sectie: na herverbinden de sectie opnieuw, zonder nieuw', !!opnieuw && !klapt,
+          !opnieuw ? 'binnen 2 s na het herverbinden geen globaal met de huidige sectie'
+            : klapt ? 'sectie.nieuw na herverbinden: dan klapt elk beeld bij elke netwerkhapering' : undefined);
+      }
+      // §18: globaal van een app alleen na zijn manifest, alleen voor groepen uit levert, en hooguit 10×/s.
+      const globalen = log.filter((x) => x.b.t === 'globaal');
+      if (globalen.length || levert.length) {
+        const fout = globalen.filter((x) => {
+          const m = log.findIndex((y) => y.s === x.s && y.b.t === 'manifest');
+          return m < 0 || log.indexOf(x) < m || Object.keys(x.b.waarden).some((k) => !levert.includes(groepVan(k)));
+        });
+        noteer('globaal alleen na het manifest en voor groepen uit levert', !fout.length,
+          fout.length ? `${fout.length}× fout, bv. ${JSON.stringify(fout[0].b.waarden)}${levert.length ? '' : ' (levert ontbreekt in het manifest)'}`
+            : globalen.length ? undefined : 'nog niets gestuurd (geen sectie bekend tijdens de toets?)');
+      }
+      if (globalen.length) {
+        let max = 0;
+        for (let i = 0, j = 0; i < globalen.length; i++) { while (globalen[i].t - globalen[j].t >= 1000) j++; max = Math.max(max, i - j + 1); }
+        noteer('globaal hooguit 10×/s', max <= GLOBAAL_PER_S, `hooguit ${max} binnen 1 s`);
+      }
     }
     noteer('geen ongeldige berichten', fouten.length === 0, fouten.slice(0, 3).join('; ') || undefined);
     return { ok: uit.every((u) => u.ok), uitslagen: uit, app: manifest?.app ?? null };

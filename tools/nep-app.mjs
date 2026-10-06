@@ -2,8 +2,9 @@
 // @ts-check
 // Nep-app: een app die het protocol netjes volgt. Voor tests van de hub, voor demo's,
 // en als voorbeeld voor elke echte koppeling (PROTOCOL.md §3).
-//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app] [--speelt]
+//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app] [--speelt | --sectie]
 //   --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (PROTOCOL §17): pads lichten op, een scherm
+//   --sectie: een muziek-app die de sectie levert (PROTOCOL §18): elke 8 s een nieuwe (intro, opbouw, drop, break, outro)
 import WebSocket from 'ws';
 import { leesNaarApp, nieuweInst } from '../src/protocol/berichten.js';
 import { Zender } from '../src/core/zender.js';
@@ -33,6 +34,17 @@ export const speelManifest = (app = 'nep-speler') => ({
   speelt: ['xboard49', 'maschine-mk2'], scenes: [], params: [],
 });
 
+/**
+ * Een app die de sectie van het nummer levert (PROTOCOL §18), zoals Varve DJ: een lease-app met `levert: ["sectie"]`.
+ * @param {string} app @returns {Manifest}
+ */
+export const sectieManifest = (app = 'nep-muziek') => ({
+  v: 1, app, naam: 'Nep-muziek', kleur: '#ff7a1a', truth: 'app', hb_s: 1, lease: true, rings: 'host',
+  levert: ['sectie'], scenes: [], params: [],
+});
+/** De secties die de nep-muziek-app rondspeelt: [label, energie]. */
+export const NEP_SECTIES = /** @type {const} */ ([['intro', 0.2], ['opbouw', 0.55], ['drop', 0.9], ['break', 0.35], ['outro', 0.15]]);
+
 /** Een scherm van de Maschine: een rand en een diagonaal (2048 bytes, rij voor rij, hoogste bit = links), base64. */
 export function nepScherm() {
   const b = new Uint8Array(2048);
@@ -43,8 +55,11 @@ export function nepScherm() {
 }
 
 export class NepApp extends Zender {
-  /** @param {{ url: string, manifest?: Manifest, inst?: string, herverbind?: boolean }} o */
-  constructor({ url, manifest = voorbeeldManifest(), inst = nieuweInst(), herverbind = true }) {
+  /**
+   * @param {{ url: string, manifest?: Manifest, inst?: string, herverbind?: boolean, sectieMs?: number }} o
+   *   sectieMs: met `sectie` in `levert` begint er zo vaak een nieuwe sectie (§18); zonder stuurt de app zelf geen sectie
+   */
+  constructor({ url, manifest = voorbeeldManifest(), inst = nieuweInst(), herverbind = true, sectieMs = undefined }) {
     super();
     this.url = url;
     this.manifest = manifest;
@@ -59,9 +74,24 @@ export class NepApp extends Zender {
     this.wacht = 500;
     this.gestopt = false;
     this.hb = null;
+    /** §18: welke sectie er nu speelt (index in NEP_SECTIES), en wanneer de volgende begint. */
+    this.sectieMs = manifest.levert?.includes('sectie') && typeof sectieMs === 'number' && sectieMs > 0 ? sectieMs : null;
+    this.sectie = 0;
+    /** @type {any} */ this.sectieTimer = null;
   }
-  start() { this.gestopt = false; this.#verbind(); return this; }
-  stop() { this.gestopt = true; if (this.hb) clearInterval(this.hb); this.ws?.close(); }
+  start() {
+    this.gestopt = false;
+    // De muziek loopt door, ook als de verbinding met de hub even weg is (zoals Varve DJ in zijn tabblad).
+    if (this.sectieMs && !this.sectieTimer) this.sectieTimer = setInterval(() => { this.sectie = (this.sectie + 1) % NEP_SECTIES.length; this.#stuurSectie(true); }, this.sectieMs);
+    this.#verbind();
+    return this;
+  }
+  stop() { this.gestopt = true; if (this.hb) clearInterval(this.hb); if (this.sectieTimer) clearInterval(this.sectieTimer); this.sectieTimer = null; this.ws?.close(); }
+  /** §18: de huidige sectie naar de hub; `nieuw` alleen als hij nu begint (niet na herverbinden). @param {boolean} nieuw */
+  #stuurSectie(nieuw) {
+    const [label, energie] = NEP_SECTIES[this.sectie];
+    this.#stuur({ t: 'globaal', waarden: { ...(nieuw ? { 'sectie.nieuw': true } : {}), 'sectie.energie': energie, 'sectie.label': label } });
+  }
   /** De app verandert zelf iets (muis). @param {string} id @param {number} v */
   zelfZetten(id, v) { this.waarden[id] = v; this.#stuur({ t: 'zet', id, v }); }
   /** @param {object} b */
@@ -76,6 +106,8 @@ export class NepApp extends Zender {
       this.#stuur({ t: 'staat', waarden: this.waarden });
       this.hb = setInterval(() => this.#stuur({ t: 'hb' }), this.manifest.hb_s * 1000 * 0.8);
       if (this.manifest.speelt?.includes('maschine-mk2')) this.#stuur({ t: 'scherm', dev: 'maschine-mk2', nr: 0, data: nepScherm() });
+      // §18: na elke (her)verbinding de sectie die nu speelt, zonder nieuw (anders klapt elk beeld bij een hapering).
+      if (this.sectieMs) this.#stuurSectie(false);
       this.meld('open');
     });
     ws.on('message', (data) => {
@@ -107,9 +139,11 @@ export class NepApp extends Zender {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (/** @type {string} */ n, /** @type {string} */ s) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : s; };
   // --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (§17) in plaats van een manifest-app.
-  const naam = arg('--app', process.argv.includes('--speelt') ? 'nep-speler' : 'nep-app');
-  const manifest = process.argv.includes('--speelt') ? speelManifest(naam) : voorbeeldManifest(naam);
-  const app = new NepApp({ url: arg('--url', 'ws://localhost:7700/app'), manifest }).start();
+  // --sectie: een muziek-app die de sectie levert (§18), elke 8 s een nieuwe.
+  const speelt = process.argv.includes('--speelt'), sectie = process.argv.includes('--sectie');
+  const naam = arg('--app', speelt ? 'nep-speler' : sectie ? 'nep-muziek' : 'nep-app');
+  const manifest = speelt ? speelManifest(naam) : sectie ? sectieManifest(naam) : voorbeeldManifest(naam);
+  const app = new NepApp({ url: arg('--url', 'ws://localhost:7700/app'), manifest, sectieMs: sectie ? 8000 : undefined }).start();
   app.bij('open', () => console.log('verbonden'));
   app.bij('dicht', () => console.log('verbinding weg, opnieuw proberen…'));
   app.bij('bericht', (/** @type {any} */ b) => console.log(JSON.stringify(b)));

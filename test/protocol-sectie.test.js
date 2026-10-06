@@ -3,7 +3,8 @@
 import { describe, it, expect } from 'vitest';
 import { valideerManifest, GROEPEN } from '../src/protocol/manifest.js';
 import { leesVanApp, leesNaarApp, VAN_APP, GLOBAAL_VAN_APP, SECTIE_STAPPEN } from '../src/protocol/berichten.js';
-import { voorbeeldManifest } from '../tools/nep-app.mjs';
+import { NepApp, sectieManifest, voorbeeldManifest } from '../tools/nep-app.mjs';
+import { toetsApp } from '../tools/nep-hub.mjs';
 
 describe('manifest: levert', () => {
   it('een app kondigt aan dat hij de sectie levert, met of zonder lease', () => {
@@ -60,4 +61,67 @@ describe('berichten: globaal van een app', () => {
     expect(leesNaarApp({ t: 'globaal', waarden: { 'sectie.energie': 2 } }).ok).toBe(false);
     expect(leesNaarApp({ t: 'globaal', waarden: { 'sectie.label': 3 } }).ok).toBe(false);
   });
+});
+
+describe('conformiteit: een nep-app die de sectie levert', () => {
+  const namen = (/** @type {any} */ r) => r.uitslagen.map((/** @type {any} */ u) => u.naam);
+  const fout = (/** @type {any} */ r) => r.uitslagen.filter((/** @type {any} */ u) => !u.ok).map((/** @type {any} */ u) => u.naam);
+
+  it('de nep-app met levert sectie is conform: geldig, na het manifest, hooguit 10×/s, na herverbinden opnieuw zonder nieuw', async () => {
+    /** @type {any} */ let app;
+    const r = await toetsApp({ poort: 0, start: (url) => { app = new NepApp({ url, manifest: sectieManifest(), sectieMs: 700 }).start(); } });
+    app.stop();
+    expect(r.uitslagen.filter((u) => !u.ok)).toEqual([]);
+    expect(namen(r)).toEqual(expect.arrayContaining([
+      'globaal alleen na het manifest en voor groepen uit levert',
+      'globaal hooguit 10×/s',
+      'levert sectie: na herverbinden de sectie opnieuw, zonder nieuw',
+    ]));
+    // De toets stuurde zelf ook een sectie mee in globaal; daar moet elke app tegen kunnen.
+    expect(app.ontvangen.some((/** @type {any} */ b) => b.t === 'globaal' && 'sectie.nieuw' in b.waarden)).toBe(true);
+  }, 20000);
+
+  it('een app die de sectie stuurt zonder levert in zijn manifest, valt door de toets', async () => {
+    /** @type {any} */ let app;
+    const r = await toetsApp({ poort: 0, herverbindMs: 1500, start: (url) => {
+      app = new NepApp({ url, manifest: voorbeeldManifest('stiekem') }).start();
+      app.bij('open', () => app.ws.send(JSON.stringify({ t: 'globaal', waarden: { 'sectie.energie': 0.5 } })));
+    } });
+    app.stop();
+    expect(fout(r)).toContain('globaal alleen na het manifest en voor groepen uit levert');
+  }, 20000);
+
+  it('een app die nieuw als getal stuurt (geen boolean), valt door de toets', async () => {
+    /** @type {any} */ let app;
+    const r = await toetsApp({ poort: 0, herverbindMs: 1500, start: (url) => {
+      app = new NepApp({ url, manifest: sectieManifest('slordig') }).start();
+      app.bij('open', () => app.ws.send(JSON.stringify({ t: 'globaal', waarden: { 'sectie.nieuw': 1, 'sectie.energie': 0.5 } })));
+    } });
+    app.stop();
+    expect(fout(r)).toContain('geen ongeldige berichten');
+  }, 20000);
+
+  it('een app die na elke verbinding met nieuw: true begint, valt door de toets (elk beeld klapt bij een hapering)', async () => {
+    /** @type {any} */ let app;
+    const r = await toetsApp({ poort: 0, start: (url) => {
+      app = new NepApp({ url, manifest: sectieManifest('klapper') }).start();
+      app.bij('open', () => app.ws.send(JSON.stringify({ t: 'globaal', waarden: { 'sectie.nieuw': true, 'sectie.energie': 0.5, 'sectie.label': 'drop' } })));
+    } });
+    app.stop();
+    expect(fout(r)).toContain('levert sectie: na herverbinden de sectie opnieuw, zonder nieuw');
+  }, 20000);
+
+  it('een app die de energie 50×/s stuurt, valt door de toets', async () => {
+    /** @type {any} */ let app;
+    const r = await toetsApp({ poort: 0, herverbindMs: 1500, start: (url) => {
+      app = new NepApp({ url, manifest: sectieManifest('druk') }).start();
+      let n = 0;
+      app.bij('open', () => {
+        if (n) return;
+        const t = setInterval(() => { app.ws?.send(JSON.stringify({ t: 'globaal', waarden: { 'sectie.energie': (n++ % 100) / 100 } })); if (n > 60) clearInterval(t); }, 20);
+      });
+    } });
+    app.stop();
+    expect(fout(r)).toContain('globaal hooguit 10×/s');
+  }, 20000);
 });
