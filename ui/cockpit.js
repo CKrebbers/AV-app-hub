@@ -8,7 +8,7 @@ import { klem01 } from '../src/protocol/berichten.js';
 import { maakApc } from './apc.js';
 import { maakLpd8, KNOP_NAMEN } from './lpd8.js';
 import { Verbinding, cockpitUrl } from './verbinding.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan } from './opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan } from './opmaak.js';
 
 const LOG_MAX = 50;
 const LANG_DRUKKEN_MS = 700;
@@ -97,6 +97,7 @@ function tekenBeeld() {
   tekenApps(apps, app);
   tekenParams(apps.find((/** @type {any} */ a) => a && a.app === app) ?? null, slewsVan(beeld, app));
   tekenGlobaal(obj(beeld.globaal));
+  tekenSectie(sectieVan(beeld));
 }
 
 // ── opname (LPD8-pad 4) ─────────────────────────────────────────────────────
@@ -424,6 +425,22 @@ function tekenGlobaal(g) {
   $('adem-tekst').textContent = `${adem.periode.toFixed(1)} s · ${(60 / adem.periode).toFixed(1)}/min`;
   document.body.classList.toggle('paniek', !!g.paniek);
   if (nieuweBpm !== bpm) { bpm = nieuweBpm; apc.herteken(); }
+}
+
+/** De laatst geziene teller van sectie.nieuw (§18); de eerste is alleen het vertrekpunt. @type {number|null} */
+let sectieTeller = null;
+
+/** De sectie: label · energie, de bron in de tooltip, en een flits als er een nieuwe begint. @param {ReturnType<typeof sectieVan>} s */
+function tekenSectie(s) {
+  const el = $('sectie');
+  if (el.textContent !== s.tekst) el.textContent = s.tekst;
+  el.title = s.bron ? `sectie van ${s.bron}` : s.tekst === '—' ? 'geen app levert de sectie' : 'geen bron meer: de laatste sectie staat bevroren';
+  if (s.teller === null) return;
+  if (sectieTeller !== null && s.teller !== sectieTeller) {
+    el.dataset.klappen = String(Number(el.dataset.klappen ?? 0) + 1);
+    el.classList.remove('klap'); void el.offsetWidth; el.classList.add('klap');
+  }
+  sectieTeller = s.teller;
 }
 
 function ademLus() {

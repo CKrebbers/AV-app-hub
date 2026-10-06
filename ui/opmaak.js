@@ -150,3 +150,25 @@ export function slewsVan(beeld, app) {
   }
   return uit;
 }
+
+/**
+ * De sectie uit het beeld (PROTOCOL.md §18): `label · energie%` (of wat er is, anders —), de teller van
+ * `sectie.nieuw` (verspringt bij elke nieuwe sectie; null als hij er niet is) en de naam van de app die hem levert
+ * (null = geen bron: de waarden staan dan bevroren). Robuust tegen ontbrekende of rare velden.
+ * @param {any} beeld
+ * @returns {{ tekst: string, teller: number|null, bron: string|null }}
+ */
+export function sectieVan(beeld) {
+  const g = beeld && typeof beeld.globaal === 'object' && beeld.globaal ? beeld.globaal : {};
+  const getal = (/** @type {unknown} */ x) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+  const energie = getal(g['sectie.energie']);
+  const label = typeof g['sectie.label'] === 'string' && g['sectie.label'] ? g['sectie.label'] : null;
+  const delen = [...(label ? [label] : []), ...(energie !== null ? [`${Math.round(Math.max(0, Math.min(1, energie)) * 100)}%`] : [])];
+  const id = beeld && typeof beeld.bronnen === 'object' && beeld.bronnen && typeof beeld.bronnen.sectie === 'string' ? beeld.bronnen.sectie : null;
+  const app = id && Array.isArray(beeld.apps) ? beeld.apps.find((/** @type {any} */ a) => a && a.app === id) : null;
+  return {
+    tekst: delen.length ? delen.join(' · ') : '—',
+    teller: getal(g['sectie.nieuw']),
+    bron: id ? (typeof app?.naam === 'string' && app.naam ? app.naam : id) : null,
+  };
+}
