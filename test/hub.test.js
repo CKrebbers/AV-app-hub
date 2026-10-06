@@ -4,7 +4,7 @@ import WebSocket from 'ws';
 import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
-import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
+import { NepApp, voorbeeldManifest, sectieManifest } from '../tools/nep-app.mjs';
 
 const wacht = (ms) => new Promise((r) => setTimeout(r, ms));
 const tot = async (fn, ms = 3000) => { const eind = Date.now() + ms; while (Date.now() < eind) { const x = fn(); if (x) return x; await wacht(10); } return fn(); };
@@ -149,6 +149,30 @@ describe('de hele hub', () => {
     }
     expect(i).toBeGreaterThan(0);
     expect([...stand].filter(([, w]) => w > 0)).toEqual([]);
+  });
+
+  it('de sectie van een muziek-app gaat door de echte server naar een andere app en naar de cockpit (§18)', async () => {
+    const { hub, url, app } = await opzet();
+    const beeld = app('formula-lab');
+    const muziek = new NepApp({ url, manifest: sectieManifest('varve-dj'), sectieMs: 150 }).start();
+    lopend.push(() => muziek.stop());
+    const secties = () => beeld.ontvangen.filter((b) => b.t === 'globaal' && 'sectie.label' in b.waarden);
+    await tot(() => secties().length >= 2);
+    const w = secties().at(-1).waarden;
+    expect(typeof w['sectie.energie']).toBe('number');
+    expect(w['sectie.nieuw'] * 16 % 1).toBe(0);
+    expect(hub.kern.beeld().bronnen).toEqual({ sectie: 'varve-dj' });
+    const api = await (await fetch(hub.adres + '/api/beeld')).json();
+    expect(typeof api.globaal['sectie.label']).toBe('string');
+    expect(api.bronnen).toEqual({ sectie: 'varve-dj' });
+    // Weg: de bron is er niet meer, de sectie blijft staan (bevroren), niet terug naar 0.
+    muziek.stop();
+    await tot(() => hub.kern.beeld().bronnen.sectie === null);
+    const bevroren = { ...hub.kern.beeld().globaal };
+    expect(typeof bevroren['sectie.label']).toBe('string');
+    expect(bevroren['sectie.energie']).toBeGreaterThan(0);
+    await wacht(300);
+    expect(hub.kern.beeld().globaal).toMatchObject({ 'sectie.label': bevroren['sectie.label'], 'sectie.energie': bevroren['sectie.energie'], 'sectie.nieuw': bevroren['sectie.nieuw'] });
   });
 
   it('een website van buiten mag de hub niet bedienen', async () => {

@@ -10,3 +10,5 @@ Niet in de lopende fase. Pas oppakken als een speelavond laat zien dat het nodig
 - `npm run check` ook voor de speelapparaten (Maschine bezet of geen invoer → ✗ met wat te doen); `doctor` zegt het nu al.
 - Schermen van de Maschine vanuit de hub: een kleine letterset (zoals die van maschine-code/cabl) zodat apps tekst kunnen sturen in plaats van pixels.
 - De Maschine als virtuele controller in de cockpit (zoals de APC en de LPD8), om zonder toestel te oefenen.
+- Sectie (golf 10) zonder code in de beeld-apps: een rol `sectie.nieuw` op een trigger en `sectie.energie` op een waarde, zodat de hub ze zelf `trig`/`zet` stuurt (zoals de LPD8-macro's), voor apps die alleen een manifest hebben.
+- Meer groepen in `levert`: de maat (tel 1..4, fase in de maat) of het akkoord, als Varve DJ dat weet.

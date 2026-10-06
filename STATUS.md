@@ -158,6 +158,23 @@ Keuzes om na te lopen (zeg het als je het anders wilt):
 - De hubtoets (Bank) doet niets met de speelapparaten: het keyboard speelt door terwijl je focus wisselt.
 - De schuif van de Xboard gaat als ruwe SysEx naar de app (niet omgezet naar een CC).
 
+## Golf 10 — de sectie in de globale laag (gebouwd en getest zonder hardware)
+Een app kan iets aan `globaal` leveren; eerste groep: de sectie van het nummer (PROTOCOL §18).
+- [x] **Protocol** — manifestveld `levert: ["sectie"]`, bericht app → hub `{t:"globaal", waarden}` met `sectie.energie` (0..1), `sectie.label` (tekst) en `sectie.nieuw: true`; validatie in `src/protocol/` (`test/protocol-sectie.test.js`)
+- [x] **Hub** — `src/core/bijdragen.js` (puur): bron = de eerste app met `levert` die niet weg is; `sectie.nieuw` naar de apps als teller (mod 16, /16), zodat niemand een klap mist of er een verzint bij herverbinden of in de cockpit (10×/s); bron weg = bevriezen; `beeld.bronnen` (`test/kern-sectie.test.js`)
+- [x] **Conformiteitstoets** — `node tools/nep-hub.mjs --toets` stuurt elke app een sectie mee en toetst een leverende app (na het manifest, alleen groepen uit `levert`, hooguit 10×/s, na herverbinden opnieuw zonder `nieuw`); `node tools/nep-app.mjs --sectie` doet het voor
+- [x] **Cockpit** — "sectie: drop · 80%" onder Globaal, de bron in de tooltip, een flits bij elke nieuwe sectie
+- [ ] **Varve DJ** — de sectie die je hoort op de maatgever naar de hub sturen (achter `?hub=`, `src/control/hub.js`); komt van de coördinator zodra die bron in Varve er is
+- [ ] **Beeld-apps** — av-kern, waterschaal, formula-lab reageren op `sectie.*` in `globaal` (elk achter zijn eigen vlag, met jouw OK per repo)
+
+Klaar als (op jouw Mac):
+- [ ] `npm start` + `node tools/nep-app.mjs --sectie`: de cockpit toont onder Globaal elke 8 s een andere sectie met een flits; nep-app weg (Ctrl-C) → de laatste sectie blijft staan, de tooltip zegt "geen bron meer"
+- [ ] (na de Varve-kant) Varve DJ speelt een nummer: de cockpit volgt intro → opbouw → drop op de tel
+
+Keuzes om na te lopen (zeg het als je het anders wilt):
+- **Bevriezen, niet terug naar 0**, als de bron wegvalt: de muziek speelt in het tabblad door als alleen de verbinding hapert. Stopt de muziek echt, dan stuurt de app zelf energie 0.
+- **De eerste leverancier wint** (zoals de adem), niet de app met focus: de focus zegt welke app je bedient, niet welke je hoort.
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
