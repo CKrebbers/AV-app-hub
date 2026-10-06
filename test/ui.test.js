@@ -7,7 +7,7 @@ import { maakOntleder, standaardProfiel } from '../src/devices/lpd8.js';
 import { INDELING, BREEDTE, HOOGTE } from '../ui/indeling.js';
 import { drukBytes, losBytes, ccBytes, relBytes, lpdDruk, lpdLos, lpdKnop, animDuur } from '../ui/midi.js';
 import { weergave, LED_KLEUR } from '../ui/led.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, mapNaamVan, looptijdTekst, opnameVan, slewsVan } from '../ui/opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, mapNaamVan, looptijdTekst, opnameVan, slewsVan, sectieVan } from '../ui/opmaak.js';
 import { Verbinding, WACHTTIJDEN, VERBIND_TIJD, cockpitUrl } from '../ui/verbinding.js';
 import { startNepServer, bestandVoor } from './ui-nepserver.js';
 
@@ -175,6 +175,16 @@ describe('opmaak', () => {
     expect(slewsVan(b, null).size).toBe(0);
     expect(slewsVan({ slews: 'x' }, 'lab').size).toBe(0);
     expect(slewsVan({ slews: [{ app: 'lab', id: 'n', doel: 1.4, eindMs: 1 }] }, 'lab').get('n')).toEqual({ doel: 1, restMs: null });
+  });
+  it('de sectie uit het beeld (§18): label · energie, de teller, en de naam van de bron', () => {
+    const apps = [{ app: 'varve-dj', naam: 'Varve DJ' }];
+    expect(sectieVan({ globaal: { 'sectie.nieuw': 0.125, 'sectie.energie': 0.8, 'sectie.label': 'drop' }, bronnen: { sectie: 'varve-dj' }, apps }))
+      .toEqual({ tekst: 'drop · 80%', teller: 0.125, bron: 'Varve DJ' });
+    expect(sectieVan({ globaal: { 'sectie.nieuw': 0 }, bronnen: { sectie: null }, apps })).toEqual({ tekst: '—', teller: 0, bron: null });
+    expect(sectieVan({ globaal: { 'sectie.energie': 0.333 }, bronnen: { sectie: 'onbekend' } })).toEqual({ tekst: '33%', teller: null, bron: 'onbekend' });
+    expect(sectieVan({ globaal: { 'sectie.label': 'intro', 'sectie.energie': 'x', 'sectie.nieuw': 'y' } })).toEqual({ tekst: 'intro', teller: null, bron: null });
+    expect(sectieVan({ globaal: 'x', bronnen: 3, apps: 'y' })).toEqual({ tekst: '—', teller: null, bron: null });
+    expect(sectieVan(null)).toEqual({ tekst: '—', teller: null, bron: null });
   });
 });
 
@@ -430,6 +440,27 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(await page.locator('#dev-apc40').evaluate((e) => e.classList.contains('aan'))).toBe(true);
     expect(await page.locator('#dev-lpd8').evaluate((e) => e.classList.contains('aan'))).toBe(false);
     expect(await page.locator('.macro[data-rol="macro.intensiteit"] span').textContent()).toBe('75%');
+  });
+
+  it('globaal: de sectie (label · energie, bron in de tooltip); een flits bij elke nieuwe sectie, niet bij het eerste beeld (§18)', async () => {
+    const met = (/** @type {Record<string, unknown>} */ g, /** @type {string|null} */ bron = 'varve-dj') => ({ ...tweeApps, globaal: { ...tweeApps.globaal, ...g }, bronnen: { sectie: bron } });
+    const sectie = page.locator('#sectie');
+    server.stuur(met({ 'sectie.nieuw': 1 / 16, 'sectie.energie': 0.8, 'sectie.label': 'drop' }));
+    await expect.poll(() => sectie.textContent()).toBe('drop · 80%');
+    expect(await sectie.getAttribute('title')).toMatch(/Varve DJ/);
+    expect(await sectie.getAttribute('data-klappen')).toBe('0');
+    server.stuur(met({ 'sectie.nieuw': 1 / 16, 'sectie.energie': 0.7, 'sectie.label': 'drop' })); // zelfde teller: geen klap
+    await expect.poll(() => sectie.textContent()).toBe('drop · 70%');
+    expect(await sectie.getAttribute('data-klappen')).toBe('0');
+    server.stuur(met({ 'sectie.nieuw': 2 / 16, 'sectie.energie': 0.3, 'sectie.label': 'break' }));
+    await expect.poll(() => sectie.getAttribute('data-klappen')).toBe('1');
+    expect(await sectie.textContent()).toBe('break · 30%');
+    expect(await sectie.evaluate((e) => e.classList.contains('klap'))).toBe(true);
+    // De bron valt weg: de waarden blijven staan (bevroren), de tooltip zegt het.
+    server.stuur(met({ 'sectie.nieuw': 2 / 16, 'sectie.energie': 0.3, 'sectie.label': 'break' }, null));
+    await expect.poll(() => sectie.getAttribute('title')).toMatch(/geen bron/);
+    expect(await sectie.textContent()).toBe('break · 30%');
+    expect(await sectie.getAttribute('data-klappen')).toBe('1');
   });
 
   it('klik op een app stuurt focus', async () => {

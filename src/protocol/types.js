@@ -11,7 +11,7 @@
  * }} Param
  * @typedef {{
  *   v: 1, app: string, naam: string, kleur?: string, truth: 'app'|'hub', hb_s: number,
- *   lease: boolean, rings?: 'host'|'auto', speelt?: ('xboard49'|'maschine-mk2')[], scenes: string[], params: Param[],
+ *   lease: boolean, rings?: 'host'|'auto', speelt?: ('xboard49'|'maschine-mk2')[], levert?: 'sectie'[], scenes: string[], params: Param[],
  * }} Manifest
  *
  * Berichten app → hub
@@ -22,7 +22,8 @@
  * @typedef {{ t: 'hb' }} Hartslag
  * @typedef {{ t: 'led', dev?: 'apc40'|'xboard49'|'maschine-mk2', bytes: number[][] }} Led
  * @typedef {{ t: 'scherm', dev: 'maschine-mk2', nr: 0|1, data: Uint8Array }} Scherm  (op de draad: data in base64, 2048 bytes; §17)
- * @typedef {Hallo|ManifestBericht|Staat|AppZet|Hartslag|Led|Scherm} VanApp
+ * @typedef {{ t: 'globaal', waarden: { 'sectie.energie'?: number, 'sectie.label'?: string, 'sectie.nieuw'?: true } }} GlobaalVanApp  (§18; alleen met de groep in `levert`)
+ * @typedef {Hallo|ManifestBericht|Staat|AppZet|Hartslag|Led|Scherm|GlobaalVanApp} VanApp
  *
  * Berichten hub → app
  * @typedef {{ t: 'welkom', hub: 'varve-hub', v: 1 }} Welkom

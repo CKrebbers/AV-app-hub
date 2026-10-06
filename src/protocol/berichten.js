@@ -4,7 +4,7 @@
 
 /** @typedef {import('./types.js').VanApp} VanApp @typedef {import('./types.js').NaarApp} NaarApp */
 
-export const VAN_APP = /** @type {const} */ (['hallo', 'manifest', 'staat', 'zet', 'hb', 'led', 'scherm']);
+export const VAN_APP = /** @type {const} */ (['hallo', 'manifest', 'staat', 'zet', 'hb', 'led', 'scherm', 'globaal']);
 export const NAAR_APP = /** @type {const} */ (['welkom', 'zet', 'trig', 'scene', 'focus', 'globaal', 'midi', 'fout']);
 export const VAN_COCKPIT = /** @type {const} */ (['virtueel', 'focus', 'zet', 'snapshot']);
 
@@ -16,6 +16,19 @@ const isBytes = (/** @type {unknown} */ b) => Array.isArray(b) && b.length > 0 &
 export const LED_DEVS = /** @type {const} */ (['apc40', 'xboard49', 'maschine-mk2']);
 /** Eén scherm van de Maschine: 256×64 pixels, 1 bit per pixel. */
 export const SCHERM_BYTES = 2048;
+
+/**
+ * Wat een app aan de globale laag mag leveren (§18), per sleutel de soort: `waarde` (0..1, geklemd), `tekst`
+ * (1..32 tekens) of `trigger` (`true`; `false` = niets). De groep is het deel vóór de punt; alleen met die groep in
+ * `levert` (manifest) neemt de hub hem aan.
+ */
+export const GLOBAAL_VAN_APP = Object.freeze(/** @type {const} */ ({ 'sectie.energie': 'waarde', 'sectie.label': 'tekst', 'sectie.nieuw': 'trigger' }));
+/** `sectie.nieuw` naar de apps is een teller: (aantal nieuwe secties mod SECTIE_STAPPEN) / SECTIE_STAPPEN (§18). */
+export const SECTIE_STAPPEN = 16;
+/** De groep van een globale sleutel (`sectie.energie` → `sectie`). @param {string} k */
+export const groepVan = (k) => k.slice(0, Math.max(0, k.indexOf('.')));
+/** Een label op de draad: tekst van 1..32 tekens, zonder stuurtekens. @param {unknown} x */
+export const isLabel = (x) => typeof x === 'string' && x.length >= 1 && x.length <= 32 && !/[\u0000-\u001f\u007f]/.test(x);
 
 /**
  * Strikte base64 → bytes, of null als het geen base64 is of niet precies `lengte` bytes geeft.
@@ -83,6 +96,27 @@ export function leesVanApp(ruw) {
       if (!data) return { ok: false, fout: `scherm: data moet base64 van precies ${SCHERM_BYTES} bytes zijn (256×64 pixels, 1 bit, rij voor rij)` };
       return { ok: true, bericht: { t: 'scherm', dev: 'maschine-mk2', nr: b.nr, data } };
     }
+    case 'globaal': {
+      // §18: een app levert aan de globale laag. Onbekende sleutels vallen weg; een bekende met een verkeerd type is
+      // een fout (zoals een zet zonder getal), zodat de bouwer het hoort en de toets het ziet.
+      if (!b.waarden || typeof b.waarden !== 'object' || Array.isArray(b.waarden)) return { ok: false, fout: 'globaal: waarden ontbreekt' };
+      /** @type {Record<string, number|string|true>} */
+      const w = {};
+      for (const [k, v] of Object.entries(b.waarden)) {
+        const soort = Object.hasOwn(GLOBAAL_VAN_APP, k) ? GLOBAAL_VAN_APP[/** @type {keyof typeof GLOBAAL_VAN_APP} */ (k)] : undefined;
+        if (soort === 'waarde') {
+          if (typeof v !== 'number') return { ok: false, fout: `globaal: ${k} moet een getal 0..1 zijn` };
+          w[k] = klem01(v);
+        } else if (soort === 'tekst') {
+          if (!isLabel(v)) return { ok: false, fout: `globaal: ${k} moet tekst van 1..32 tekens zijn (bv. "drop")` };
+          w[k] = v;
+        } else if (soort === 'trigger') {
+          if (typeof v !== 'boolean') return { ok: false, fout: `globaal: ${k} is een trigger: true (er begint nu een nieuwe), geen ${JSON.stringify(v)}` };
+          if (v) w[k] = true;
+        }
+      }
+      return { ok: true, bericht: { t: 'globaal', waarden: w } };
+    }
     default:
       return { ok: true, onbekend: true, t: b.t };
   }
@@ -105,11 +139,20 @@ export function leesNaarApp(ruw) {
     case 'trig': return typeof b.id === 'string' && typeof b.aan === 'boolean' ? ok(b) : { ok: false, fout: 'trig: id + aan nodig' };
     case 'scene': return Number.isInteger(b.i) && b.i >= 0 ? ok(b) : { ok: false, fout: 'scene: i nodig' };
     case 'focus': return typeof b.aan === 'boolean' ? ok(b) : { ok: false, fout: 'focus: aan nodig' };
-    case 'globaal': return b.waarden && typeof b.waarden === 'object' ? ok(b) : { ok: false, fout: 'globaal: waarden nodig' };
+    case 'globaal': return isGlobaalNaarApp(b.waarden) ? ok(b) : { ok: false, fout: 'globaal: waarden nodig (sectie.energie en sectie.nieuw 0..1, sectie.label tekst)' };
     case 'midi': return isBytes(b.bytes) && typeof b.dev === 'string' ? ok(b) : { ok: false, fout: 'midi: dev en bytes nodig' };
     case 'fout': return typeof b.reden === 'string' ? ok(b) : { ok: false, fout: 'fout: reden nodig' };
     default: return { ok: true, onbekend: true, t: b.t };
   }
+}
+
+/** `globaal` van de hub: een object; de sectie (§18) als getal 0..1 (teller en energie) en tekst (label). @param {unknown} w */
+function isGlobaalNaarApp(w) {
+  if (!w || typeof w !== 'object' || Array.isArray(w)) return false;
+  const x = /** @type {Record<string, unknown>} */ (w);
+  const is01 = (/** @type {unknown} */ v) => typeof v === 'number' && v >= 0 && v <= 1;
+  return (!('sectie.energie' in x) || is01(x['sectie.energie'])) && (!('sectie.nieuw' in x) || (is01(x['sectie.nieuw']) && /** @type {number} */ (x['sectie.nieuw']) < 1))
+    && (!('sectie.label' in x) || isLabel(x['sectie.label']));
 }
 
 /** Willekeurige instantie-id voor `hallo`. */

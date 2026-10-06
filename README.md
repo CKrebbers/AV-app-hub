@@ -41,6 +41,11 @@ manifest noemt (`speelt`, PROTOCOL §17). De Maschine leest de hub zelf via USB-
 NI-software: de indeling die een app ziet staat in `docs/MASCHINE.md`. Meten op jouw toestellen:
 `node src/cli.js proef speelapparaten` (`docs/HARDWARE-AVOND.md`, blok 8).
 
+**De sectie** (golf 10): een muziek-app met `levert: ["sectie"]` in zijn manifest (straks Varve DJ) vertelt de hub in
+welke sectie van het nummer je zit (`intro`, `opbouw`, `drop`, `break`, `outro`, met een energie 0..1) en wanneer er een
+nieuwe begint; elke app krijgt dat in `globaal` en de cockpit toont het onder "Globaal" (PROTOCOL §18). Zonder hardware
+proberen: `npm start` en `node tools/nep-app.mjs --sectie`.
+
 **Geheugen.** De hub onthoudt de snapshots en de waarden van TD, Sediment en andere `truth:"hub"`-apps over een herstart heen, in `~/.varve-hub/staat.json` (bij de start staat in de terminal waar). Leeg beginnen: gooi dat bestand weg terwijl de hub uit staat, of start met `--zonder-geheugen`. Een `staat.json.kapot` is een oud bestand dat de hub niet kon lezen; je kunt het weggooien. Een ander pad: `geheugen.pad` in `config.json`, of `VARVE_HUB_STAAT=/pad/naar/staat.json npm start`.
 
 Tijdens de proef: Enter = ja/door, `n` + notitie = klopt niet ("n pad 2-3 werd blauw"), `o` = stap overslaan.
