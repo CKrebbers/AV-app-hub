@@ -137,6 +137,13 @@
       "per_monitor": true,
       "_doc": "elke monitor meldt zich apart aan als flux-<monitor> (bv. flux-dp-1); de hub geeft die deze kleur en de naam 'Flux (<monitor>)' (staat de monitor niet in de naam uit het manifest, dan zet de hub hem erachter)",
       "repo": "flux-screensaver"
+    },
+    "stroommachine": {
+      "naam": "Stroommachine",
+      "kleur": "#c8e600",
+      "koppeling": "ws",
+      "poort": 8090,
+      "_doc": "Realtime beeld- en geluidsmachine in één HTML-bestand (WebGL2 + Web Audio). Lokaal: python3 -m http.server 8090 in de map en open http://localhost:8090/index.html?hub=ws://localhost:7700/app (of index.html dubbelklikken met ?hub=). Spreekt PROTOCOL.md v1 (src/09j-brug.js in de Stroommachine): 90 params = 9 macro's (rollen macro.intensiteit/helderheid/ruimte/beweging/kleur/dichtheid) + de overige poort-knoppen (id = poortnaam, bv. fx.ascii, laag.veld) + poort-acties als trigger (regie!ontdek → regie.ontdek). Zie koppelingen/stroommachine/LEESMIJ.md. Nog geen eigen GitHub-repo (de bron staat in Clay's zip), daarom geen repo en geen KOPPELINGEN-regel"
     }
   },
   "hartslag": {
