@@ -7,7 +7,7 @@
     "varve-dj": {
       "start": { "commando": "node server/index.js", "omgeving": { "PORT": "{poort}" } },
       "url": "http://localhost:{poort}/?hub={hub}",
-      "opmerking": "de hub-koppeling met speelapparaten staat in youtube-mixer op de tak studio/integratie (PR #5) tot die gemerged is"
+      "opmerking": "de hub-koppeling, de speelapparaten en de sectie (§18) zitten in youtube-mixer main sinds PR #5 (7 okt); waar hij start staat in sets/paden.json"
     }
   },
   "snapshot": {

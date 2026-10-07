@@ -349,7 +349,7 @@ manifest komt, negeert de hub.
 | Sleutel | Waarde | Betekenis |
 |---|---|---|
 | `sectie.energie` | 0..1 (geklemd) | hoeveel energie de sectie heeft: 0 = kaal of stil, 1 = de drop op zijn hardst. Mag binnen een sectie veranderen (een opbouw die stijgt) |
-| `sectie.label` | tekst, 1..32 tekens | de soort sectie; Varve DJ gebruikt `intro`, `opbouw`, `drop`, `break`, `outro`. Een ontvanger verdraagt elk ander label (zoals `grondtoon` tekst is) |
+| `sectie.label` | tekst, 1..32 tekens | de soort sectie; Varve DJ gebruikt `intro`, `opbouw`, `drop`, `break`, `outro` en `deel` (een sectie die geen van de andere is, bv. een couplet). Een ontvanger verdraagt elk ander label (zoals `grondtoon` tekst is) |
 | `sectie.nieuw` | `true` | trigger: er begint nú een nieuwe sectie (op de eerste tel). `false` = niets |
 
 - Bij een nieuwe sectie stuurt de app de drie samen in één bericht; de hub stuurt ze dan ook samen door, in één
