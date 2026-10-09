@@ -1,10 +1,29 @@
 # av-kern — koppeling met de hub (patch)
 
-Tot de publicatie van **25 okt** raken we av-kern niet aan: geen push, geen PR, geen branch op GitHub. Daarom staat de koppeling hier als twee patches. Pas ze toe als de publicatie de deur uit is.
+## Stand 6 okt 2026
 
-## Wat zit erin
-- **0001 — ◄/► volgens protocol v1.2** (losse commit). In `src/kern/apc40.ts` stonden de pijlen omgedraaid (left = 96, right = 97). Volgens Akai protocol v1.2 is ► (right) 0x60 = 96 en ◄ (left) 0x61 = 97. `apc40.ts` valt **niet** onder de bevroren regel (die geldt alleen voor `midi.ts` en `bus.ts`), dus hier is het echt gerepareerd, met een test die zonder de fix faalt. In de Ademmachine zitten op ◄/► alleen AI-stubs, dus je hoort niets anders.
-- **0002 — de hub-koppeling**, helemaal buiten de kern:
+| patch | wat | stand |
+|---|---|---|
+| `0001` | ◄/► volgens protocol v1.2 (right = 96, left = 97) | **op main** sinds 5 okt: commit `b6e3c49`, merge **`a9010e9`** (PR #1), op Clay's besluit van 5 okt |
+| `0002` | Hub-koppeling: av-kern als lease-app (`?hub=ws://…`) | **nog niet toegepast**, bevroren tot na de publicatie van **25 okt** |
+
+- Nagekeken 6 okt via GitHub: `src/kern/apc40.ts` (`e5581ba`) en `test/kern.test.ts` (`264573f`) op main zijn precies het resultaat van 0001. Op main staat geen `src/ui/hub.ts` en geen `test/hub.test.ts`: 0002 zit er niet in.
+- 0002 past nog op de huidige main: het enige bestaande bestand dat hij wijzigt, `src/main.ts`, is op main nog dezelfde versie (`c5f434d`) als waarop de patch gemaakt is.
+- Tot 25 okt raken we av-kern verder niet aan (alleen de ◄/►-fix mocht eerder). Daarna: alleen 0002 toepassen, zie "Toepassen".
+
+## Wat nog open is
+- **0002 toepassen na 25 okt** (Clay, of Claude met jouw oké), met daarna de hand-regels voor `LOG.md` en `CLAUDE.md`.
+- **Niet getest met je echte APC en LPD8** in je eigen Chrome, ook de ◄/►-fix niet op de echte APC (de hub-proef F0 doet dat: één knop tegelijk indrukken).
+- De open vragen onderaan (master op K1, balans/ademtempo, paniek, actielog, achtergrond-tabblad, `*.ts.net`).
+- De tak `afmaker/2026-10-05-pijlfix` staat nog op GitHub; hij is gemerged en kan weg (Clay).
+
+## Geschiedenis
+
+Tot de publicatie van **25 okt** zouden we av-kern niet aanraken: geen push, geen PR, geen branch op GitHub. Daarom kwam de koppeling hier als twee patches. Op 5 okt besloot Clay de ◄/►-fix (0001) toch al op main te zetten; de rest bleef bevroren.
+
+### Wat zit erin
+- **0001 — ◄/► volgens protocol v1.2** (losse commit; **op main sinds 5 okt**, `a9010e9`). In `src/kern/apc40.ts` stonden de pijlen omgedraaid (left = 96, right = 97). Volgens Akai protocol v1.2 is ► (right) 0x60 = 96 en ◄ (left) 0x61 = 97. `apc40.ts` valt **niet** onder de bevroren regel (die geldt alleen voor `midi.ts` en `bus.ts`), dus hier is het echt gerepareerd, met een test die zonder de fix faalt. In de Ademmachine zitten op ◄/► alleen AI-stubs, dus je hoort niets anders.
+- **0002 — de hub-koppeling** (nog niet toegepast), helemaal buiten de kern:
   - `src/ui/hub.ts` (nieuw, alleen geladen met de vlag): APC-invoer van de hub (`{t:'midi'}`) gaat door `Driver.input(bytes, 'hub')`, hetzelfde pad als de echte APC. Alleen volledige note- en CC-berichten (3 bytes, databytes ≤ 127). De LED- en ringuitvoer van de driver (`Driver.onSend`, dezelfde haak als de virtuele APC) gaat per beeld gebundeld als `{t:'led'}` naar de hub. Bij (her)verbinden de hele set: ringtypes, LED's, ringen.
   - De LPD8-rollen (`zet`) en paniek (`trig`) zet `hub.ts` **direct** op de bus (`Bus.set`/`stopAll`), dus buiten `Driver.input` om en niet in het actielog (zie open vragen). Tijdens een replay negeert hij zets van de hub; paniek werkt dan bewust wel.
   - Met `?hub=ws://localhost:7700/app` roept av-kern **nooit** `requestMIDIAccess` aan en gebruikt de Web Lock `av-kern-apc` niet. De knop wordt "APC via hub". De hub zet de APC in 0x42 en tekent de ringen mee met de knop (`rings:"auto"`), zoals de APC zelf in 0x41 doet. De keuze zit in één pure functie, `apcBron()` in `src/ui/hub-vlag.ts`, met tests.
@@ -31,30 +50,32 @@ Tot de publicatie van **25 okt** raken we av-kern niet aan: geen push, geen PR, 
   - **`LOG.md` en `CLAUDE.md` zitten er bewust níét in**: die veranderen elke sessie, en dan loopt `git am` vast. De tekst staat hieronder, om na het toepassen te plakken.
   - **Zonder `?hub=` verandert er niets** (`apcBron` → `midi`; headless nagemeten: geen WebSocket, `hub.ts` wordt niet geladen, "Verbind APC40" vraagt Web MIDI en de lock zoals altijd).
 
-## Getest
+### Getest
 - `npm test` in av-kern: 66 groen (40 bestaande + 1 voor ◄/► + 25 voor de koppeling). `npm run build` groen; `hub.ts` is een eigen chunk.
 - `node scripts/hub-headless.mjs` (Chromium, met `AVKERN_HUB_REPO` naar deze repo): de conformiteitstoets van de hub (`toetsApp`) slaagt helemaal; een geweigerd `?hub=` (`localhost:7700` en `ws://voorbeeld.nl/app`) geeft 0× MIDI, 0× lock en de juiste melding; en tegen de echte hub (`startHub` met NepSysteem, eerst een andere app met de focus): **Bank + Track Select geeft av-kern de focus**, de volledige LED-kaart van av-kern komt op de nep-APC, pad 2-1 kleurt in de Drone-kleur, tk3 zet de macro en de ring staat op de APC, LPD8 K5 → macro kleur → av-kern tekent de ring van tk1 op de APC, K1 → master, P1 → Stop All, en terug naar de andere app = geen invoer meer naar av-kern. Nooit `requestMIDIAccess`, nooit de Web Lock, alleen de hub stuurt een modus (0x42). De hubtoets en de LPD8-knoppen haalt het script uit de config en `ROLLEN` van de hub.
 - In de hub: `test/koppeling-av-kern.test.js` leest het manifest uit de patch zelf en toetst het tegen de kern (focus, LED's/ringen, alle acht LPD8-knoppen, paniek), en bewaakt dat de patches `LOG.md`/`CLAUDE.md` niet raken.
 - Gecontroleerd: beide patches passen op av-kern main **ab7e115** ("Fase 0.4: reference/ademmachine.html …"), én op ab7e115 plus een extra `LOG.md`-regel en een gewijzigde `CLAUDE.md` (zoals main er na een paar sessies uitziet). Daarna is `npm test` groen.
+- 6 okt: 0001 op main nagekeken (zie Stand); 0002 past op de preimage van `src/main.ts` op main `a9010e9`. `npm test` in av-kern is niet opnieuw gedraaid (privé repo, alleen via de GitHub-connector gelezen).
 - **Nog niet** met je echte APC en LPD8 in je eigen Chrome.
 
-## Toepassen (na 25 okt)
+## Toepassen (na 25 okt, alleen 0002)
+0001 staat al op main: **niet opnieuw toepassen** (`git apply --check` op 0001 faalt daarom, en dat is goed).
 ```bash
-cd ~/…/av-kern                     # waar je av-kern hebt staan, op main
+cd ~/…/av-kern                     # waar je av-kern hebt staan
+git switch main && git pull        # main met de ◄/►-fix (a9010e9 of later)
 git switch -c varve-hub-koppeling
-git apply --check /pad/naar/AV-app-hub/koppelingen/av-kern/000*.patch   # past het nog? (geen uitvoer = ja)
-git am -3 /pad/naar/AV-app-hub/koppelingen/av-kern/0001-*.patch   # ◄/► (kan ook los, eerder)
+git apply --check /pad/naar/AV-app-hub/koppelingen/av-kern/0002-*.patch   # past het nog? (geen uitvoer = ja)
 git am -3 /pad/naar/AV-app-hub/koppelingen/av-kern/0002-*.patch   # de koppeling
 npm test && npm run build
 ```
-Loopt `git am -3` toch vast op een conflict (iemand heeft `main.ts` of `apc40.ts` intussen veranderd): `git status` toont het bestand met `UU`. Kun je het zelf oplossen, los het op en doe `git add <bestand> && git am --continue`. Anders: `git am --abort` (alles terug zoals het was) en vraag Claude de patch opnieuw te maken op de nieuwe main. Wil je alleen de ◄/►-fix: alleen 0001.
+Loopt `git am -3` toch vast op een conflict (iemand heeft `main.ts` intussen veranderd): `git status` toont het bestand met `UU`. Kun je het zelf oplossen, los het op en doe `git add <bestand> && git am --continue`. Anders: `git am --abort` (alles terug zoals het was) en vraag Claude de patch opnieuw te maken op de nieuwe main.
 
 Daarna, met de hand (die bestanden veranderen elke sessie, dus niet in de patch):
 
 1. **`LOG.md`**: zet deze regel onderaan, met de datum van toepassen:
 
    ```
-   - <datum> · koppeling AV-app-hub toegepast (patch van 2026-10-03, Claude Code): `?hub=ws://…` → `src/ui/hub.ts` (lease, `rings:"auto"`, rollen voor de LPD8, paniek = Stop All); zonder vlag niets anders (`apcBron`). 66 tests groen, build groen, headless tegen de conformiteitstoets én de echte hub met nep-APC/LPD8 groen (Bank + Track Select geeft focus, LED's en ringen op de APC). Apart: ◄/► in `apc40.ts` naar protocol v1.2. **Niet getest:** de echte APC/LPD8 via de hub in Clay's Chrome. Let op: `zet`s van de hub (LPD8) staan niet in het actielog, dus een replay met LPD8-bewegingen is niet identiek (tijdens een replay negeert av-kern ze wel).
+   - <datum> · koppeling AV-app-hub toegepast (patch van 2026-10-03, Claude Code): `?hub=ws://…` → `src/ui/hub.ts` (lease, `rings:"auto"`, rollen voor de LPD8, paniek = Stop All); zonder vlag niets anders (`apcBron`). 66 tests groen, build groen, headless tegen de conformiteitstoets én de echte hub met nep-APC/LPD8 groen (Bank + Track Select geeft focus, LED's en ringen op de APC). De ◄/►-fix in `apc40.ts` (protocol v1.2) stond al op main sinds 5 okt (PR #1). **Niet getest:** de echte APC/LPD8 via de hub in Clay's Chrome. Let op: `zet`s van de hub (LPD8) staan niet in het actielog, dus een replay met LPD8-bewegingen is niet identiek (tijdens een replay negeert av-kern ze wel).
    ```
 
 2. **`CLAUDE.md`**: zet deze alinea na het stuk over het signaalpad (vóór `## Commando's`):
