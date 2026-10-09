@@ -40,7 +40,7 @@ Nodig:
 | waterschaal | `waterschaal` | `claude/varve-hub-koppeling` | `python3 -m http.server` op `apps.waterschaal.poort`, `td/waterschaal-lokaal.html` |
 | medisynth | `medisynth` | `claude/varve-hub-koppeling` | Vite-dev-server op `apps.medisynth.poort`, met `?debug` en één klik (start de klank) |
 | flux | `flux-screensaver` | `claude/varve-hub-koppeling` | pseudo-terminal (`pty.spawn`), eigen lege `XDG_CONFIG_HOME` |
-| varve-dj | `youtube-mixer` | `origin/main` + `koppelingen/varve-dj/*.patch` | eigen server op `apps.varve-dj.poort`, tijdelijke database |
+| varve-dj | `youtube-mixer` | `origin/main` (de hub-koppeling staat erop sinds 5 okt; alleen een oudere main krijgt `koppelingen/varve-dj/*.patch`) | eigen server op `apps.varve-dj.poort`, tijdelijke database |
 
 De paden komen uit **`sets/paden.json`** (hetzelfde bestand dat de sets gebruiken; `sets/.gitignore` houdt het
 uit git, je persoonlijke paden worden dus niet per ongeluk gecommit), of `$VARVE_HUB_PADEN`, of
@@ -59,11 +59,13 @@ zijn, anders stopt het script. Sleutel = repo-naam uit `config.json` → `apps.<
 
 Per app overschrijven kan met `$REPETITIE_<APP>` (`REPETITIE_FORMULA_LAB=…`). Zonder iets zoekt het script de
 repo's naast deze repo. **Varve DJ: je eigen checkout blijft zoals hij is.** Het script maakt een tijdelijke
-`git worktree` van `youtube-mixer` op `origin/main` (in `/tmp`), past de patches uit `koppelingen/varve-dj/` toe
-en ruimt hem na afloop weer op. Er wordt niets gecommit of gepusht; alleen git's eigen administratie
-(`.git/worktrees`) krijgt zolang een regel. Het script doet geen `git fetch`: de patches zijn gemaakt op
-`99c7fa2` (`koppelingen/varve-dj/LEESMIJ.md`). Past een patch niet op jouw `origin/main`, dan zegt het script dat;
-doe dan `git fetch` in youtube-mixer, of zet onder de sleutel `"varve-dj"` een checkout die de patch al heeft.
+`git worktree` van `youtube-mixer` op `origin/main` (in `/tmp`) en ruimt hem na afloop weer op. Staat de
+hub-koppeling al op main (`src/control/hub.js`, sinds 5 okt, PR #6), dan wordt er niets toegepast en zegt het rapport
+"hub-koppeling staat al op main". Alleen een `origin/main` van vóór 5 okt krijgt de patches uit
+`koppelingen/varve-dj/` (gemaakt op `99c7fa2`, `koppelingen/varve-dj/LEESMIJ.md`). Er wordt niets gecommit of
+gepusht; alleen git's eigen administratie (`.git/worktrees`) krijgt zolang een regel. Het script doet geen
+`git fetch`: loopt jouw `origin/main` achter, doe dan `git fetch` in youtube-mixer, of zet onder de sleutel
+`"varve-dj"` een checkout die de koppeling al heeft. Past een patch niet, dan zegt het script dat.
 
 Opties:
 

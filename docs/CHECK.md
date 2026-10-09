@@ -119,7 +119,7 @@ voor anderen = ! (`chmod 600` en voor de zekerheid een nieuw token met `node src
   | formula-lab | `src/sync/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
   | medisynth | `src/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
   | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | tak `claude/varve-hub-koppeling` (PR) |
-  | varve-dj (youtube-mixer) | `src/control/hub.js` | `koppelingen/varve-dj/` (patch) |
+  | varve-dj (youtube-mixer) | `src/control/hub.js` | `main` van youtube-mixer (sinds 5 okt, PR #6): `git pull`; de patches in `koppelingen/varve-dj/` zijn alleen nog geschiedenis |
   | av-kern | `src/ui/hub.ts` | `koppelingen/av-kern/` (patch, na 25 okt) |
   | av-scene-kit | `td/td_build_hub.py` | docs/TOUCHDESIGNER.md |
   | flux | niet nagegaan | |

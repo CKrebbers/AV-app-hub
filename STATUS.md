@@ -50,7 +50,7 @@ Klaar als (op jouw Mac):
 ## Golf 3 — koppelingen in de apps ✓ (wacht op Clay's OK per repo)
 Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag verandert er niets.
 - formula-lab (poort 5174), waterschaal (`td/waterschaal-lokaal.html`), medisynth (poort 5175), flux (`flux-<monitor>`): tak `claude/varve-hub-koppeling` in elk repo, met een PR.
-- Varve DJ: patch in `koppelingen/varve-dj/` (youtube-mixer: "nooit committen"), lease-modus.
+- Varve DJ: lease-modus; de koppeling staat op youtube-mixer `main` (patches 0001+0002, PR #6, 5 okt: `git pull`). De patches in `koppelingen/varve-dj/` zijn geschiedenis; de repetitie past ze alleen nog toe op een main van vóór 5 okt.
 
 ## Golf 4 — een avond spelen ✓ (gebouwd en getest zonder hardware)
 6 onderdelen, elk bouwer + 2 reviewers + verwerker; samengevoegd en opnieuw getest (648 tests, plus de echte repetitie).
@@ -151,7 +151,7 @@ Klaar als (op jouw Mac):
 - [ ] uit de proef bekend: poortnaam van de Xboard, CC's (of NRPN) van de 16 knoppen, aftertouch aan/uit, de schuif als SysEx
 - [ ] uit de proef bekend: opent de Maschine met de NI-agents aan (of "bezet")? vraagt macOS om Invoermonitoring? ruisvloer in rust, oriëntatie (linksboven = pad 13), drempels en velocity, `led_max` (127 of 255), twee zones per groepknop, schermen
 - [ ] `npm start` + `node tools/nep-app.mjs --speelt`: een pad op de Maschine licht groen op zolang je hem indrukt, het linkerscherm toont een rand en een schuine lijn; Maschine eruit en erin → binnen ±2 s terug
-- [ ] (na de Varve-patch) Varve DJ speelt op het keyboard en de pads, ook als av-kern de APC-focus heeft
+- [ ] (na de Varve-kant van de speelapparaten; Xboard49 en Maschine zitten sinds 8 okt in youtube-mixer main) Varve DJ speelt op het keyboard en de pads, ook als av-kern de APC-focus heeft
 
 Keuzes om na te lopen (zeg het als je het anders wilt):
 - De Maschine geeft **virtuele MIDI** (geen eigen HID-berichten naar apps): zo gebruikt Varve DJ hem met hetzelfde MIDI-pad als de APC.
