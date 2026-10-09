@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { Opruimer, start, wachtOpUrl, metTijd, poortBezet, totUiterlijk, staart } from '../tools/repetitie-proces.mjs';
-import { leesPaden, appLijst, leesPagina, TE_LAAT } from '../tools/repetitie.mjs';
+import { leesPaden, appLijst, leesPagina, TE_LAAT, varveDjWerkboom } from '../tools/repetitie.mjs';
 import { laadConfig } from '../src/config.js';
 
 const HUB = fileURLToPath(new URL('..', import.meta.url));
@@ -248,4 +248,67 @@ describe.skipIf(!heeftBrowser)('teruglezen uit een vastgelopen pagina', () => {
       expect(Date.now() - t0).toBeLessThan(2000);
     } finally { await browser.close(); }
   }, 30000);
+});
+
+describe('Varve DJ-worktree (varveDjWerkboom): de hub-koppeling staat op main, oudere main krijgt de patches', () => {
+  const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  /** @param {string[]} a @param {string} cwd */
+  const git = (a, cwd) => execFileSync('git', a, { cwd, env: GIT_ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  /** Een "youtube-mixer" met origin/main; `bestanden` = pad → inhoud op main. @param {string} naam @param {Record<string, string>} bestanden */
+  function repoMetOrigin(naam, bestanden) {
+    const bare = join(tmp, `${naam}-origin.git`);
+    const werk = join(tmp, naam);
+    git(['init', '-q', '--bare', '-b', 'main', bare], tmp);
+    git(['clone', '-q', bare, werk], tmp);
+    for (const [pad, inhoud] of Object.entries(bestanden)) {
+      mkdirSync(join(werk, pad, '..'), { recursive: true });
+      writeFileSync(join(werk, pad), inhoud);
+    }
+    git(['add', '-A'], werk);
+    git(['commit', '-q', '-m', 'basis'], werk);
+    git(['push', '-q', 'origin', 'HEAD:main'], werk);
+    git(['fetch', '-q', 'origin'], werk);
+    return werk;
+  }
+  /** @param {string} naam @param {Record<string, string>} patches */
+  function patchMap(naam, patches) {
+    const m = join(tmp, naam);
+    mkdirSync(m);
+    for (const [f, t] of Object.entries(patches)) writeFileSync(join(m, f), t);
+    return m;
+  }
+  const NIEUW = 'diff --git a/src/control/hub.js b/src/control/hub.js\nnew file mode 100644\n--- /dev/null\n+++ b/src/control/hub.js\n@@ -0,0 +1 @@\n+// uit de patch\n';
+  const stap = () => { /** @type {Array<() => void>} */ const fns = []; return { voeg: (/** @type {string} */ _n, /** @type {() => void} */ fn) => { fns.push(fn); }, ruim: () => fns.reverse().forEach((f) => f()) }; };
+
+  it('src/control/hub.js staat al op origin/main: niets toepassen (anders faalt git apply op de bestanden die main al heeft)', () => {
+    const repo = repoMetOrigin('ym-nieuw', { 'src/control/hub.js': '// op main\n', 'package.json': '{}\n' });
+    const o = stap();
+    const w = varveDjWerkboom(repo, { patchMap: patchMap('p-nieuw', { '0001-x.patch': NIEUW }), opruim: o });
+    try {
+      expect(w).toMatchObject({ opMain: true, patches: [] });
+      expect(readFileSync(join(w.map, 'src/control/hub.js'), 'utf8')).toBe('// op main\n');
+    } finally { o.ruim(); }
+    expect(existsSync(w.map)).toBe(false);
+  });
+
+  it('een main van vóór de koppeling: de patches uit koppelingen/varve-dj gaan er nog op, op volgorde', () => {
+    const repo = repoMetOrigin('ym-oud', { 'package.json': '{}\n' });
+    const o = stap();
+    const w = varveDjWerkboom(repo, { patchMap: patchMap('p-oud', { '0001-x.patch': NIEUW, 'LEESMIJ.md': 'geen patch' }), opruim: o });
+    try {
+      expect(w).toMatchObject({ opMain: false, patches: ['0001-x.patch'] });
+      expect(readFileSync(join(w.map, 'src/control/hub.js'), 'utf8')).toBe('// uit de patch\n');
+    } finally { o.ruim(); }
+    expect(existsSync(w.map)).toBe(false);
+  });
+
+  it('een patch die niet past op een oudere main: duidelijke fout met de basis en wat te doen, en de worktree wordt toch opgeruimd', () => {
+    const repo = repoMetOrigin('ym-kapot', { 'package.json': '{"a":1}\n' });
+    const slecht = 'diff --git a/package.json b/package.json\n--- a/package.json\n+++ b/package.json\n@@ -1 +1 @@\n-{"b":2}\n+{"b":3}\n';
+    const o = stap();
+    try {
+      expect(() => varveDjWerkboom(repo, { patchMap: patchMap('p-kapot', { '0001-slecht.patch': slecht }), opruim: o })).toThrow(/patch 0001-slecht\.patch past niet op origin\/main @[0-9a-f]+ .*git fetch/s);
+    } finally { o.ruim(); }
+    expect(git(['worktree', 'list'], repo).trim().split('\n')).toHaveLength(1);
+  });
 });

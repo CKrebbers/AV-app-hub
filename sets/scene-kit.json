@@ -12,7 +12,7 @@
     "varve-dj": {
       "start": { "commando": "node server/index.js", "omgeving": { "PORT": "{poort}" } },
       "url": "http://localhost:{poort}/?hub={hub}",
-      "opmerking": "Varve DJ heeft de hub-koppeling als patch (koppelingen/varve-dj/LEESMIJ.md)"
+      "opmerking": "de hub-koppeling van Varve DJ staat op youtube-mixer main (sinds 5 okt); op een oudere kopie: git pull"
     }
   },
   "snapshot": {

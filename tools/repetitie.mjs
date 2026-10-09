@@ -9,7 +9,8 @@
 // Wat er draait:
 //  - de hub (startHub) met NepSysteem: een nep-APC40 mkII en een nep-LPD8 mk2; poort uit config.json;
 //  - Formula Lab en MediSynth op hun Vite-dev-server, Waterschaal statisch (python3 http.server),
-//    Varve DJ met zijn eigen server (patch uit koppelingen/varve-dj in een tijdelijke worktree),
+//    Varve DJ met zijn eigen server (hub-koppeling staat op youtube-mixer main sinds 5 okt; een oudere main
+//    krijgt de patches uit koppelingen/varve-dj in een tijdelijke worktree),
 //    allemaal in headless Chromium (playwright-core) met ?hub=;
 //  - flux in een pseudo-terminal, via tools/repetitie-flux.py (meet wat flux ontvangt en toepast).
 // Paden: sets/paden.json (zelfde bestand als de sets, niet in git), $VARVE_HUB_PADEN of --paden (sleutel = repo-naam uit config.json), per app
@@ -59,8 +60,9 @@ const start = (cmd, a, o, naam) => startProces(cmd, a, o, naam, opruimer, log);
  * Paden van de koppelingen, in hetzelfde formaat als de sets: sets/paden.json (lokaal, niet in git)
  * of $VARVE_HUB_PADEN of --paden, met als sleutel de repo-naam uit config.json → apps.<id>.repo (`~` = thuismap).
  * Per app te overschrijven met $REPETITIE_<APP> (bv. REPETITIE_FORMULA_LAB). Sleutel "varve-dj" (app-id) mag
- * een kant-en-klare Varve DJ-checkout mét de hub-patch zijn; anders maakt de repetitie zelf een tijdelijke
- * worktree van "youtube-mixer" (origin/main) met de patches uit koppelingen/varve-dj.
+ * een kant-en-klare Varve DJ-checkout mét de hub-koppeling zijn; anders maakt de repetitie zelf een tijdelijke
+ * worktree van "youtube-mixer" (origin/main). Staat de koppeling al op main (sinds 5 okt: PR #6), dan wordt er
+ * niets toegepast; alleen een oudere main krijgt de patches uit koppelingen/varve-dj.
  * Zonder iets: de repo's naast deze repo (../formula-lab, ../flux-screensaver, …).
  * Een expliciet opgegeven bestand (--paden of $VARVE_HUB_PADEN) moet bestaan; ongeldige JSON is altijd een fout.
  * @param {any} config
@@ -109,31 +111,37 @@ function gitStand(map) {
 
 /** Basis waarop de patches in koppelingen/varve-dj gemaakt zijn (koppelingen/varve-dj/LEESMIJ.md). */
 const VARVE_DJ_BASIS = '99c7fa2';
+/** Dit bestand maakt patch 0001 aan: staat het in de worktree, dan zit de hub-koppeling al op main (PR #6, 5 okt). */
+const VARVE_DJ_KOPPELING = 'src/control/hub.js';
 
 /**
- * Varve DJ met de hub-patch: een tijdelijke worktree van youtube-mixer op origin/main. Er wordt niets gecommit;
+ * Varve DJ met de hub-koppeling: een tijdelijke worktree van youtube-mixer op origin/main. Er wordt niets gecommit;
  * alleen git's eigen administratie (.git/worktrees) krijgt een tijdelijke regel, die het opruimen weer weghaalt.
+ * Zit de koppeling al op main (`src/control/hub.js` bestaat), dan wordt er niets toegepast: `patches` is dan leeg
+ * en `opMain` waar. Alleen een main van vóór 5 okt krijgt de patches uit koppelingen/varve-dj erbij.
  * @param {string} repo
+ * @param {{ patchMap?: string, opruim?: { voeg: (naam: string, fn: () => void) => void } }} [o] voor de test
  */
-function varveDjWerkboom(repo) {
+export function varveDjWerkboom(repo, { patchMap = join(HUB_MAP, 'koppelingen/varve-dj'), opruim = opruimer } = {}) {
   const map = mkdtempSync(join(tmpdir(), 'repetitie-varve-dj-'));
   rmSync(map, { recursive: true });
   execFileSync('git', ['-C', repo, 'worktree', 'add', '--detach', map, 'origin/main'], { stdio: 'ignore' });
-  opruimer.voeg('varve-dj-worktree', () => {
+  opruim.voeg('varve-dj-worktree', () => {
     try { execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', map], { stdio: 'ignore' }); } catch { rmSync(map, { recursive: true, force: true }); }
   });
   const basis = execFileSync('git', ['-C', map, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
-  const patches = readdirSync(join(HUB_MAP, 'koppelingen/varve-dj')).filter((f) => f.endsWith('.patch')).sort();
+  if (existsSync(join(map, VARVE_DJ_KOPPELING))) return { map, basis, patches: /** @type {string[]} */ ([]), opMain: true };
+  const patches = readdirSync(patchMap).filter((f) => f.endsWith('.patch')).sort();
   for (const f of patches) {
     try {
-      execFileSync('git', ['-C', map, 'apply', join(HUB_MAP, 'koppelingen/varve-dj', f)], { stdio: ['ignore', 'ignore', 'pipe'] });
+      execFileSync('git', ['-C', map, 'apply', join(patchMap, f)], { stdio: ['ignore', 'ignore', 'pipe'] });
     } catch (e) {
       const uit = String(/** @type {any} */ (e)?.stderr ?? '').trim().split('\n').slice(0, 5).join('\n  ');
       throw new Error(`varve-dj: patch ${f} past niet op origin/main @${basis} (gemaakt op ${VARVE_DJ_BASIS}). `
-        + `Doe \`git fetch\` in ${repo}, of zet "varve-dj" in paden.json naar een checkout mét de patch.${uit ? `\n  ${uit}` : ''}`);
+        + `Doe \`git fetch\` in ${repo}, of zet "varve-dj" in paden.json naar een checkout mét de koppeling.${uit ? `\n  ${uit}` : ''}`);
     }
   }
-  return { map, basis, patches };
+  return { map, basis, patches, opMain: false };
 }
 
 /**
@@ -332,7 +340,7 @@ async function main() {
       const repo = moetBestaan('youtube-mixer', paden['youtube-mixer']);
       const w = varveDjWerkboom(repo);
       map = w.map;
-      omgevingApps['varve-dj'] = `${repo} · origin/main @ ${w.basis} + ${w.patches.join(', ')} (tijdelijke worktree)`;
+      omgevingApps['varve-dj'] = `${repo} · origin/main @ ${w.basis}${w.opMain ? ' (hub-koppeling staat al op main)' : ` + ${w.patches.join(', ')}`} (tijdelijke worktree)`;
     } else omgevingApps['varve-dj'] = `${map} · ${gitStand(map)}`;
     servers['varve-dj'] = start(process.execPath, [join(map, 'server/index.js')], {
       cwd: map,

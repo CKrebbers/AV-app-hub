@@ -14,7 +14,7 @@ export const KOPPELINGEN = Object.freeze({
   medisynth: { bestand: 'src/hub.js', waar: 'de tak claude/varve-hub-koppeling van medisynth (de PR)' },
   // Eén HTML-bestand (regel van waterschaal): de koppeling leest ?hub= uit de URL.
   waterschaal: { bestand: 'td/waterschaal-lokaal.html', bevat: /['"]hub['"]/, waar: 'de tak claude/varve-hub-koppeling van waterschaal (de PR)' },
-  'varve-dj': { bestand: 'src/control/hub.js', waar: 'koppelingen/varve-dj/LEESMIJ.md (patch; jij commit zelf)' },
+  'varve-dj': { bestand: 'src/control/hub.js', waar: 'youtube-mixer main sinds 5 okt (PR #6); op een oudere kopie: git pull, zie koppelingen/varve-dj/LEESMIJ.md' },
   'av-kern': { bestand: 'src/ui/hub.ts', waar: 'koppelingen/av-kern/LEESMIJ.md (patch, pas na 25 okt)' },
   'av-scene-kit': { bestand: 'td/td_build_hub.py', waar: 'docs/TOUCHDESIGNER.md' },
   // Staat een app hier niet in (flux), dan wordt de koppeling niet nagegaan.
