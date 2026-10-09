@@ -1,6 +1,6 @@
 # Varve DJ — koppeling met de hub (patch)
 
-## Stand 6 okt 2026: beide patches staan op `youtube-mixer` main
+## Stand 6 okt 2026 (bijgewerkt 9 okt): beide patches staan op `youtube-mixer` main
 
 | patch | wat | stand |
 |---|---|---|
@@ -8,7 +8,7 @@
 | `0002` | Reviews verwerkt: hartslag op tijd, K1 los van master, paniek | **op main** |
 
 - Toegepast met `git apply` op main `99c7fa2` (de basis van de patches), in zes commits `219880f` … `a95bf6a`, samengevoegd in merge **`0e19b0e`** (PR #6, 5 okt). Clay koos: los op main, niet via de PR-stapel #3 → #5.
-- Nagekeken 6 okt via GitHub: `src/control/hub.js`, `test/hub.test.mjs` en `tools/headless/hub.mjs` op main zijn byte-gelijk aan wat 0001 + 0002 uit deze map opleveren (`git hash-object`). Volgens PR #6: `test/hub.test.mjs` 60/60 groen.
+- Nagekeken 6 okt via GitHub: `src/control/hub.js`, `test/hub.test.mjs` en `tools/headless/hub.mjs` op main zijn byte-gelijk aan wat 0001 + 0002 uit deze map opleveren (`git hash-object`; stand van 6 okt, main `0e19b0e`: sinds 7 okt is `hub.js` op main uitgebreid met de speelapparaten, dus niet meer byte-gelijk). Volgens PR #6: `test/hub.test.mjs` 60/60 groen.
 - De regel "Nooit committen" in Varve DJ ging alleen over de iCloud-conflictkopieën (bestanden met " 2" in de naam), niet over committen zelf.
 
 ### Toepassen
@@ -23,10 +23,10 @@ Gebruik: start de hub (`npm start` in AV-app-hub) en open `http://localhost:8777
 
 ### Wat nog open is
 - **Niet getest met je echte APC en LPD8** in je eigen Chrome. `tools/headless/hub.mjs` is na het toepassen op main niet gedraaid.
-- **Vragen N1 en N2** in `docs/VRAGEN.md` (blok N, op main): K1 (`macro.intensiteit`) doet nu niets in VARVE; Bank is met `?hub=` de hubtoets, dus keylock heeft een andere toets nodig.
-- **Studio-PR's #3, #4 en #5 staan nog open.** #5 (`studio/integratie`) heeft main `0e19b0e` nu als basis en bevat dezelfde hub-koppeling. PR #6 voorzag bij het mergen van #3 een conflict in `docs/VRAGEN.md` (twee blokken "N": het hub-blok wordt dan **O**) en in `docs/HANDOFF.md` (twee secties "3 OKT").
-- **Xboard49 en Maschine MK2 (de Varve-kant)** komen niet als derde patch hier: ze zijn gebouwd op `studio/integratie` (PR #5): `speelt` in het manifest, eigen nep-poorten via `speelPoort(dev)`, `src/control/maschine.js` en `maschine-scherm.js`. Nog **niet op main**; ze komen mee met PR #5. Niet bespeeld.
-- **In deze repo nog niet bijgewerkt** (gaan nog uit van "patch, jij commit zelf"): `tools/repetitie.mjs` past de patches nog toe op `origin/main` van youtube-mixer, en dat faalt nu. Tot dat is aangepast: zet `"varve-dj"` in `sets/paden.json` (of `REPETITIE_VARVE_DJ`) naar je youtube-mixer-checkout op main. Ook de hint in `src/check/koppelingen.js`, `STATUS.md`, `sets/scene-kit.json` en `docs/REPETITIE.md` noemen nog de patch.
+- **Vragen O1 en O2** in `docs/VRAGEN.md` (blok O, op main; na het mergen van de stems-PR heet het hub-blok **O**, blok N is nu Stems): O1: K1 (`macro.intensiteit`) doet nu niets in VARVE; O2: Bank is met `?hub=` de hubtoets, dus keylock heeft een andere toets nodig. Beide staan op 9 okt nog open in VRAGEN.
+- **Studio-PR's #3 en #5 zijn op 7 okt gemerged** (08:12 UTC; #3 is `c0a9930`, voorouder van youtube-mixer main; #5 `studio/integratie` na `0e19b0e`). #4 (koptelefoon) is op 7 okt gesloten zonder eigen merge: de inhoud zit in #5. De verwachte conflicten (blok "N" in `docs/VRAGEN.md` -> het hub-blok is **O**; twee secties "3 OKT" in `docs/HANDOFF.md`) zijn daarmee opgelost. Daarna is `studio/integratie` nog gemerged via #7 – #14 (laatst #14, 9 okt). Open in youtube-mixer: PR #15 (VRAGEN: N1 stems op de APC is gebouwd).
+- **Xboard49 en Maschine MK2 (de Varve-kant)** kwamen niet als derde patch hier: ze zijn gebouwd op `studio/integratie` en staan **sinds 7 okt op youtube-mixer main** (PR #5; commit `89e01b9` van 5 okt: `speelt` in het manifest, eigen nep-poorten via `speelPoort(dev)`, `src/control/maschine.js`, `maschine-scherm.js`, `mappings/xboard49.json`). Op main bestaan `src/control/maschine.js` en `mappings/xboard49.json`/`maschine-mk2.json` (nagekeken 9 okt via GitHub, main `8e6a017`). Sindsdien erbij gekomen: Strip/Rack-pagina's en Maschine-kaart (7 okt), bladeren en sampler (8 okt). Nog niet met echte hardware bespeeld.
+- **In deze repo nog niet bijgewerkt op main** (gaan nog uit van "patch, jij commit zelf"; PR #19 past dit aan, nog open): `tools/repetitie.mjs` past de patches nog toe op `origin/main` van youtube-mixer, en dat faalt nu. Tot dat is aangepast: zet `"varve-dj"` in `sets/paden.json` (of `REPETITIE_VARVE_DJ`) naar je youtube-mixer-checkout op main. Ook de hint in `src/check/koppelingen.js`, `STATUS.md`, `sets/scene-kit.json` en `docs/REPETITIE.md` noemen nog de patch.
 
 ---
 
@@ -67,7 +67,7 @@ Daarna `git add` per pad en committen zoals je gewend bent. Gebruik: start de hu
 
 ### Volgende stap: de Xboard49 en de Maschine MK2 (stand 3–5 okt)
 
-> **6 okt:** dit is intussen gebouwd op `studio/integratie` (PR #5, open), niet als derde patch hier. Zie "Wat nog open is" boven.
+> **6 okt:** dit is intussen gebouwd op `studio/integratie` (PR #5), niet als derde patch hier. **9 okt:** PR #5 is op 7 okt gemerged; het staat op youtube-mixer main. Zie "Wat nog open is" boven.
 
 Sinds golf 9 opent de hub ook het keyboard (E-MU Xboard49) en de Maschine MK2 en geeft ze door aan de lease-app die
 speelt (PROTOCOL §17; de indeling van de Maschine: `docs/MASCHINE.md`). De hub-kant is af en getest; **de Varve-kant
