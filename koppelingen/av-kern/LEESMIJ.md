@@ -1,10 +1,10 @@
 # av-kern — koppeling met de hub (patch)
 
-Tot de publicatie van **25 okt** raken we av-kern niet aan: geen push, geen PR, geen branch op GitHub. Daarom staat de koppeling hier als twee patches. Pas ze toe als de publicatie de deur uit is.
+**Stand 9 okt 2026:** patch **0001** (◄/►) staat al op av-kern `main` (PR #1, `a9010e9`; Clay, 5 okt). Alleen patch **0002** (de hub-koppeling) is nog toe te passen, en pas **na de publicatie van 25 okt**: tot dan raken we av-kern niet meer aan (geen push, geen PR, geen branch op GitHub). Het 0001-bestand blijft hier staan als bewijs, maar hoeft niet meer toegepast.
 
 ## Wat zit erin
-- **0001 — ◄/► volgens protocol v1.2** (losse commit). In `src/kern/apc40.ts` stonden de pijlen omgedraaid (left = 96, right = 97). Volgens Akai protocol v1.2 is ► (right) 0x60 = 96 en ◄ (left) 0x61 = 97. `apc40.ts` valt **niet** onder de bevroren regel (die geldt alleen voor `midi.ts` en `bus.ts`), dus hier is het echt gerepareerd, met een test die zonder de fix faalt. In de Ademmachine zitten op ◄/► alleen AI-stubs, dus je hoort niets anders.
-- **0002 — de hub-koppeling**, helemaal buiten de kern:
+- **0001 — ◄/► volgens protocol v1.2** (losse commit; **al toegepast**, av-kern main `a9010e9`). In `src/kern/apc40.ts` stonden de pijlen omgedraaid (left = 96, right = 97). Volgens Akai protocol v1.2 is ► (right) 0x60 = 96 en ◄ (left) 0x61 = 97. `apc40.ts` valt **niet** onder de bevroren regel (die geldt alleen voor `midi.ts` en `bus.ts`), dus hier is het echt gerepareerd, met een test die zonder de fix faalt. In de Ademmachine zitten op ◄/► alleen AI-stubs, dus je hoort niets anders.
+- **0002 — de hub-koppeling** (**nog toe te passen, na 25 okt**), helemaal buiten de kern:
   - `src/ui/hub.ts` (nieuw, alleen geladen met de vlag): APC-invoer van de hub (`{t:'midi'}`) gaat door `Driver.input(bytes, 'hub')`, hetzelfde pad als de echte APC. Alleen volledige note- en CC-berichten (3 bytes, databytes ≤ 127). De LED- en ringuitvoer van de driver (`Driver.onSend`, dezelfde haak als de virtuele APC) gaat per beeld gebundeld als `{t:'led'}` naar de hub. Bij (her)verbinden de hele set: ringtypes, LED's, ringen.
   - De LPD8-rollen (`zet`) en paniek (`trig`) zet `hub.ts` **direct** op de bus (`Bus.set`/`stopAll`), dus buiten `Driver.input` om en niet in het actielog (zie open vragen). Tijdens een replay negeert hij zets van de hub; paniek werkt dan bewust wel.
   - Met `?hub=ws://localhost:7700/app` roept av-kern **nooit** `requestMIDIAccess` aan en gebruikt de Web Lock `av-kern-apc` niet. De knop wordt "APC via hub". De hub zet de APC in 0x42 en tekent de ringen mee met de knop (`rings:"auto"`), zoals de APC zelf in 0x41 doet. De keuze zit in één pure functie, `apcBron()` in `src/ui/hub-vlag.ts`, met tests.
@@ -35,19 +35,18 @@ Tot de publicatie van **25 okt** raken we av-kern niet aan: geen push, geen PR, 
 - `npm test` in av-kern: 66 groen (40 bestaande + 1 voor ◄/► + 25 voor de koppeling). `npm run build` groen; `hub.ts` is een eigen chunk.
 - `node scripts/hub-headless.mjs` (Chromium, met `AVKERN_HUB_REPO` naar deze repo): de conformiteitstoets van de hub (`toetsApp`) slaagt helemaal; een geweigerd `?hub=` (`localhost:7700` en `ws://voorbeeld.nl/app`) geeft 0× MIDI, 0× lock en de juiste melding; en tegen de echte hub (`startHub` met NepSysteem, eerst een andere app met de focus): **Bank + Track Select geeft av-kern de focus**, de volledige LED-kaart van av-kern komt op de nep-APC, pad 2-1 kleurt in de Drone-kleur, tk3 zet de macro en de ring staat op de APC, LPD8 K5 → macro kleur → av-kern tekent de ring van tk1 op de APC, K1 → master, P1 → Stop All, en terug naar de andere app = geen invoer meer naar av-kern. Nooit `requestMIDIAccess`, nooit de Web Lock, alleen de hub stuurt een modus (0x42). De hubtoets en de LPD8-knoppen haalt het script uit de config en `ROLLEN` van de hub.
 - In de hub: `test/koppeling-av-kern.test.js` leest het manifest uit de patch zelf en toetst het tegen de kern (focus, LED's/ringen, alle acht LPD8-knoppen, paniek), en bewaakt dat de patches `LOG.md`/`CLAUDE.md` niet raken.
-- Gecontroleerd: beide patches passen op av-kern main **ab7e115** ("Fase 0.4: reference/ademmachine.html …"), én op ab7e115 plus een extra `LOG.md`-regel en een gewijzigde `CLAUDE.md` (zoals main er na een paar sessies uitziet). Daarna is `npm test` groen.
+- Gecontroleerd (3 okt, vóór 0001 op main kwam): beide patches passen op av-kern main **ab7e115** ("Fase 0.4: reference/ademmachine.html …"), én op ab7e115 plus een extra `LOG.md`-regel en een gewijzigde `CLAUDE.md` (zoals main er na een paar sessies uitziet). Daarna is `npm test` groen. Sinds 0001 op main staat (`a9010e9`) is 0002 niet opnieuw nagelopen: doe eerst `git apply --check`.
 - **Nog niet** met je echte APC en LPD8 in je eigen Chrome.
 
-## Toepassen (na 25 okt)
+## Toepassen (alleen 0002, na 25 okt)
 ```bash
 cd ~/…/av-kern                     # waar je av-kern hebt staan, op main
 git switch -c varve-hub-koppeling
-git apply --check /pad/naar/AV-app-hub/koppelingen/av-kern/000*.patch   # past het nog? (geen uitvoer = ja)
-git am -3 /pad/naar/AV-app-hub/koppelingen/av-kern/0001-*.patch   # ◄/► (kan ook los, eerder)
-git am -3 /pad/naar/AV-app-hub/koppelingen/av-kern/0002-*.patch   # de koppeling
+git apply --check /pad/naar/AV-app-hub/koppelingen/av-kern/0002-*.patch   # past het nog? (geen uitvoer = ja)
+git am -3 /pad/naar/AV-app-hub/koppelingen/av-kern/0002-*.patch   # de koppeling (0001 staat al op main)
 npm test && npm run build
 ```
-Loopt `git am -3` toch vast op een conflict (iemand heeft `main.ts` of `apc40.ts` intussen veranderd): `git status` toont het bestand met `UU`. Kun je het zelf oplossen, los het op en doe `git add <bestand> && git am --continue`. Anders: `git am --abort` (alles terug zoals het was) en vraag Claude de patch opnieuw te maken op de nieuwe main. Wil je alleen de ◄/►-fix: alleen 0001.
+Loopt `git am -3` toch vast op een conflict (iemand heeft `main.ts` of `apc40.ts` intussen veranderd): `git status` toont het bestand met `UU`. Kun je het zelf oplossen, los het op en doe `git add <bestand> && git am --continue`. Anders: `git am --abort` (alles terug zoals het was) en vraag Claude de patch opnieuw te maken op de nieuwe main.
 
 Daarna, met de hand (die bestanden veranderen elke sessie, dus niet in de patch):
 
