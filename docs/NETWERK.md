@@ -102,7 +102,8 @@ Het token staat nooit in de aankondiging (`token=nodig` zegt alleen dát er een 
 `dns-sd`/`avahi-publish`, dan meldt de hub dat en werkt hij gewoon verder (gebruik dan het IP-adres). Stopt het
 kindproces, dan start de hub hem opnieuw na 5, 10, 20 … hooguit 60 s; na 5 mislukte starts op rij (bv.
 `avahi-publish` zonder draaiende `avahi-daemon`) geeft hij het op met één melding. Stopt of crasht de hub, dan
-gaat het kindproces mee (geen aankondiging van een hub die er niet meer is).
+gaat het kindproces mee (geen aankondiging van een hub die er niet meer is). Dat geldt ook bij `kill -9`: het
+programma draait achter een kleine `sh`-wachter die het stopt zodra de hub weg is (in `ps` als `varve-mdns`).
 
 Controleren:
 
