@@ -141,11 +141,27 @@ export function mdnsCommando({ platform, poort, naam }) {
 export const MDNS_POGINGEN = 5;
 
 /**
+ * Wachter rond dns-sd/avahi-publish: een `sh` die het programma start en het doodt zodra de stdin-pijp van de hub
+ * dichtgaat. Die gaat ook dicht als de hub met SIGKILL sterft (dan draait er geen 'exit'-handler meer); zonder
+ * wachter bleef het programma dan als wees de hub aankondigen (spookhubs; de tests lieten er tientallen achter).
+ * De sh eindigt met de exitcode van het programma, zodat kondigAan een crash ervan nog steeds ziet. SIGTERM op
+ * de sh (stop()) neemt het programma mee.
+ */
+const WACHTER = 'exec 3<&0 0</dev/null; "$@" 3<&- & k=$!; { read x <&3; kill $k; } 2>/dev/null & r=$!; ' +
+  'trap \'kill $k $r 2>/dev/null; exit 143\' HUP INT TERM; wait $k; s=$?; kill $r 2>/dev/null; exit $s';
+
+/**
+ * Het commando met wachter: leeft nooit langer dan het proces dat het start (stdin moet een pijp zijn).
+ * @param {{ bin: string, args: string[] }} c @returns {{ bin: string, args: string[] }}
+ */
+export const bewaakt = (c) => ({ bin: '/bin/sh', args: ['-c', WACHTER, 'varve-mdns', c.bin, ...c.args] });
+
+/**
  * Kondig de hub aan via mDNS zolang hij draait. Bestaat dns-sd/avahi-publish niet, dan een melding en verder
  * niets (de hub werkt, alleen niet vindbaar via mDNS). Stopt het kindproces onverwacht, dan opnieuw na een
  * oplopende pauze (5 → 10 → … → 60 s, via de klok); na MDNS_POGINGEN mislukte starts op rij één melding en klaar
- * (bv. avahi-publish zonder draaiende avahi-daemon). Stopt de hub zelf (ook bij een crash), dan gaat het
- * kindproces mee: anders blijft de dienst als wees aangekondigd.
+ * (bv. avahi-publish zonder draaiende avahi-daemon). Stopt de hub zelf (ook bij een crash of SIGKILL), dan gaat
+ * het kindproces mee (de 'exit'-handler en de wachter, zie bewaakt): anders blijft de dienst als wees aangekondigd.
  * @param {{ poort: number, naam?: string, platform?: string, bestaat?: (bin: string) => boolean,
  *   spawn?: (bin: string, args: string[], o: object) => import('node:child_process').ChildProcess,
  *   klok?: import('./core/klok.js').Klok, log?: (...a: unknown[]) => void,
@@ -174,7 +190,8 @@ export function kondigAan({ poort, naam = `Varve hub (${(lanNamen()[0] ?? 'hub')
     if (gestopt) return;
     const gestart = klok.nu();
     let p;
-    try { p = spawn(commando.bin, commando.args, { stdio: 'ignore' }); } catch (e) { return opnieuw(`starten mislukte: ${/** @type {Error} */ (e).message}`); }
+    const b = bewaakt(commando);
+    try { p = spawn(b.bin, b.args, { stdio: ['pipe', 'ignore', 'ignore'] }); } catch (e) { return opnieuw(`starten mislukte: ${/** @type {Error} */ (e).message}`); }
     kind = p;
     p.on('error', (e) => { if (kind === p) { kind = null; mislukt++; opnieuw(e.message); } });
     p.on('exit', (code, sig) => {

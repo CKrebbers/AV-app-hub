@@ -1,15 +1,17 @@
 // src/lan.js: token op schijf, LAN-namen, mDNS als kindproces (nep-spawn + NepKlok), launchd/systemd-dienst.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NepKlok } from '../src/core/klok.js';
+import { wachtOp } from './nepkern.js';
 import {
   leesOfMaakToken, tokenPad, nieuwToken, isLoopbackHost, lanNamen, lanOrigins, lanAdressen, cockpitAdressen,
   mdnsCommando, kondigAan, inPad, dienstVoor, installeer, MDNS_TYPE, LAUNCHD_LABEL, SYSTEMD_NAAM,
-  bonjourNaam, mdnsNaam, stabielNode, MDNS_POGINGEN,
+  bonjourNaam, mdnsNaam, stabielNode, MDNS_POGINGEN, bewaakt,
 } from '../src/lan.js';
 
 const HUB = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -84,9 +86,10 @@ describe('namen en adressen', () => {
     for (const h of ['0.0.0.0', '::', '192.168.1.10', 'studio.local']) expect(isLoopbackHost(h), h).toBe(false);
   });
   it('lanNamen: hostnaam en <naam>.local, kleine letters, ook als de hostnaam al .local heeft', () => {
-    expect(lanNamen({ hostnaam: 'Clays-MacBook-Pro.local' })).toEqual(['clays-macbook-pro', 'clays-macbook-pro.local']);
-    expect(lanNamen({ hostnaam: 'omarchy' })).toEqual(['omarchy', 'omarchy.local']);
-    expect(lanNamen({ hostnaam: 'studio', extra: ['Studio.lan', 'localhost', 'kw@ad'] })).toEqual(['studio', 'studio.local', 'studio.lan']);
+    // bonjour: null, anders vraagt lanNamen de Bonjour-naam van deze Mac op (scutil) en hangt de test van de machine af
+    expect(lanNamen({ hostnaam: 'Clays-MacBook-Pro.local', bonjour: null })).toEqual(['clays-macbook-pro', 'clays-macbook-pro.local']);
+    expect(lanNamen({ hostnaam: 'omarchy', bonjour: null })).toEqual(['omarchy', 'omarchy.local']);
+    expect(lanNamen({ hostnaam: 'studio', bonjour: null, extra: ['Studio.lan', 'localhost', 'kw@ad'] })).toEqual(['studio', 'studio.local', 'studio.lan']);
   });
   it('lanNamen: de Bonjour-naam van de Mac (scutil), ook als de hostnaam iets als x.fritz.box is', () => {
     const namen = lanNamen({ hostnaam: 'clays-mbp.fritz.box', bonjour: 'Clays-MacBook-Pro' });
@@ -157,6 +160,9 @@ describe('mDNS-aankondiging', () => {
     });
     expect(r.actief).toBe(true);
     expect(kinderen).toHaveLength(1);
+    expect(/** @type {any} */ (kinderen[0]).bin).toBe('/bin/sh');                        // met wachter (bewaakt)
+    const args = /** @type {any} */ (kinderen[0]).args;
+    expect(args.slice(args.indexOf('dns-sd'), args.indexOf('dns-sd') + 5)).toEqual(['dns-sd', '-R', 'Varve hub', MDNS_TYPE, 'local']);
     expect(/** @type {any} */ (kinderen[0]).args).toContain('7711');
     kinderen[0].emit('exit', 1, null);
     klok.loop(4999);
@@ -220,6 +226,36 @@ describe('mDNS-aankondiging', () => {
     for (let i = 0; i < 10; i++) { klok.loop(61000); kinderen.at(-1)?.emit('exit', 1, null); klok.loop(5000); }
     expect(kinderen).toHaveLength(11);
     r.stop();
+  });
+
+  it('bewaakt: het programma met al zijn argumenten achter een sh-wachter', () => {
+    const b = bewaakt({ bin: 'dns-sd', args: ['-R', 'Varve hub (x)', MDNS_TYPE, 'local', '7700', 'pad=/cockpit'] });
+    expect(b.bin).toBe('/bin/sh');
+    expect(b.args.slice(0, 1)).toEqual(['-c']);
+    expect(b.args.slice(3)).toEqual(['dns-sd', '-R', 'Varve hub (x)', MDNS_TYPE, 'local', '7700', 'pad=/cockpit']);
+  });
+
+  // Echte processen: een nep-dns-sd in PATH, een hub-proces dat kondigAan draait en dan met SIGKILL sterft (zoals in
+  // de tests en bij een harde crash). Dan draait er geen 'exit'-handler; toch mag de aankondiging niet blijven hangen.
+  it.skipIf(process.platform === 'win32')('sterft de hub met SIGKILL, dan stopt dns-sd ook (geen spookhub)', async () => {
+    const bin = join(home, 'bin');
+    mkdirSync(bin);
+    const pidBestand = join(home, 'dns-sd.pid');
+    writeFileSync(join(bin, 'dns-sd'), `#!/bin/sh\necho $$ > '${pidBestand}'\nexec sleep 300\n`, { mode: 0o755 });
+    const lan = new URL('../src/lan.js', import.meta.url).href;
+    const code = `import { kondigAan } from '${lan}'; kondigAan({ poort: 1, naam: 'proef', platform: 'darwin', log: () => {} }); setInterval(() => {}, 1000);`;
+    const hub = spawn(process.execPath, ['--input-type=module', '-e', code], { stdio: 'ignore', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    const leeft = (/** @type {number} */ pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    let pid = 0;
+    try {
+      pid = await wachtOp(() => existsSync(pidBestand) && Number(readFileSync(pidBestand, 'utf8')), 5000);
+      expect(leeft(pid)).toBe(true);
+      hub.kill('SIGKILL');
+      await wachtOp(() => !leeft(pid), 3000);
+    } finally {
+      hub.kill('SIGKILL');
+      if (pid && leeft(pid)) process.kill(pid, 'SIGKILL');
+    }
   });
 
   it('inPad vindt uitvoerbare programma\'s in PATH', () => {
