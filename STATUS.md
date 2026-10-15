@@ -175,6 +175,12 @@ Keuzes om na te lopen (zeg het als je het anders wilt):
 - **Bevriezen, niet terug naar 0**, als de bron wegvalt: de muziek speelt in het tabblad door als alleen de verbinding hapert. Stopt de muziek echt, dan stuurt de app zelf energie 0.
 - **De eerste leverancier wint** (zoals de adem), niet de app met focus: de focus zegt welke app je bedient, niet welke je hoort.
 
+## Eerste test op de echte Mac (okt) — APC-handdruk
+- [x] `doctor` vond APC en LPD8, maar de APC antwoordde niet op de identiteitsvraag en het spelen "deed totaal niet wat het moest": het beeld van een APC die in de fabrieksmodus (0x40) blijft
+- [x] **Handdruk zoals Ableton Live** (Live-script `_APC.py`): identiteitsvraag ook op kanaal 0, intro ook met het apparaat-id uit het antwoord; geen antwoord op de intro → één duidelijke regel in het hubvenster (PROTOCOL §16, `test/apc-handdruk.test.js`)
+- [x] **`doctor` toont de handdruk stap voor stap** (omni/kanaal 0, intro 0x7f/eigen id) met wat te doen (`test/doctor-apc.test.js`)
+- [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt
+
 ## Volgende
 - Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
 - av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten

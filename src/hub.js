@@ -165,6 +165,12 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
         : `${label}: openen mislukt (${e?.message ?? e}) — de hub probeert opnieuw`);
     });
   }
+  // De APC-handdruk (src/apparaten.js ApcSessie.init): zonder antwoord op de intro staat hij waarschijnlijk nog in de
+  // fabrieksmodus, en dan doet bijna niets wat de hub verwacht. Eén regel, met wat te doen.
+  apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null }} */ h) => {
+    log(h.ok ? `APC: modus gezet (antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''})`
+      : `APC: geen antwoord op de modus-instructie${h.identiteit ? '' : ' (ook niet op de identiteitsvraag)'} — waarschijnlijk staat hij nog in de fabrieksmodus en doen knoppen en lampjes niet wat de hub verwacht. Draai: node src/cli.js doctor`);
+  });
   // De Maschine: bezet (een NI-programma heeft hem) of geen invoer (macOS-Invoermonitoring): zeggen wat te doen.
   maschine?.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => {
     log(soort === 'sturen' ? 'Maschine: sturen mislukt — kabel los? de hub probeert opnieuw'

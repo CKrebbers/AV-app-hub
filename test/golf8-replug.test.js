@@ -14,7 +14,7 @@ import * as A from '../src/devices/apc40mk2.js';
 import * as L from '../src/devices/lpd8.js';
 
 const config = { hotplug_ms: 2000, led: { per_burst: 16, burst_ms: 4 }, apparaten: { apc40: { naam: 'apc40', modus: 0x42 }, lpd8: { naam: 'lpd8' } } };
-const VOL_BEELD = 1 + 16 + 125;   // intro, 16 ringtypes, alle LEDs
+const VOL_BEELD = 1 + 16 + 2 + 125;   // intro, 16 ringtypes, alle LEDs
 
 function opzet() {
   const klok = new NepKlok(), systeem = new NepSysteem();
@@ -71,7 +71,7 @@ describe('een controller die sneller terug is dan één hotplug-ronde', () => {
     const nieuw = systeem.voegToe('APC40 mkII');      // t = 150: terug vóór de lijst-tik (250) het weg-zijn zag
     for (let i = 0; i < 40; i++) app.apc.zet(`pad${1 + (i % 5)}-${1 + (i % 8)}`, { kleur: 5 + i });
     app.apc.teken();                                  // de wachtrij stuurt naar de oude, dichte poort
-    klok.loop(60);                                    // herstel (0 ms) en het hele beeld (142 berichten, 16 per 4 ms)
+    klok.loop(60);                                    // herstel (0 ms) en het hele beeld (144 berichten, 16 per 4 ms)
     expect(klok.nu()).toBeLessThan(LIJST_MS);
     expect(meldingen).toEqual(['verbonden', 'weg', 'verbonden']);
     expect(fouten).toHaveLength(1);                   // één melding, niet één per bericht

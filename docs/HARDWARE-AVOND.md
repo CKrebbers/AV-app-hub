@@ -272,6 +272,19 @@ Ableton en Logic moet je zelf nalopen), en trek daarna de APC
 één keer los en weer vast: de hub zet hem binnen ±2 s zelf weer goed (de APC vergeet bij elke herstart zijn modus; de
 hub stuurt hem opnieuw en tekent alles opnieuw).
 
+**De APC doet niet wat hij moet** (BANK + Track Select wisselt niet van app, knoppen blijven aan staan, de lampjes doen
+iets anders dan de cockpit, de draaiknoppen doen per track iets anders). *Oorzaak:* de APC staat nog in zijn
+**fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster staat dan
+`APC: geen antwoord op de modus-instructie …`. *Kijk:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de
+APC staat nu per vorm of hij antwoordt: de identiteitsvraag zoals het protocol (omni) en zoals Ableton Live (kanaal 0),
+en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`, dan zet de hub hem
+voortaan zelf zo (sinds de handdruk zoals Live) — start de hub opnieuw. Staat er overal `✗`, dan komt er geen SysEx bij de
+APC aan: stroomadapter in en aan, een andere USB-kabel of -poort (direct op de Mac), Ableton Live helemaal dicht, en de
+firmware bijwerken met Akai's "APC40 mkII firmware updater". *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**
+(snoize.com, gratis), zet "Spy on output to destinations" aan, en vergelijk wat de hub bij `npm start` naar de APC stuurt
+met wat **Ableton Live** stuurt als je de APC daar als bedieningsoppervlak kiest (eerst de hub dicht). Exporteer beide
+vensters (File → Save) en zet ze in `proef/midimonitor/`.
+
 **De hub vindt de APC of de LPD8 niet.** *Oorzaak:* geen MIDI (`npm install` niet gedaan; doctor zegt dan "✗ geen MIDI" met de
 reden), of de poortnaam is anders dan verwacht. *Oplossing:* `npm install`; `node src/cli.js doctor` toont de
 namen van alle MIDI-poorten. Staat de APC er onder een andere naam, zet dan een stukje van die naam bij
