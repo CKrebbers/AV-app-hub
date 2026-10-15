@@ -101,6 +101,9 @@ class Sessie extends Zender {
   bijHerinit() { this.bijAansluiten(); }
 }
 
+/** Zo lang wacht de APC-sessie op het antwoord op de intro (0x61) voor hij meldt dat de modus niet gezet lijkt. */
+export const HANDDRUK_MS = 1500;
+
 export class ApcSessie extends Sessie {
   /** @param {ConstructorParameters<typeof Sessie>[0] & { modus?: number }} o */
   constructor(o) {
@@ -108,17 +111,73 @@ export class ApcSessie extends Sessie {
     this.modus = o.modus ?? APC.MODUS.alternatief;
     this.leds = new LedBeeld({ controls: APC.CONTROLS, berichten: APC.ledBerichten });
     this.leds.zwart();
+    /** De handdruk van de laatste init(): kwam er een identiteit, een eigen apparaat-id, een antwoord op de intro?
+     *  @type {{ identiteit: boolean, apparaatId: number|null, introAntwoord: boolean }} */
+    this.handdruk = { identiteit: false, apparaatId: null, introAntwoord: false };
+    /** @type {any} */
+    this.handdrukTimer = null;
   }
   /** @param {number[]} b */
   ontleed(b) { return APC.ontleed(b); }
   /** Bij (her)aansluiten: modus, ringtypes en alles opnieuw tekenen. Het apparaat valt na replug terug op modus 0. */
   bijAansluiten() { this.init(); }
+  /**
+   * De handdruk, zoals Ableton Live hem doet (Live-script _APC.py) plus wat het protocol voorschrijft:
+   * 1. intro met apparaat-id 0x7F (protocol v1.2) en de ringtypes;
+   * 2. identiteitsvraag op kanaal 0 (zoals Live) én omni (protocol);
+   * 3. noemt de APC in zijn antwoord een eigen apparaat-id, en kwam er nog geen antwoord op de intro, dan de intro
+   *    nog eens met dat id (zoals Live) en alles opnieuw tekenen;
+   * 4. geen antwoord op de intro binnen HANDDRUK_MS: meld 'handdruk' { ok: false }. Dan staat de APC waarschijnlijk
+   *    nog in de fabrieksmodus (0x40): knoppen werken anders (Track Select stuurt niets, schakelaars blijven aan) en
+   *    de lampjes volgen de hub niet.
+   */
   init() {
     this.rij.wis();
+    this.handdruk = { identiteit: false, apparaatId: null, introAntwoord: false };
+    if (this.handdrukTimer !== null) this.klok.wis(this.handdrukTimer);
+    this.handdrukTimer = this.klok.zet(() => {
+      this.handdrukTimer = null;
+      if (!this.handdruk.introAntwoord && this.poort) this.#meldHanddruk(false);
+    }, HANDDRUK_MS);
     this.stuur(APC.intro(this.modus));
     for (const b of APC.ringTypeBerichten(APC.RING.single)) this.stuur(b);
+    this.stuur([...APC.IDENTITEIT_VRAAG_LIVE]);
+    this.stuur([...APC.IDENTITEIT_VRAAG]);
     this.leds.vergeet();
     this.teken();
+  }
+  /** @param {boolean} ok */
+  #meldHanddruk(ok) {
+    const info = { ok, ...this.handdruk };
+    this.logboek?.regel('melding', { dev: this.dev, wat: 'handdruk', ...info });
+    this.meld('handdruk', info);
+  }
+  /** @param {number[]} b */
+  bijBinnen(b) {
+    super.bijBinnen(b);
+    if (b[0] !== 0xf0) return;
+    const g = APC.ontleed(b);
+    if (g.kind === 'identiteit') {
+      this.handdruk.identiteit = true;
+      const id = g.apparaatId ?? null;
+      if (id !== null && this.handdruk.apparaatId === null) {
+        this.handdruk.apparaatId = id;
+        if (id !== APC.BROADCAST && !this.handdruk.introAntwoord) {
+          this.stuur(APC.intro(this.modus, id));
+          for (const r of APC.ringTypeBerichten(APC.RING.single)) this.stuur(r);
+          this.leds.vergeet();
+          this.teken();
+        }
+      }
+    } else if (g.kind === 'intro-antwoord' && !this.handdruk.introAntwoord) {
+      this.handdruk.introAntwoord = true;
+      if (this.handdrukTimer !== null) { this.klok.wis(this.handdrukTimer); this.handdrukTimer = null; }
+      this.#meldHanddruk(true);
+    }
+  }
+  stop() {
+    if (this.handdrukTimer !== null) { this.klok.wis(this.handdrukTimer); this.handdrukTimer = null; }
+    super.stop();
   }
   /** @param {string} id @param {import('./devices/apc40mk2.js').LedStaat} s */
   zet(id, s) { this.leds.zet(id, s); }

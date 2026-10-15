@@ -85,9 +85,18 @@ const stappen = [
     async doe(h) {
       const uit = {};
       if (h.apc.verbonden) {
+        // Eerst de LED-stroom van het aansluiten laten wegvloeien: anders wacht de vraag achter ±140 LED-berichten.
+        // Dan beide vormen: omni (protocol v1.2) en kanaal 0 (zoals Ableton Live); welke beantwoord wordt, is een bevinding.
+        await h.apc.rij.leeg();
         h.apc.stuur([...A.IDENTITEIT_VRAAG]);
         const r = await h.eerste({ dev: 'apc40', filter: (g) => g.kind === 'identiteit', timeoutMs: 1500 });
         uit.apc40 = r ? r.bytes : null;
+        await h.apc.rij.leeg();
+        h.apc.stuur([...A.IDENTITEIT_VRAAG_LIVE]);
+        const r0 = await h.eerste({ dev: 'apc40', filter: (g) => g.kind === 'identiteit', timeoutMs: 1500 });
+        uit.apc40_kanaal0 = r0 ? r0.bytes : null;
+        uit.apc40_apparaatId = (r ?? r0)?.g?.apparaatId ?? null;
+        uit.apc40_handdruk = { ...h.apc.handdruk };
       }
       if (h.lpd8.verbonden) {
         for (let i = 0; i < 6 && !h.lpd8.model; i++) await h.pauze(250);
@@ -99,7 +108,7 @@ const stappen = [
         }
       }
       h.bevinding('identiteit', uit);
-      h.toon(`  APC40-identiteit: ${uit.apc40 ? 'ontvangen' : 'geen antwoord'} · LPD8: ${uit.lpd8_model ?? 'model onbekend'}` +
+      h.toon(`  APC40-identiteit: omni ${uit.apc40 ? 'ontvangen' : 'geen antwoord'}, kanaal 0 ${uit.apc40_kanaal0 ? 'ontvangen' : 'geen antwoord'}${uit.apc40_handdruk ? ` · modus gezet: ${uit.apc40_handdruk.introAntwoord ? 'ja' : 'NEE (fabrieksmodus?)'}` : ''} · LPD8: ${uit.lpd8_model ?? 'model onbekend'}` +
         (uit.lpd8_programmas ? ` · ${Object.keys(uit.lpd8_programmas).length} programma's gelezen` : ''));
     },
   },
@@ -107,6 +116,7 @@ const stappen = [
     id: 'intro-antwoord', titel: 'Faderstanden bij opstart (V4)', vereist: ['apc40'],
     async doe(h) {
       await h.enter('Zet FADER 1 helemaal OMHOOG en alle andere faders + MASTER helemaal OMLAAG.');
+      await h.apc.rij.leeg();
       h.apc.stuur(A.intro(h.apc.modus));
       const r = await h.eerste({ dev: 'apc40', filter: (g) => g.kind === 'intro-antwoord', timeoutMs: 1000 });
       const data = r ? r.bytes.slice(7, -1) : null;

@@ -72,13 +72,40 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
         p.bijBericht((b) => { if (b[0] === 0xf0) ontvangen.push(b); });
         p.stuur([...A.IDENTITEIT_VRAAG]);
         await new Promise((res) => setTimeout(res, 600));
+        if (dev === 'apc40') {
+          // De handdruk stap voor stap (protocol v1.2 tegenover Ableton Live), zodat zichtbaar is wát de APC beantwoordt.
+          // Zonder antwoord op de intro blijft hij in de fabrieksmodus (0x40) en doet in de hub bijna niets wat je verwacht.
+          const wacht = () => new Promise((res) => setTimeout(res, 600));
+          /** @param {number[]} vraag @param {(b: number[]) => boolean} past */
+          const probeer = async (vraag, past) => { const van = ontvangen.length; p.stuur(vraag); await wacht(); return ontvangen.slice(van).find(past) ?? null; };
+          const isId = (/** @type {number[]} */ b) => b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02;
+          const isIntroAntw = (/** @type {number[]} */ b) => b[1] === 0x47 && b[3] === 0x29 && b[4] === 0x61;
+          const hex = (/** @type {number[]} */ b) => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
+          const omni = ontvangen.find(isId) ?? null;
+          const kanaal0 = await probeer([...A.IDENTITEIT_VRAAG_LIVE], isId);
+          const id = A.apparaatIdUit(omni ?? kanaal0 ?? []);
+          const modus = config.apparaten.apc40.modus ?? A.MODUS.alternatief;
+          const intro7f = await probeer(A.intro(modus), isIntroAntw);
+          const introId = intro7f || id === null || id === A.BROADCAST ? null : await probeer(A.intro(modus, id), isIntroAntw);
+          const intro0 = intro7f || introId || id === 0 ? null : await probeer(A.intro(modus, 0), isIntroAntw);
+          const gezet = !!(intro7f || introId || intro0);
+          data[dev].handdruk = { omni: omni ?? null, kanaal0, apparaatId: id, intro7f: !!intro7f, introId: !!introId, intro0: !!intro0, gezet };
+          r.push(`      identiteit (omni, zoals het protocol): ${omni ? hex(omni) : 'geen antwoord'}`);
+          r.push(`      identiteit (kanaal 0, zoals Ableton Live): ${kanaal0 ? hex(kanaal0) : 'geen antwoord'}${id !== null ? ` · apparaat-id ${id}` : ''}`);
+          r.push(`      modus-instructie (intro, id 0x7f): ${intro7f ? '✔ antwoord' : '✗ geen antwoord'}`);
+          if (id !== null && id !== A.BROADCAST && !intro7f) r.push(`      modus-instructie (intro, id ${id}): ${introId ? '✔ antwoord' : '✗ geen antwoord'}`);
+          if (!intro7f && !introId && id !== 0) r.push(`      modus-instructie (intro, id 0): ${intro0 ? '✔ antwoord' : '✗ geen antwoord'}`);
+          r.push(gezet ? `  ${ok(true)} apc40 gaat in de hub-modus (0x${modus.toString(16)})`
+            : `  ${ok(false)} apc40 reageert op geen enkele modus-instructie: hij blijft in de fabrieksmodus. Kijk: stroomadapter in en aan,`
+              + ' een andere USB-kabel/-poort, Ableton Live helemaal dicht, firmware bijwerken (Akai: "APC40 mkII firmware updater").');
+        }
         const model = dev === 'lpd8' ? ontvangen.map((b) => L.modelUit(b)).find(Boolean) ?? null : null;
         if (dev === 'lpd8' && model) { p.stuur(L.vraagProgramma(model, 1)); await new Promise((res) => setTimeout(res, 600)); }
         const prog = dev === 'lpd8' ? ontvangen.map((b) => L.ontleedProgramma(b)).find((x) => x && 'pads' in x) : null;
         p.sluit();
-        data[dev].identiteit = ontvangen[0] ?? null;
+        data[dev].identiteit = ontvangen.find((b) => b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02) ?? null;
         if (dev === 'lpd8') Object.assign(data[dev], { model, programma1: prog ?? null });
-        r.push(`      identiteit: ${ontvangen[0] ? ontvangen[0].map((x) => x.toString(16).padStart(2, '0')).join(' ') : 'geen antwoord'}`);
+        if (dev !== 'apc40') r.push(`      identiteit: ${ontvangen[0] ? ontvangen[0].map((x) => x.toString(16).padStart(2, '0')).join(' ') : 'geen antwoord'}`);
         if (dev === 'lpd8') {
           r.push(`      model: ${model ?? 'onbekend'}`);
           if (prog && 'pads' in prog) r.push(`      programma 1: pads ${prog.pads.map((x) => x.note).join(',')} · knoppen CC ${prog.knoppen.map((x) => x.cc).join(',')}`);

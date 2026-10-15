@@ -10,7 +10,7 @@
  * @typedef {'rgb'|'aan'|'clipstop'|'ab'|'ring'|'geen'} LedSoort
  * @typedef {{ id: string, soort: Soort, t: 'note'|'cc', n: number, ch: number, led: LedSoort, label: string }} Control
  * @typedef {{ dev: 'apc40', el: string|null, kind: 'druk'|'los'|'waarde'|'delta'|'intro-antwoord'|'identiteit'|'onbekend',
- *             v?: number, raw?: number, delta?: number, bytes?: number[] }} Gebeurtenis
+ *             v?: number, raw?: number, delta?: number, bytes?: number[], apparaatId?: number|null }} Gebeurtenis
  * @typedef {{ kleur?: number, anim?: { soort: 'oneshot'|'puls'|'knipper', snelheid?: number, kleur2?: number },
  *             aan?: boolean, knipper?: boolean, stand?: 0|1|2, waarde?: number }} LedStaat
  */
@@ -18,9 +18,28 @@
 export const NAAM = 'APC40 mkII';
 export const MODUS = Object.freeze({ generiek: 0x40, ableton: 0x41, alternatief: 0x42 });
 
-/** Introductie: zet de modus. In 0x42 tekent de host álle LEDs, ook de ringen. */
-export const intro = (modus = MODUS.alternatief) => [0xf0, 0x47, 0x7f, 0x29, 0x60, 0x00, 0x04, modus, 0x00, 0x00, 0x00, 0xf7];
+/** Apparaat-id 0x7F = 'iedereen' (broadcast), zoals het protocol voorschrijft. */
+export const BROADCAST = 0x7f;
+/**
+ * Introductie: zet de modus. In 0x42 tekent de host álle LEDs, ook de ringen.
+ * Het protocol zegt apparaat-id 0x7F (broadcast). Ableton Live stuurt de intro met het apparaat-id uit het
+ * identiteitsantwoord (byte 13; Live-script _APC.py). De hub stuurt beide: eerst 0x7F, en zodra de APC zijn id noemt
+ * nog een keer met dat id (ApcSessie).
+ * @param {number} [modus] @param {number} [apparaatId]
+ */
+export const intro = (modus = MODUS.alternatief, apparaatId = BROADCAST) => [0xf0, 0x47, apparaatId & 0x7f, 0x29, 0x60, 0x00, 0x04, modus, 0x00, 0x00, 0x00, 0xf7];
+/** Identiteitsvraag (universeel). Kanaal 0x7F = omni volgens het protocol; Ableton Live vraagt op kanaal 0. */
 export const IDENTITEIT_VRAAG = Object.freeze([0xf0, 0x7e, 0x7f, 0x06, 0x01, 0xf7]);
+/** De identiteitsvraag op kanaal 0, zoals Ableton Live hem stuurt (_APC.py: 240, 126, 0, 6, 1, 247). */
+export const IDENTITEIT_VRAAG_LIVE = Object.freeze([0xf0, 0x7e, 0x00, 0x06, 0x01, 0xf7]);
+/**
+ * Apparaat-id uit het identiteitsantwoord van een APC40 mkII (protocol v1.2 p.5: byte 14 = index 13), of null.
+ * @param {number[]} b
+ */
+export function apparaatIdUit(b) {
+  if (b[0] !== 0xf0 || b[1] !== 0x7e || b[3] !== 0x06 || b[4] !== 0x02 || b[5] !== 0x47 || b[6] !== 0x29) return null;
+  return b.length > 14 && b[13] <= 0x7f ? b[13] : null;
+}
 
 /** @type {Control[]} */
 export const CONTROLS = [];
@@ -89,7 +108,7 @@ export function ontleed(b) {
   const st = b[0] & 0xf0, ch = b[0] & 0x0f;
   if (b[0] === 0xf0) {
     if (b[1] === 0x47 && b[3] === 0x29 && b[4] === 0x61) return { dev: 'apc40', el: null, kind: 'intro-antwoord', bytes: [...b] };
-    if (b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02) return { dev: 'apc40', el: null, kind: 'identiteit', bytes: [...b] };
+    if (b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02) { const id = apparaatIdUit(b); return { dev: 'apc40', el: null, kind: 'identiteit', bytes: [...b], ...(id !== null ? { apparaatId: id } : {}) }; }
     return { dev: 'apc40', el: null, kind: 'onbekend', bytes: [...b] };
   }
   if (st === 0x90 || st === 0x80) {

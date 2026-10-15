@@ -19,7 +19,9 @@ describe('APC-sessie', () => {
     app.start(); klok.loop(100);
     expect(apc.verstuurd[0]).toEqual(A.intro(0x42));
     expect(apc.verstuurd.slice(1, 17).every((b) => b[0] === 0xb0 && (b[1] < 32 || b[1] > 55))).toBe(true);
-    expect(apc.verstuurd).toHaveLength(1 + 16 + 125);
+    // daarna de identiteitsvraag, zoals Ableton Live (kanaal 0) en zoals het protocol (omni)
+    expect(apc.verstuurd.slice(17, 19)).toEqual([[...A.IDENTITEIT_VRAAG_LIVE], [...A.IDENTITEIT_VRAAG]]);
+    expect(apc.verstuurd).toHaveLength(1 + 16 + 2 + 125);
   });
   it('uittrekken en terugsteken: weg-melding, daarna opnieuw init en hetzelfde beeld', () => {
     const { klok, systeem, app } = opzet();
@@ -35,7 +37,7 @@ describe('APC-sessie', () => {
     expect(meldingen).toEqual(['verbonden', 'weg', 'verbonden']);
     expect(nieuw.verstuurd[0]).toEqual(A.intro(0x42));
     expect(nieuw.verstuurd).toContainEqual([0x90, 18, 45]);
-    expect(nieuw.verstuurd).toHaveLength(1 + 16 + 125);
+    expect(nieuw.verstuurd).toHaveLength(1 + 16 + 2 + 125);
   });
   it('meldt gebeurtenissen uit binnenkomende MIDI', () => {
     const { klok, systeem, app } = opzet();
