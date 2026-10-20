@@ -25,9 +25,9 @@ const LAN = lanAdressen()[0];
 beforeEach(() => { home = mkdtempSync(join(tmpdir(), 'varve-cli-home-')); processen = []; });
 afterEach(() => { for (const p of processen) p.kill('SIGKILL'); rmSync(home, { recursive: true, force: true }); });
 
-/** @param {string[]} args */
-function start(args) {
-  const p = spawn(process.execPath, [CLI, ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: home } });
+/** @param {string[]} args @param {Record<string, string>} [env] */
+function start(args, env = {}) {
+  const p = spawn(process.execPath, [CLI, ...args], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, HOME: home, ...env } });
   processen.push(p);
   const r = { p, uit: '', fout: '', code: /** @type {number|null|undefined} */ (undefined) };
   p.stdout?.on('data', (d) => { r.uit += d; });
@@ -58,10 +58,14 @@ describe('startHub geeft het token door aan de server', () => {
 describe('varve-hub start --lan', () => {
   it.skipIf(!LAN)('luistert op het netwerk, maakt het token (0600) en eist het van buiten', async () => {
     const poort = await vrijePoort();
-    const r = start(['start', '--lan', '--zonder-midi', '--geen-drivers', '--poort', String(poort)]);
+    // Leeg PATH: geen dns-sd/avahi-publish te vinden, dus de hub schrijft altijd de regel "mDNS: … niet gevonden"
+    // (hermetisch: met avahi op de machine kwam die regel nooit). Het kindproces zelf start via process.execPath.
+    const r = start(['start', '--lan', '--zonder-midi', '--geen-drivers', '--poort', String(poort)], { PATH: home });
     await wachtOp(() => /varve-hub draait/.test(r.uit), 8000);
-    // De mDNS-regel komt in een eigen schrijfactie ná "varve-hub draait": die kan een tik later binnenkomen.
-    await wachtOp(() => /mDNS/.test(r.uit), 1000);
+    // De mDNS-regel komt in een eigen schrijfactie ná "varve-hub draait", na een PATH-scan in de hub zelf; op een
+    // belaste machine (parallelle testbestanden, 2 kernen) wordt dat kindproces tussen die twee schrijfacties
+    // gepauzeerd. 1000 ms was daar te krap: zelfde ruimte als de regel ervoor (flake T-121).
+    await wachtOp(() => /mDNS/.test(r.uit), 8000);
     expect(statSync(tokenBestand()).mode & 0o777).toBe(0o600);
     const token = readFileSync(tokenBestand(), 'utf8').trim();
     expect(r.uit).toMatch(/Nieuw token aangemaakt/);
