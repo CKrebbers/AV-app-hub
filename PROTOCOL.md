@@ -82,6 +82,7 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | `rings` | nee | alleen lease: `"host"` (app tekent ringen, standaard) of `"auto"` (hub tekent ringen mee met de knop — voor apps gebouwd op APC-modus 0x41, zoals av-kern) |
 | `speelt` | nee | alleen lease: de speelapparaten die deze app bespeelt, bv. `["xboard49", "maschine-mk2"]` (§17). Max 8 namen; een naam die de hub niet kent valt weg |
 | `levert` | nee | de groepen die deze app aan de globale laag levert (§18): nu alleen `["sectie"]`. Met of zonder lease. Max 8 namen; een groep die de hub niet kent valt weg |
+| `xy` | nee | welke parameters het XY-vlak van de KP3+ stuurt (§21): `{ "x": …, "y": … }`, per as een rol of parameter-id (`[a-z0-9_.-]{1,48}`). Zonder: de rollen uit `config.json` (standaard `alfabet.vervorming` / `alfabet.ruimte`); `maps/<app>.json` → `xy` gaat voor |
 | `scenes` | nee | namen; komen op de scene-knoppen |
 | `params` | ja (mag leeg bij lease) | max 128 |
 
@@ -125,7 +126,7 @@ De LPD8 werkt altijd, los van focus. Knoppen 1–8 zetten globale macro's; elke 
 | P4 | gebaren opnemen aan/uit | hub-log |
 | P5–P8 | snapshot 1–4 (lang = opslaan) | `zet` naar alle apps |
 
-`globaal` bevat ook: `adem` (fase 0..1, ±10 Hz), `grondtoon` (`"D"`), `bpm`, en de sectie van het nummer die een app aanlevert (`sectie.energie`, `sectie.label`, `sectie.nieuw`; §18).
+`globaal` bevat ook: `adem` (fase 0..1, ±10 Hz), `grondtoon` (`"D"`), `bpm` (van de EFX-500, tap of `config.json`; §20), `klok.loopt` (1/0, alleen als de EFX-500 Start/Stop stuurt; §20), en de sectie van het nummer die een app aanlevert (`sectie.energie`, `sectie.label`, `sectie.nieuw`; §18).
 
 ## 7. APC-indeling voor manifest-apps
 
@@ -319,8 +320,8 @@ precies 2048 bytes; anders `{t:"fout"}`). Bij stoppen gaan lampjes en schermen u
 
 **Status voor de cockpit** (`beeld.apparaten.xboard49` en `beeld.apparaten["maschine-mk2"]`, alleen als `config.json`
 ze noemt): `{verbonden, naam}`, voor de Maschine ook `status` (`"geen-hid"` node-hid ontbreekt · `"zoekt"` niet
-aangesloten · `"bezet"` openen mislukte twee rondes na elkaar terwijl het toestel er is, een NI-programma heeft hem · `"verbonden"` · `"geen-invoer"` open, maar binnen
-`stil_ms` geen enkel rapport: macOS-Invoermonitoring) en `hint` (wat te doen). In het hubvenster één regel per storing
+aangesloten · `"bezet"` openen mislukte twee rondes na elkaar terwijl het toestel er is, een NI-programma heeft hem · `"geen-rechten"` openen mislukte met "Permission denied": Linux zonder udev-regel, meteen, met de udev-hint (docs/LINUX.md) · `"verbonden"` · `"geen-invoer"` open, maar binnen
+`stil_ms` geen enkel rapport: macOS-Invoermonitoring, op Linux een eigen hint) en `hint` (wat te doen). In het hubvenster één regel per storing
 (§16): `Maschine: bezet (…) — sluit Maschine 2 en Controller Editor; …` of `Maschine: open, maar er komt niets binnen — …`.
 De hub probeert het bij elke hotplug-ronde opnieuw.
 
@@ -398,3 +399,69 @@ de hub ontbreken energie en label tot de bron weer stuurt.
 
 **Kern-API (§9):** de kern geeft een `globaal` van een app door aan `src/core/bijdragen.js` (puur: bron per groep,
 bewaarde waarden per app, de teller); wat daaruit komt, gaat als één `globaal` naar alle apps. `kern.beeld().bronnen`.
+
+## 20. Klokbronnen: EFX-500, tap, config (fase F)
+
+`globaal.bpm` heeft één bron tegelijk, in deze volgorde: **de EFX-500** (MIDI-klok) als die tikt, anders **tap**
+(LPD8 P2), anders **`config.json` → `tempo.bpm`** (standaard 120). `beeld.tempo` (§8) zegt welke het is:
+`{ bpm, bron: "efx500"|"tap"|"config"|"laatste", tap, efx: { bpm, vorige, loopt } }`. Getoetst in
+`test/kern-kp3-efx.test.js`, `test/hub-kp3-efx.test.js` en `test/efx500-klok.test.js`.
+
+**De EFX-500** (`src/devices/efx500.js`, sessie `EfxSessie` in `src/apparaten.js`) hangt met MIDI-DIN aan een
+USB-MIDI-interface; de hub opent alleen de ingang, mét de klok (RtMidi negeert de timing-berichten standaard:
+`open(naam, { metKlok: true })`). Poort: `config.json` → `apparaten.efx500.poort_patroon` (een stukje van de naam van de
+interface-ingang). De EFX telt 40–250 BPM uit de audio-ingang of met TAP en stuurt 24 tikken (F8) per tel.
+
+**Van tikken naar tempo** (`src/core/klokbron.js`, puur, de tijd komt van de Klok van de hub):
+- De laatste `venster` intervallen (standaard 96 = vier tellen). De mediaan haalt uitschieters weg (een late tik van USB
+  of ALSA: alles verder dan 25 % ervan telt niet mee); door de rest gaat een rechte lijn (kleinste kwadraten), zodat de
+  jitter van één tik er niet zwaar in telt.
+- Pas na één tel (24 intervallen) is er een tempo; daarvóór blijft de vorige bron.
+- Het tempo gaat op 0,1 afgerond naar `globaal.bpm`, en alleen als het meer dan `stabiel_bpm` (0,2) afwijkt van wat er
+  staat, of als een kleinere afwijking een hele tel dezelfde blijft (anders bleef het na een tempowissel net naast het
+  echte hangen). Zo springt `bpm` niet heen en weer tussen 119,9 en 120,1.
+- Een gat van meer dan `weg_ms` (2 s) tussen twee tikken: opnieuw meten.
+
+**De klok valt weg** (meer dan `weg_ms` geen tik, of de interface is losgetrokken): als er ooit getapt is, wordt tap de
+bron (met het laatste tap-tempo); anders blijft het laatste EFX-tempo staan (bron `"laatste"`), want een sprong naar
+120 midden in een nummer is erger. Komt de klok terug, dan is de EFX pas weer de bron na een nieuwe meting van een hele
+tel (niet met zijn oude tempo).
+
+**Tap terwijl de EFX tikt:** de EFX wint; het tap-tempo wordt onthouden voor als de klok wegvalt.
+
+**Start/Stop** (FA/FB/FC, als de EFX ze stuurt: te meten): `globaal["klok.loopt"]` 1 (start, verder) of 0 (stop),
+alleen bij verandering. Knoppen die MIDI sturen: alleen in het logboek (te meten, `node src/cli.js proef efx500`).
+
+**Geen 48 berichten per seconde:** een kloktik is geen `invoer` voor de cockpit en komt niet in de avondmap; in een
+proeflogboek staat één tik per tel (golden test). `globaal` gaat alleen naar de apps als het getoonde tempo verandert.
+
+## 21. Het gebaar: de KP3+ (fase F)
+
+Het XY-vlak van de Korg Kaoss Pad KP3+ is **het gebaar** (werkplek `bediening/SYSTEEM.md` §3.4): één vinger, twee
+parameters van de app met focus tegelijk. Getoetst in `test/kp3plus.test.js`, `test/kern-kp3-efx.test.js` en
+`test/hub-kp3-efx.test.js`.
+
+**Het apparaat** (`src/devices/kp3plus.js`, sessie `Kp3Sessie`): MIDI-DIN via de USB-MIDI-interface, alleen de ingang,
+zonder klok. Alles staat in `config.json` → `apparaten.kp3plus`: `poort_patroon`, `kanaal` (1..16, `null` = elk), `cc`
+(`x`, `y`, `aanraak`, `diepte`, `hold`; `null` = niet toegewezen). Volgens Korg (KP3 MIDI Implementation) zijn al deze
+CC's vrij toe te wijzen in de Global-instellingen; X = 12, Y = 13, aanraken = 92 komt uit bronnen en is **te meten**
+(`node src/cli.js proef kp3plus`, die zegt wat er in `config.json` hoort). Hij maakt van X, Y en aanraken één gebaar
+`{ x, y, aan }` (0..1).
+
+**Welke parameters:** per as een rol of parameter-id (eerst een `waarde`-parameter met die `rol`, anders een met die
+`id`). Waar het staat, in volgorde: `maps/<app>.json` → `"xy": { "x", "y" }` (Clay's keuze), dan het manifest (`xy`,
+§4), dan `config.json` → `apparaten.kp3plus.xy` (standaard `alfabet.vervorming` en `alfabet.ruimte`, de rollen van het
+parameter-alfabet, §19). Heeft de app er geen van, dan doet die as niets.
+
+**Gedrag:**
+- Aanraken (of bewegen zonder aanraak-CC) kiest de app met focus en onthoudt van elke as de waarde van dat moment.
+- Bewegen zet alleen de as die bewoog: `zet` met `bron: "kp3plus"`, direct (geen `slew_s`: het is een hand, zoals een
+  APC-fader); pickup en LEDs van de APC gaan mee.
+- **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. **Hold**
+  (`apparaten.kp3plus.hold: true`, of de Hold-knop van de KP3+ als die een CC heeft): blijven staan.
+- Wisselt de focus tijdens het aanraken, dan blijft het gebaar (en het terugveren) bij de app waar het begon, zoals een
+  ingedrukte toets (§11). Valt de KP3+ weg tijdens het aanraken: terugveren.
+- **Programmageheugens 1–8** sturen Program Change met het effectprogramma dat erin staat (Korg); de hub geeft dat door
+  als trigger `kp3.p<programma+1>` (aan, meteen uit) aan de app met focus, als die zo'n trigger heeft. Later: acht
+  favoriete XY-paren.
+- Opname: de bytes van de KP3+ staan in de avondmap (`kp3plus`); `herhaal` speelt ze (nog) niet af.

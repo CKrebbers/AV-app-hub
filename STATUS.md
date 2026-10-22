@@ -175,6 +175,39 @@ Keuzes om na te lopen (zeg het als je het anders wilt):
 - **Bevriezen, niet terug naar 0**, als de bron wegvalt: de muziek speelt in het tabblad door als alleen de verbinding hapert. Stopt de muziek echt, dan stuurt de app zelf energie 0.
 - **De eerste leverancier wint** (zoals de adem), niet de app met focus: de focus zegt welke app je bedient, niet welke je hoort.
 
+## Apparaten KP3+/EFX-500 en Linux (werkplek, fase F; gebouwd en getest zonder hardware)
+Werkplek `bediening/SYSTEEM.md` §2, §3.4, §3.5, §10: de Kaoss Pad KP3+ is **het gebaar**, de EFX-500 **de puls**. Plus wat
+de eerste Linux-test (werkplek `onderzoek/hub-linux.md`) opleverde.
+- [x] **KP3+** — `src/devices/kp3plus.js` (puur): X/Y/aanraken → gebaar `{x, y, aan}` (0..1); in de kern stuurt het de
+  app met focus (rol of id; `maps/<app>.json` → `xy` > manifest `xy` > `config.json`, standaard `alfabet.vervorming` /
+  `alfabet.ruimte`), alleen de bewogen as, loslaten veert terug (behalve hold), programmageheugens als trigger
+  `kp3.p<nr>` (PROTOCOL §21; `test/kp3plus.test.js`, `test/kern-kp3-efx.test.js`)
+- [x] **EFX-500 + klokbronnen** — `src/devices/efx500.js`, `src/core/klokbron.js`: MIDI-klok → BPM (mediaan tegen
+  uitschieters, lijn door de tikken, ±0,2 BPM stabiel); EFX > tap > `tempo.bpm`; klok > 2 s weg → tap of het laatste
+  tempo; Start/Stop als `klok.loopt` (PROTOCOL §20; `test/efx500-klok.test.js`, `test/hub-kp3-efx.test.js`: nep-kloktikken
+  op 120 BPM geven `globaal.bpm` 120)
+- [x] **Sessies met hotplug** (`Kp3Sessie`, `EfxSessie`), alleen de ingang, de EFX mét klok; `doctor` en `check` kennen
+  ze (gevonden of niet achter de interface, CC's, de laatste BPM); nep-poorten in `test/nep-kp3-efx.js`
+- [x] **Proeven** `node src/cli.js proef kp3plus` en `proef efx500`, door de gesimuleerde gebruiker te doorlopen
+  (`test/proef-kp3-efx.test.js`); draaiboek `docs/HARDWARE-AVOND.md` blok 9
+- [x] **Linux** — Maschine zonder udev-regel = `geen-rechten` met de udev-hint (niet "bezet" met de Mac-hint);
+  `"avondmap": "auto"` (macOS ~/Movies, Linux XDG-video of ~/Videos); sets openen apps met Chrome (`linux.chrome` of PATH,
+  terugval xdg-open); TD- en Logic-drivers op Linux uit (`linux.drivers_uit`) met één regel; `docs/LINUX.md`
+  (`test/linux.test.js`)
+
+Klaar als (op de pc, door Clay):
+- [ ] USB-MIDI-interface aangesloten, KP3+ en EFX-500 met DIN erop; `node src/cli.js doctor` vindt ze (anders
+  `poort_patroon` in `config.json` zetten op de naam van de interface-ingang)
+- [ ] `node src/cli.js proef kp3plus`: wat de proef zegt in `config.json` → `apparaten.kp3plus.cc` (en `kanaal`); push het logboek
+- [ ] `node src/cli.js proef efx500`: tempo klopt met het display (±0,5), push het logboek
+- [ ] `npm start`, een app met `xy` (of de alfabet-rollen) in focus: het XY-vlak beweegt twee parameters en veert terug;
+  muziek op de EFX: de cockpit toont het tempo onder Globaal, muziek weg: na 2 s het tap-tempo
+- [ ] udev-regel voor de Maschine (eigen script in `~/Documents/systeem/scripts/`, zelf met sudo): `doctor` → `✔ invoer komt binnen`
+
+Te meten (staat nu als gok in `config.json`, nooit in een golden test): de CC's van X, Y en aanraken (12/13/92 uit
+bronnen), het kanaal, wat de programmageheugens sturen, FX Depth en Hold; of de EFX-500 Start/Stop of knoppen als MIDI
+stuurt en of zijn klok doortikt zonder muziek; of de Maschine MK2 op Linux zonder NI-software rapporten stuurt.
+
 ## Eerste test op de echte Mac (okt) — APC-handdruk
 - [x] `doctor` vond APC en LPD8, maar de APC antwoordde niet op de identiteitsvraag en het spelen "deed totaal niet wat het moest": het beeld van een APC die in de fabrieksmodus (0x40) blijft
 - [x] **Handdruk zoals Ableton Live** (Live-script `_APC.py`): identiteitsvraag ook op kanaal 0, intro ook met het apparaat-id uit het antwoord; geen antwoord op de intro → één duidelijke regel in het hubvenster (PROTOCOL §16, `test/apc-handdruk.test.js`)
