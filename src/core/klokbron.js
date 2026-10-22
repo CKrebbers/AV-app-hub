@@ -37,6 +37,8 @@ export class KlokMeter {
     /** Een andere afgeronde meting binnen de drempel, en hoeveel tikken achter elkaar die al zo is. @type {number|null} */
     this.kandidaat = null;
     this.kandidaatTel = 0;
+    /** Het tempo van vóór de laatste wis(). @type {number|null} */
+    this.vorige = null;
   }
 
   /**
@@ -73,8 +75,11 @@ export class KlokMeter {
   /** Loopt de klok nog op tijdstip `nu` (laatste tik niet langer dan wegMs geleden)? @param {number} nu */
   loopt(nu) { return this.laatste !== null && nu - this.laatste <= this.wegMs; }
 
-  /** Opnieuw beginnen (de klok viel weg). Het laatste tempo blijft als `bpm` bewaard tot er een nieuw is. */
-  wis() { this.intervallen = []; this.laatste = null; }
+  /**
+   * Opnieuw beginnen (de klok viel weg): ook het getoonde tempo weg (`bpm` null), zodat een klok die terugkomt pas
+   * weer telt na een nieuwe meting van een hele tel. Het laatste tempo blijft leesbaar als `vorige`.
+   */
+  wis() { if (this.bpm !== null) this.vorige = this.bpm; this.intervallen = []; this.laatste = null; this.bpm = null; this.kandidaat = null; }
 }
 
 /**

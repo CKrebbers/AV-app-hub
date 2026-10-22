@@ -157,9 +157,19 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   maschine?.bij('status', meldMaschine);
   meldXboard();
   meldMaschine();
+  // KP3+ (het gebaar, §21) en EFX-500 (de klok, §20) → kern; de tikken van de klok niet in de avondmap (24 per tel),
+  // wel start/stop en wat er verder binnenkomt. Hun stand in de cockpit (beeld.apparaten), het tempo in beeld.tempo.
+  for (const [sessie, dev] of /** @type {const} */ ([[apparaten.kp3, 'kp3plus'], [apparaten.efx, 'efx500']])) {
+    if (!sessie) continue;
+    sessie.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { if (g.kind !== 'tik') opnemer?.invoer(dev, b); kern.invoer(g, b); });
+    sessie.bij('weg', () => kern.apparaatWeg(dev));
+    const meld = () => kern.zetApparaat(dev, { verbonden: sessie.verbonden, naam: sessie.poort?.naam ?? null });
+    for (const e of ['verbonden', 'weg']) sessie.bij(e, meld);
+    meld();
+  }
   // Mislukt sturen of openen: één regel per storing (de sessie meldt niet per bericht of per poging); het opnieuw
   // openen en initialiseren doet de aansluiting zelf (src/core/aansluiting.js, PROTOCOL §16).
-  for (const [sessie, label] of /** @type {const} */ ([[apparaten.apc, 'APC'], [apparaten.lpd8, 'LPD8'], [xboard, 'Xboard49']])) {
+  for (const [sessie, label] of /** @type {const} */ ([[apparaten.apc, 'APC'], [apparaten.lpd8, 'LPD8'], [xboard, 'Xboard49'], [apparaten.kp3, 'KP3+'], [apparaten.efx, 'EFX-500']])) {
     sessie?.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => {
       log(soort === 'sturen' ? `${label}: sturen mislukt — kabel los? de hub probeert opnieuw`
         : `${label}: openen mislukt (${e?.message ?? e}) — de hub probeert opnieuw`);

@@ -47,6 +47,10 @@ export function valideerManifest(m) {
   if (x.levert !== undefined && !(Array.isArray(x.levert) && x.levert.length <= 8 && x.levert.every((g) => typeof g === 'string' && APP_ID.test(g)))) {
     f.push('levert moet een lijst groepen zijn (max 8), bv. ["sectie"]');
   }
+  // §21: welke parameters het XY-vlak van de KP3+ stuurt (een rol of een parameter-id per as); maps/<app>.json gaat voor.
+  const isXy = (/** @type {any} */ v) => v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).every((k) => k === 'x' || k === 'y')
+    && ['x', 'y'].every((k) => v[k] === undefined || (typeof v[k] === 'string' && PARAM_ID.test(v[k])));
+  if (x.xy !== undefined && !isXy(x.xy)) f.push('xy moet { "x": …, "y": … } zijn, met per as een rol of parameter-id ([a-z0-9_.-]{1,48}), bv. { "x": "alfabet.vervorming", "y": "galm" }');
   const lease = x.lease === true;
   if (!Array.isArray(x.params)) { if (!lease) f.push('params moet een lijst zijn'); }
   else if (x.params.length > MAX_PARAMS) f.push(`max ${MAX_PARAMS} params`);
@@ -81,6 +85,7 @@ export function valideerManifest(m) {
       ...(lease && Array.isArray(x.speelt) ? { speelt: [...new Set(x.speelt.filter((/** @type {any} */ d) => SPEELAPPARATEN.includes(d)))] } : {}),
       // §18: alleen de groepen die de hub kent, elk één keer.
       ...(Array.isArray(x.levert) ? { levert: [...new Set(x.levert.filter((/** @type {any} */ g) => GROEPEN.includes(g)))] } : {}),
+      ...(x.xy && (x.xy.x || x.xy.y) ? { xy: { ...(x.xy.x ? { x: x.xy.x } : {}), ...(x.xy.y ? { y: x.xy.y } : {}) } } : {}),
       scenes: x.scenes ?? [], params,
     },
   };

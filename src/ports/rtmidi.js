@@ -29,12 +29,13 @@ export async function laadRtMidi() {
   const systeem = {
     soort: 'rtmidi',
     lijst: () => ({ ingangen: namen(probeIn), uitgangen: namen(probeUit) }),
-    open(naam, { alleenIngang = false } = {}) {
+    open(naam, { alleenIngang = false, metKlok = false } = {}) {
       const ii = namen(probeIn).indexOf(naam);
       const ui = alleenIngang ? -1 : namen(probeUit).findIndex((n) => kern(n) === kern(naam));
       if (ii < 0 || (!alleenIngang && ui < 0)) throw new Error(`poort niet gevonden: ${naam}`);
       const inn = new midi.Input(), uit = alleenIngang ? null : new midi.Output();
-      inn.ignoreTypes(false, true, true); // SysEx wél, clock en active sensing niet
+      // SysEx wél, active sensing niet; de klok (timing: F8, FA, FB, FC) alleen met metKlok (de EFX-500).
+      inn.ignoreTypes(false, !metKlok, true);
       inn.openPort(ii);
       uit?.openPort(ui);
       return maakPoort(naam, inn, uit);

@@ -3,10 +3,13 @@
 // ApcSessie zet de modus, tekent LEDs via de wachtrij en meldt gebeurtenissen.
 // Lpd8Sessie herkent het model, leest programma's en meldt gebeurtenissen volgens het profiel.
 // XboardSessie (alleen invoer) en MaschineSessie (USB-HID) zijn de speelapparaten (PROTOCOL §17).
+// Kp3Sessie (het gebaar, §21) en EfxSessie (de klok, §20): alleen invoer, via een USB-MIDI-interface.
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
 import * as XB from './devices/xboard49.js';
 import * as MS from './devices/maschine-mk2.js';
+import * as KP3 from './devices/kp3plus.js';
+import * as EFX from './devices/efx500.js';
 import { zoekIngang } from './ports/poort.js';
 import { Aansluiting } from './core/aansluiting.js';
 import { LedBeeld } from './core/leds.js';
@@ -474,8 +477,55 @@ export class MaschineSessie extends Sessie {
 }
 
 /**
- * De controllers, met hotplug. APC40 en LPD8 altijd; de Xboard49 en de Maschine MK2 alleen als config.json ze noemt
- * (`apparaten.xboard49`, `apparaten.maschine-mk2`). De Maschine heeft een HID-systeem nodig (src/ports/hid.js);
+ * Korg Kaoss Pad KP3+ (PROTOCOL §21): alleen de ingang (de hub stuurt hem niets), via een USB-MIDI-interface. De
+ * poortnaam komt uit config.json → apparaten.kp3plus.poort_patroon; X, Y, aanraken en de rest uit dezelfde sleutel
+ * (src/devices/kp3plus.js). De klok van de KP3+ zelf (Clock = Internal) laat de poort niet door.
+ */
+export class Kp3Sessie extends Sessie {
+  /** @param {Omit<ConstructorParameters<typeof Sessie>[0], 'dev'> & { systeem: Systeem, patroon: RegExp, instellingen: KP3.Instellingen }} o */
+  constructor(o) {
+    const { systeem, patroon } = o;
+    super({ ...o, dev: KP3.DEV, zoek: () => zoekIngang(systeem.lijst(), patroon), open: (naam) => systeem.open(naam, { alleenIngang: true }) });
+    this.inst = o.instellingen;
+    this.ontleder = KP3.maakOntleder(this.inst);
+  }
+  /** @param {number[]} b */
+  ontleed(b) { return this.ontleder(b); }
+}
+
+/** Van de klok gaat één op de zoveel tikken (één per tel) in het logboek: genoeg voor de golden test, geen 48 regels per seconde. */
+export const EFX_LOG_ELKE = 24;
+
+/**
+ * Pioneer EFX-500 (PROTOCOL §20): alleen de ingang, mét de MIDI-klok (F8, start/stop). Elke tik gaat als gebeurtenis
+ * naar de hub (de kern meet het tempo); in het logboek alleen één tik per tel (EFX_LOG_ELKE) en alles wat geen tik is
+ * (start/stop, en knoppen als die MIDI sturen: te meten). `tikken` telt alle tikken sinds het aansluiten.
+ */
+export class EfxSessie extends Sessie {
+  /** @param {Omit<ConstructorParameters<typeof Sessie>[0], 'dev'> & { systeem: Systeem, patroon: RegExp }} o */
+  constructor(o) {
+    const { systeem, patroon } = o;
+    super({ ...o, dev: EFX.DEV, zoek: () => zoekIngang(systeem.lijst(), patroon), open: (naam) => systeem.open(naam, { alleenIngang: true, metKlok: true }) });
+    this.tikken = 0;
+  }
+  bijAansluiten() { this.tikken = 0; }
+  /** @param {number[]} b */
+  ontleed(b) { return EFX.ontleed(b); }
+  /** @param {number[]} b */
+  bijBinnen(b) {
+    if (b.length === 1 && b[0] === EFX.KLOK.tik) {
+      const g = EFX.ontleed(b);
+      if (this.tikken++ % EFX_LOG_ELKE === 0) { this.logboek?.midi('in', this.dev, b); this.logboek?.regel('gebeurtenis', g); }
+      this.meld('gebeurtenis', g, b);
+      return;
+    }
+    super.bijBinnen(b);
+  }
+}
+
+/**
+ * De controllers, met hotplug. APC40 en LPD8 altijd; de Xboard49, de Maschine MK2, de KP3+ en de EFX-500 alleen als
+ * config.json ze noemt (`apparaten.xboard49`, `apparaten.maschine-mk2`, `apparaten.kp3plus`, `apparaten.efx500`). De Maschine heeft een HID-systeem nodig (src/ports/hid.js);
  * zonder (`hid` null, `hidReden` waarom) bestaat de sessie wel, met status 'geen-hid'.
  * @param {{ systeem: Systeem, hid?: HidSysteem|null, hidReden?: string|null, klok: Klok, config: any, logboek?: Logboek|null,
  *   lpd8Profiel?: any, xboardProfiel?: any }} o
@@ -488,17 +538,21 @@ export function maakApparaten({ systeem, hid = null, hidReden = null, klok, conf
   const xboard = xbPatroon ? new XboardSessie({ ...gemeen, patroon: xbPatroon, profiel: xboardProfiel }) : null;
   const mcfg = config.apparaten?.['maschine-mk2'];
   const maschine = mcfg ? new MaschineSessie({ hid, reden: hidReden, instellingen: mcfg, klok, logboek, intervalMs: config.hotplug_ms, led: config.led }) : null;
+  const kp3Patroon = KP3.patroon(config);
+  const kp3 = kp3Patroon ? new Kp3Sessie({ ...gemeen, patroon: kp3Patroon, instellingen: KP3.instellingen(config) }) : null;
+  const efxPatroon = EFX.patroon(config);
+  const efx = efxPatroon ? new EfxSessie({ ...gemeen, patroon: efxPatroon }) : null;
   /** @type {Record<string, Sessie|null>} */
-  const perDev = { apc40: apc, lpd8, xboard49: xboard, 'maschine-mk2': maschine };
+  const perDev = { apc40: apc, lpd8, xboard49: xboard, 'maschine-mk2': maschine, kp3plus: kp3, efx500: efx };
   return {
-    apc, lpd8, xboard, maschine, systeem, hid,
-    /** De sessie van een apparaat ('apc40', 'lpd8', 'xboard49', 'maschine-mk2'), of null. @param {string} dev */
+    apc, lpd8, xboard, maschine, kp3, efx, systeem, hid,
+    /** De sessie van een apparaat ('apc40', 'lpd8', 'xboard49', 'maschine-mk2', 'kp3plus', 'efx500'), of null. @param {string} dev */
     sessie: (dev) => perDev[dev] ?? null,
-    start() { apc.start(); lpd8.start(); xboard?.start(); maschine?.start(); },
+    start() { apc.start(); lpd8.start(); xboard?.start(); maschine?.start(); kp3?.start(); efx?.start(); },
     /** LEDs uit (en de schermen van de Maschine leeg), poorten dicht. */
     async stop() {
       await Promise.all([apc.verbonden ? apc.zwartEnWacht() : null, maschine?.verbonden ? maschine.uitEnWacht() : null]);
-      apc.stop(); lpd8.stop(); xboard?.stop(); maschine?.stop();
+      apc.stop(); lpd8.stop(); xboard?.stop(); maschine?.stop(); kp3?.stop(); efx?.stop();
     },
   };
 }

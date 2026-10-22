@@ -19,6 +19,8 @@ export class NepPoort {
     this.kapot = false;
     /** false = alleen een ingang (zie NepSysteem.voegToe). */
     this.uitgang = true;
+    /** Opties van de laatste keer openen (alleenIngang, metKlok). @type {Record<string, unknown>|null} */
+    this.opties = null;
   }
   /** @param {number[]} b */
   stuur(b) {
@@ -66,13 +68,14 @@ export class NepSysteem {
   }
   /**
    * Een apparaat dat er nog is, gaat na `sluit()` gewoon weer open (zoals een echte poort).
-   * @param {string} naam @param {{ alleenIngang?: boolean }} [o] @returns {Poort}
+   * @param {string} naam @param {{ alleenIngang?: boolean, metKlok?: boolean }} [o] @returns {Poort}
    */
-  open(naam, { alleenIngang = false } = {}) {
+  open(naam, o = {}) {
     const p = this.apparaten.get(naam);
     if (!p) throw new Error(`geen apparaat ${naam}`);
-    if (p.uitgang === false && !alleenIngang) throw new Error(`poort niet gevonden: ${naam} (alleen een ingang)`);
+    if (p.uitgang === false && !o.alleenIngang) throw new Error(`poort niet gevonden: ${naam} (alleen een ingang)`);
     p.open = true;
+    p.opties = { ...o };
     this.geopend.set(naam, p);
     return p;
   }
