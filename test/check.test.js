@@ -61,7 +61,10 @@ function opzet() {
   // De statische manifesten zoals in de repo (apps/*.json): check controleert ze zoals de hub.
   mkdirSync(join(hubMap, 'apps'));
   for (const f of nodeFs.readdirSync(APPS_MAP)) if (f.endsWith('.json')) nodeFs.copyFileSync(join(APPS_MAP, f), join(hubMap, 'apps', f));
-  const config = { ...laadConfig(), avondmap: '~/avonden', geheugen: { pad: '~/.varve-hub/staat.json' } };
+  // linux.drivers_uit leeg: deze tests gaan over de drivers zelf (platform 'linux' hieronder is voor Chrome);
+  // dat TD en Logic op Linux overgeslagen worden, toetst test/linux.test.js.
+  const basis = laadConfig();
+  const config = { ...basis, avondmap: '~/avonden', geheugen: { pad: '~/.varve-hub/staat.json' }, linux: { ...basis.linux, drivers_uit: [] } };
   /** @type {any} */
   const fs = { ...nodeFs, statfsSync: () => ({ bavail: 10 * GB / 4096, bsize: 4096 }) };
   const opties = /** @type {import('../src/check/index.js').CheckOpties} */ ({

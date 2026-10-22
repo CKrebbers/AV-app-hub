@@ -9,6 +9,9 @@
 // Op macOS opent hidapi standaard exclusief: heeft een ander programma (Maschine 2, Controller Editor,
 // NIHardwareAgent, NIHostIntegrationAgent) hem al, dan gooit `new HID.HID` → de sessie meldt "bezet" en probeert het
 // in elke hotplug-ronde opnieuw. Of macOS 'Invoermonitoring' vraagt om invoer te lezen, meet de proef.
+// Op Linux is een mislukte open meestal geen ander programma maar een rechtenprobleem: /dev/hidraw* is root:root 0600
+// tot een udev-regel `uaccess` geeft ("Permission denied"). Dat is status 'geen-rechten' met de udev-hint
+// (isRechtenFout, HINT.rechten, docs/LINUX.md), niet 'bezet' met de Mac-hint.
 import { execFileSync } from 'node:child_process';
 
 /**
@@ -103,8 +106,29 @@ export function draaiendeNi(ps = () => execFileSync('ps', ['-axo', 'comm'], { en
   return NI_PROGRAMMAS.filter((p) => regels.some((r) => r === p || r.startsWith(`${p} `) || r === `${p}.app`));
 }
 
-/** Wat Clay doet als de Maschine bezet is of niets stuurt (hub-log, doctor, proef, cockpit). */
+/** De udev-regel die de Maschine MK2 op Linux leesbaar maakt voor wie aan de computer zit (docs/LINUX.md). */
+export const UDEV_REGEL = 'SUBSYSTEM=="hidraw", ATTRS{idVendor}=="17cc", ATTRS{idProduct}=="1140", MODE="0660", TAG+="uaccess"';
+
+/**
+ * Wat Clay doet als de Maschine bezet is, niets stuurt of niet open mag (hub-log, doctor, proef, cockpit).
+ * `invoer` en `bezet` zijn de macOS-teksten; `invoerLinux` en `rechten` gelden op Linux (invoerHint kiest).
+ */
 export const HINT = Object.freeze({
   bezet: 'sluit Maschine 2 en Controller Editor; NIHardwareAgent en NIHostIntegrationAgent kunnen hem ook vasthouden (Activiteitenweergave). De hub probeert het elke ronde opnieuw',
   invoer: 'macOS laat de invoer niet door: Systeeminstellingen → Privacy en beveiliging → Invoermonitoring → zet Terminal (of iTerm/Node) aan, en start de hub opnieuw',
+  invoerLinux: 'open, maar er komt geen enkel rapport: steek de Maschine opnieuw in (USB). Of hij op Linux zonder NI-software rapporten stuurt, is nog niet gemeten (docs/LINUX.md)',
+  rechten: `udev-regel nodig, zie docs/LINUX.md: /dev/hidraw* is niet leesbaar zonder regel (${UDEV_REGEL}). Zet hem in /etc/udev/rules.d/70-maschine-mk2.rules, herlaad udev en steek de Maschine opnieuw in`,
 });
+
+/** De hint bij "open, maar er komt niets binnen", per besturingssysteem. @param {string} [platform] */
+export const invoerHint = (platform = process.platform) => (platform === 'darwin' ? HINT.invoer : HINT.invoerLinux);
+
+/**
+ * Mislukte het openen door rechten (Linux: geen udev-regel)? hidapi zegt dan "…: Permission denied"; Node-fouten hebben
+ * code EACCES of EPERM.
+ * @param {unknown} e
+ */
+export function isRechtenFout(e) {
+  const x = /** @type {any} */ (e);
+  return x?.code === 'EACCES' || x?.code === 'EPERM' || /permission denied|EACCES|EPERM/i.test(String(x?.message ?? x ?? ''));
+}

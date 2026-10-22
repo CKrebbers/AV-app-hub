@@ -11,6 +11,7 @@ import * as MS from './devices/maschine-mk2.js';
 import * as KP3 from './devices/kp3plus.js';
 import * as EFX from './devices/efx500.js';
 import { zoekIngang } from './ports/poort.js';
+import { isRechtenFout } from './ports/hid.js';
 import { Aansluiting } from './core/aansluiting.js';
 import { LedBeeld } from './core/leds.js';
 import { Wachtrij } from './core/wachtrij.js';
@@ -256,8 +257,9 @@ export class XboardSessie extends Sessie {
  * samengevoegd per klok-tik; alleen wat veranderde gaat de draad op.
  *
  * Status (`status`, event 'status'): 'geen-hid' (node-hid ontbreekt), 'zoekt' (niet aangesloten), 'bezet' (openen
- * mislukt: een NI-programma heeft hem), 'verbonden', 'geen-invoer' (open, maar binnen `stil_ms` geen enkel rapport:
- * macOS-Invoermonitoring). 'bezet' en 'geen-invoer' komen ook als 'fout' (e, 'openen' | 'invoer'), één keer per storing.
+ * mislukt: een NI-programma heeft hem), 'geen-rechten' (openen mislukt met "Permission denied": Linux zonder udev-regel),
+ * 'verbonden', 'geen-invoer' (open, maar binnen `stil_ms` geen enkel rapport: macOS-Invoermonitoring). 'bezet',
+ * 'geen-rechten' en 'geen-invoer' komen ook als 'fout' (e, 'openen' | 'invoer'), één keer per storing.
  */
 export class MaschineSessie extends Sessie {
   /**
@@ -280,7 +282,7 @@ export class MaschineSessie extends Sessie {
       zoek: () => {
         const naam = hid ? hid.zoek(vid, pid) : null;
         // Was hij bezet en is hij nu weg (uitgetrokken): weer 'zoekt', en een volgende 'bezet' krijgt weer een regel.
-        if (!naam) { this.openFouten = 0; if (this.status === 'bezet') { this.gemeld.openen = false; this.#zetStatus('zoekt', null); } }
+        if (!naam) { this.openFouten = 0; if (this.status === 'bezet' || this.status === 'geen-rechten') { this.gemeld.openen = false; this.#zetStatus('zoekt', null); } }
         return naam;
       },
       open: (naam) => /** @type {any} */ (/** @type {HidSysteem} */ (hid).open(naam, { nietExclusief: cfg.niet_exclusief === true })),
@@ -307,7 +309,7 @@ export class MaschineSessie extends Sessie {
     this.frames = 0;
     this.ruw = 0;
     this.onbekend = 0;
-    /** @type {'geen-hid'|'zoekt'|'bezet'|'verbonden'|'geen-invoer'} */
+    /** @type {'geen-hid'|'zoekt'|'bezet'|'geen-rechten'|'verbonden'|'geen-invoer'} */
     this.status = hid ? 'zoekt' : 'geen-hid';
     /** @type {string|null} */
     this.statusReden = this.geenHid;
@@ -315,7 +317,7 @@ export class MaschineSessie extends Sessie {
     /** @type {any} */ this.waakTimer = null;
     /** Openen mislukt na elkaar (bezet pas na twee: één keer kan ook een kabel zijn die net losgaat). */
     this.openFouten = 0;
-    this.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => { if (soort === 'openen') this.#zetStatus('bezet', e?.message ?? String(e)); });
+    this.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => { if (soort === 'openen') this.#zetStatus(isRechtenFout(e) ? 'geen-rechten' : 'bezet', e?.message ?? String(e)); });
     this.bij('weg', () => { this.#wisWaak(); this.#zetStatus('zoekt', null); });
   }
   /**
@@ -328,7 +330,8 @@ export class MaschineSessie extends Sessie {
       /** @type {string|null} */ let nog = null;
       try { nog = this.hid ? this.hid.zoek(/** @type {number} */ (this.vid), /** @type {number} */ (this.pid)) : null; } catch { nog = null; }
       if (!nog) { this.openFouten = 0; this.#zetStatus('zoekt', null); return; }
-      if (++this.openFouten < 2) return;
+      // Geen rechten (Linux, geen udev-regel) is geen kabel die net losgaat: meteen zeggen.
+      if (++this.openFouten < 2 && !isRechtenFout(e)) return;
     }
     super.storing(e, soort);
   }
@@ -341,7 +344,7 @@ export class MaschineSessie extends Sessie {
     if (this.planTimer !== null) this.klok.wis(this.planTimer);
     this.planTimer = null;
   }
-  /** @param {'geen-hid'|'zoekt'|'bezet'|'verbonden'|'geen-invoer'} s @param {string|null} [reden] */
+  /** @param {'geen-hid'|'zoekt'|'bezet'|'geen-rechten'|'verbonden'|'geen-invoer'} s @param {string|null} [reden] */
   #zetStatus(s, reden = null) {
     if (this.status === s && this.statusReden === reden) return;
     this.status = s;
@@ -489,6 +492,8 @@ export class Kp3Sessie extends Sessie {
     this.inst = o.instellingen;
     this.ontleder = KP3.maakOntleder(this.inst);
   }
+  /** De instellingen in het logboek: de golden test leest de bytes daarna met dezelfde CC's (test/herspeel.js). */
+  bijAansluiten() { this.logboek?.regel('melding', { dev: this.dev, wat: 'instellingen', instellingen: this.inst }); }
   /** @param {number[]} b */
   ontleed(b) { return this.ontleder(b); }
 }

@@ -124,7 +124,8 @@ async function hidOfNiet(log = () => {}) {
  */
 function draaiSet(set, hub, hubPoort, naStop, { overleef = () => false, ...h } = {}) {
   const log = (/** @type {string} */ r) => console.log(r);
-  const openUrl = args.includes('--zonder-chrome') ? null : openInChrome();
+  // Linux: Chrome uit config.json → linux.chrome of PATH, anders xdg-open (src/sets/systeem.js).
+  const openUrl = args.includes('--zonder-chrome') ? null : openInChrome(process.platform, undefined, { chrome: config.linux?.chrome ?? null, log });
   // Een venster dat dichtgaat geeft EPIPE/EIO op stdout: dat mag het opruimen niet afbreken.
   for (const s of [process.stdout, process.stderr]) s.on('error', () => {});
   let paden = {};

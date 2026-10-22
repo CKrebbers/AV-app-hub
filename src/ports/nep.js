@@ -123,7 +123,7 @@ export class NepHidPoort {
 export class NepHidSysteem {
   constructor() {
     this.soort = 'nep-hid';
-    /** @type {Map<string, { vid: number, pid: number, product: string, poort: NepHidPoort, bezet: boolean }>} */
+    /** @type {Map<string, { vid: number, pid: number, product: string, poort: NepHidPoort, bezet: boolean, rechten?: boolean }>} */
     this.toestellen = new Map();
     this.volgnr = 0;
     /** Wordt aangeroepen na elke geslaagde `open` (de gesimuleerde Maschine stuurt dan zijn eerste rapport). @type {((p: NepHidPoort) => void)|null} */
@@ -140,6 +140,8 @@ export class NepHidSysteem {
   verwijder(naam) { this.toestellen.get(naam)?.poort.sluit(); this.toestellen.delete(naam); }
   /** @param {string} naam @param {boolean} bezet */
   zetBezet(naam, bezet) { const t = this.toestellen.get(naam); if (t) t.bezet = bezet; }
+  /** Linux zonder udev-regel: openen gooit "Permission denied" (zoals hidapi). @param {string} naam @param {boolean} geen */
+  zetGeenRechten(naam, geen) { const t = this.toestellen.get(naam); if (t) t.rechten = geen; }
   /** @returns {HidApparaat[]} */
   apparaten() { return [...this.toestellen].map(([naam, t]) => ({ naam, pad: naam, vid: t.vid, pid: t.pid, product: t.product })); }
   /** @param {number} vid @param {number} pid */
@@ -148,6 +150,7 @@ export class NepHidSysteem {
   open(naam, o = {}) {
     const t = this.toestellen.get(naam);
     if (!t) throw new Error(`geen HID-toestel ${naam}`);
+    if (t.rechten) throw new Error(`cannot open device with path ${naam}: Failed to open a device with path '${naam}': Permission denied`);
     if (t.bezet) throw new Error(`cannot open device with path ${naam}`);
     t.poort.open = true;
     t.poort.opties = { ...o };

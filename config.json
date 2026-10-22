@@ -57,7 +57,7 @@
     "burst_ms": 4
   },
   "proefmap": "proef",
-  "avondmap": "~/Movies/varve-avonden",
+  "avondmap": "auto",
   "bekende_apps": {
     "uurwerk": {
       "tcp": 8766
@@ -186,6 +186,11 @@
   "geheugen": {
     "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js, PROTOCOL §12); ~ = thuismap, $VARVE_HUB_STAAT gaat voor; 'varve-hub start --zonder-geheugen' zet het uit. Optioneel schrijf_ms: hooguit eens per zoveel ms naar schijf (minimum en standaard 1000)",
     "pad": "~/.varve-hub/staat.json"
+  },
+  "linux": {
+    "_doc": "Alleen op Linux (docs/LINUX.md). chrome: pad of naam van Chrome waarmee een set de apps opent (null = zoek google-chrome-stable, google-chrome, chromium, chromium-browser in PATH; niet gevonden of mislukt = xdg-open). drivers_uit: drivers die op Linux niet starten omdat hun programma daar niet bestaat (TouchDesigner: av-scene-kit, td-lab; Logic: sediment); haal een naam weg als hij hier toch moet draaien. avondmap \"auto\" (bovenaan) = de XDG-videomap (xdg-user-dir VIDEOS) of ~/Videos, met varve-avonden erin; op macOS ~/Movies/varve-avonden",
+    "chrome": null,
+    "drivers_uit": ["av-scene-kit", "sediment", "td-lab"]
   },
   "tempo": {
     "_doc": "PROTOCOL §20: het tempo (globaal.bpm) bij de start, tot tap (LPD8 P2) of de EFX-500 iets anders zegt. Volgorde: EFX-500 > tap > dit",

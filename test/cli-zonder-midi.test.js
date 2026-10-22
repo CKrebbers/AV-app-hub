@@ -27,8 +27,14 @@ function startUitvoer(extra) {
 describe('cli start zonder echte MIDI', () => {
   it('--zonder-midi: TD en Sediment krijgen geen (nep-)poort, en dat staat er duidelijk', async () => {
     const uit = await startUitvoer(['--zonder-midi']);
-    expect(uit).toMatch(/av-scene-kit: geen MIDI-systeem met virtuele poorten.*"VARVE-HUB TD"/);
-    expect(uit).toMatch(/sediment: geen MIDI-systeem met virtuele poorten.*"VARVE-HUB Logic"/);
+    if (process.platform === 'linux') {
+      // Op Linux slaat de hub ze eerder over: TouchDesigner en Logic bestaan hier niet (config.json → linux.drivers_uit).
+      expect(uit).toMatch(/av-scene-kit: overgeslagen op Linux \(de hub maakt poort "VARVE-HUB TD" niet aan\)/);
+      expect(uit).toMatch(/sediment: overgeslagen op Linux \(de hub maakt poort "VARVE-HUB Logic" niet aan\)/);
+    } else {
+      expect(uit).toMatch(/av-scene-kit: geen MIDI-systeem met virtuele poorten.*"VARVE-HUB TD"/);
+      expect(uit).toMatch(/sediment: geen MIDI-systeem met virtuele poorten.*"VARVE-HUB Logic"/);
+    }
     expect(uit).not.toMatch(/virtuele poort "VARVE-HUB/);
   }, 15000);
 });

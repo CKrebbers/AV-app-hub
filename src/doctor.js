@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import dgram from 'node:dgram';
 import { zoekNaam, zoekIngang } from './ports/poort.js';
-import { laadHid, draaiendeNi, HINT } from './ports/hid.js';
+import { laadHid, draaiendeNi, HINT, invoerHint, isRechtenFout } from './ports/hid.js';
 import { laadLpd8Profiel, laadXboardProfiel, HUB_MAP } from './config.js';
 import * as XB from './devices/xboard49.js';
 import * as KP3 from './devices/kp3plus.js';
@@ -38,11 +38,11 @@ export const vrij = (poort, soort) => new Promise((r) => {
 /**
  * @param {{ config: any, laadMidi: () => Promise<{ systeem: import('./ports/poort.js').Systeem|null, reden?: string }>,
  *   laadHid?: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>, niProgrammas?: () => string[],
- *   wachtMs?: number, hubDraait?: () => Promise<boolean> }} o  laadHid/niProgrammas/wachtMs/hubDraait: tests geven nep
+ *   wachtMs?: number, hubDraait?: () => Promise<boolean>, platform?: string }} o  laadHid/niProgrammas/wachtMs/hubDraait/platform: tests geven nep
  * @returns {Promise<{ tekst: string, data: any }>}
  */
 export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600,
-  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')) }) {
+  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')), platform = process.platform }) {
   const r = [];
   const data = /** @type {any} */ ({});
   const ok = (/** @type {boolean|null|undefined} */ b) => (b ? '✔' : '✗');
@@ -123,7 +123,7 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
   r.push(`  LPD8-profiel: ${prof ? `${prof.bron} (lpd8-profiel.json)` : 'nog niet geleerd — draai de proef'}`);
 
   r.push('', 'Speelapparaten (PROTOCOL §17)');
-  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok });
+  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok, platform });
 
   r.push('', 'KP3+ en EFX-500 (MIDI-DIN via een USB-MIDI-interface; PROTOCOL §20, §21)');
   await kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok });
@@ -198,9 +198,9 @@ async function kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok }) {
  * Xboard49 (een MIDI-ingang) en Maschine MK2 (USB-HID): gevonden, bezet, komt er invoer? De Maschine wordt kort
  * geopend (zoals de APC hierboven), en wat Clay moet doen staat erbij (NI-programma's, Invoermonitoring).
  * @param {{ config: any, systeem: import('./ports/poort.js').Systeem|null, hidLader: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>,
- *   niProgrammas: () => string[], wachtMs: number, hubDraait: () => Promise<boolean>, r: string[], data: any, ok: (b: boolean) => string }} o
+ *   niProgrammas: () => string[], wachtMs: number, hubDraait: () => Promise<boolean>, r: string[], data: any, ok: (b: boolean) => string, platform: string }} o
  */
-async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok }) {
+async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok, platform }) {
   const xcfg = config.apparaten?.xboard49;
   const xpatroon = XB.patroon(config);   // zoals de hub: zonder naam doet de Xboard niet mee
   if (!xpatroon) r.push('  - xboard49: niet in config.json (apparaten.xboard49.naam) — de hub opent hem niet');
@@ -244,10 +244,16 @@ async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs
     p.sluit();
     data.maschine.frames = frames;
     r.push(frames > 0 ? `  ✔ invoer komt binnen (${frames} rapporten in ${wachtMs / 1000} s; in rust ±750 per seconde)`
-      : `  ✗ open, maar er komt niets binnen — ${HINT.invoer}`);
+      : `  ✗ open, maar er komt niets binnen — ${invoerHint(platform)}`);
   } catch (e) {
-    data.maschine.bezet = /** @type {Error} */ (e).message;
-    r.push(`  ✗ bezet: ${/** @type {Error} */ (e).message} — ${HINT.bezet}`);
+    // Linux zonder udev-regel: "Permission denied". Dat is geen ander programma: de udev-hint, niet de Mac-hint.
+    if (isRechtenFout(e)) {
+      data.maschine.rechten = /** @type {Error} */ (e).message;
+      r.push(`  ✗ geen rechten: ${/** @type {Error} */ (e).message} — ${HINT.rechten}`);
+    } else {
+      data.maschine.bezet = /** @type {Error} */ (e).message;
+      r.push(`  ✗ bezet: ${/** @type {Error} */ (e).message} — ${HINT.bezet}`);
+    }
   }
-  r.push('  (Invoermonitoring: Systeeminstellingen → Privacy en beveiliging → Invoermonitoring; Terminal of iTerm aan.)');
+  if (platform === 'darwin') r.push('  (Invoermonitoring: Systeeminstellingen → Privacy en beveiliging → Invoermonitoring; Terminal of iTerm aan.)');
 }

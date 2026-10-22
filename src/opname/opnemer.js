@@ -12,7 +12,7 @@
 // begrensd), dan de eindstaat, dicht + samenvatting.md. Zo is de eindstaat een vaste stand die een herhaling
 // ook bereikt; invoer in die uitloop gaat nog mee de opname in. Stopt de hub (Ctrl-C), dan wordt er niet
 // gewacht en krijgt 'eind' rust:false als er nog iets liep. Schrijven blokkeert nooit (BufferSchrijver); fouten worden meldingen.
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { join, resolve, isAbsolute } from 'node:path';
 import { Logboek } from '../core/logboek.js';
@@ -34,15 +34,44 @@ export const NAAR_SOORTEN = Object.freeze(['zet', 'trig', 'scene', 'focus']);
 export const RUST_MARGE_MS = 200;
 export const RUST_MAX_MS = 10_000;
 
+/** De map onder de video-map van het besturingssysteem waar de avonden komen bij `"avondmap": "auto"`. */
+export const AVONDMAP_NAAM = 'varve-avonden';
+
+/**
+ * De video-map van Linux volgens XDG (`xdg-user-dir VIDEOS`, uit ~/.config/user-dirs.dirs). Null als dat niet lukt;
+ * xdg-user-dir geeft de thuismap zelf als VIDEOS niet is ingesteld (dan ook null: ~ hoort leeg te blijven).
+ * @param {string} thuis
+ * @returns {string|null}
+ */
+export function xdgVideos(thuis) {
+  let p = '';
+  try { p = execFileSync('xdg-user-dir', ['VIDEOS'], { encoding: 'utf8', timeout: 1000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return null; }
+  if (!p || !isAbsolute(p) || resolve(p) === resolve(thuis)) return null;
+  return p;
+}
+
+/**
+ * De standaard-avondmap per besturingssysteem (`"avondmap": "auto"`): macOS ~/Movies/varve-avonden; Linux de XDG-videomap
+ * (`xdg-user-dir VIDEOS`) of anders ~/Videos, met varve-avonden erin.
+ * @param {string} thuis @param {{ platform?: string, videos?: (thuis: string) => string|null }} [o] (tests)
+ */
+export function standaardAvondmap(thuis, { platform = process.platform, videos = xdgVideos } = {}) {
+  if (platform === 'darwin') return join(thuis, 'Movies', AVONDMAP_NAAM);
+  return join(videos(thuis) ?? join(thuis, 'Videos'), AVONDMAP_NAAM);
+}
+
 /**
  * Pad van de avondmap uit config.json (sleutel 'avondmap', de enige bron): '~' is de thuismap, een relatief
  * pad geldt vanaf de hub-map (zoals proefmap), niet vanaf waar `npm start` draaide. Zonder sleutel: null.
+ * `"auto"`: de standaard van het besturingssysteem (standaardAvondmap).
  * @param {any} config @param {string} [thuis] @param {string} [basis]
+ * @param {{ platform?: string, videos?: (thuis: string) => string|null }} [o] (tests)
  * @returns {string|null}
  */
-export function avondmapPad(config, thuis = homedir(), basis = HUB_MAP) {
+export function avondmapPad(config, thuis = homedir(), basis = HUB_MAP, o = {}) {
   const p = typeof config?.avondmap === 'string' && config.avondmap.trim() ? config.avondmap.trim() : null;
   if (p === null) return null;
+  if (p === 'auto') return standaardAvondmap(thuis, o);
   if (p === '~') return thuis;
   if (p.startsWith('~/')) return join(thuis, p.slice(2));
   return isAbsolute(p) ? p : resolve(basis, p);
@@ -143,7 +172,7 @@ export class Opnemer extends Zender {
   start() {
     if (this.huidig) return this.huidig;
     if (!this.map) {
-      this.#melding('opname: geen "avondmap" in config.json — er wordt niets opgenomen. Zet bv. "avondmap": "~/Movies/varve-avonden" in config.json.');
+      this.#melding('opname: geen "avondmap" in config.json — er wordt niets opgenomen. Zet bv. "avondmap": "auto" (~/Movies of ~/Videos, per systeem) in config.json.');
       return null;
     }
     const begon = this.datum();
