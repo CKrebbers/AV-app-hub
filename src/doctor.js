@@ -7,6 +7,9 @@ import { zoekNaam, zoekIngang } from './ports/poort.js';
 import { laadHid, draaiendeNi, HINT } from './ports/hid.js';
 import { laadLpd8Profiel, laadXboardProfiel, HUB_MAP } from './config.js';
 import * as XB from './devices/xboard49.js';
+import * as KP3 from './devices/kp3plus.js';
+import * as EFX from './devices/efx500.js';
+import { KlokMeter } from './core/klokbron.js';
 import * as A from './devices/apc40mk2.js';
 import * as L from './devices/lpd8.js';
 
@@ -122,6 +125,9 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
   r.push('', 'Speelapparaten (PROTOCOL §17)');
   await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok });
 
+  r.push('', 'KP3+ en EFX-500 (MIDI-DIN via een USB-MIDI-interface; PROTOCOL §20, §21)');
+  await kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok });
+
   r.push('', 'Poorten van de hub');
   for (const [naam, poort, soort] of [['http/ws', config.poorten.http, 'tcp'], ['osc', config.poorten.osc, 'udp']]) {
     const v = await vrij(poort, /** @type {'tcp'|'udp'} */ (soort));
@@ -136,6 +142,56 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
     r.push(`  ${aan ? '●' : '○'} ${app} ${p.tcp ? `:${p.tcp}/tcp` : `:${p.udp}/udp`}`);
   }
   return { tekst: r.join('\n'), data };
+}
+
+/**
+ * KP3+ en EFX-500: alleen een MIDI-ingang, achter een USB-MIDI-interface (de poortnaam is die van de interface). Gevonden
+ * of niet, met wat er in config.json staat. Van de EFX luistert doctor even naar de klok (als de hub niet draait: die
+ * heeft de poort dan al) en zegt welk tempo hij meet. Er wordt niets naar de apparaten gestuurd.
+ * @param {{ config: any, systeem: import('./ports/poort.js').Systeem|null, wachtMs: number, hubDraait: () => Promise<boolean>,
+ *   r: string[], data: any, ok: (b: boolean) => string }} o
+ */
+async function kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok }) {
+  const ingangen = systeem ? systeem.lijst().ingangen : [];
+  for (const [dev, label, patroon] of /** @type {const} */ ([['kp3plus', 'KP3+', KP3.patroon(config)], ['efx500', 'EFX-500', EFX.patroon(config)]])) {
+    const cfg = config.apparaten?.[dev] ?? {};
+    if (!patroon) { data[dev] = { inConfig: false }; r.push(`  - ${dev}: niet in config.json (apparaten.${dev}.poort_patroon) — de hub opent hem niet`); continue; }
+    if (!systeem) { data[dev] = { naam: null }; r.push(`  ✗ ${dev}: geen MIDI (zie boven)`); continue; }
+    const naam = zoekIngang({ ingangen }, patroon);
+    data[dev] = { naam, patroon: cfg.poort_patroon };
+    r.push(`  ${ok(!!naam)} ${dev} (${label}): ${naam ?? `niet gevonden — geen MIDI-ingang past op "${cfg.poort_patroon}". Hij hangt aan een USB-MIDI-interface: zet een stukje van de naam van die ingang (zie de ingangen hierboven) in config.json → apparaten.${dev}.poort_patroon`}`);
+    if (dev === 'kp3plus') {
+      const i = KP3.instellingen(config);
+      const cc = (/** @type {number|null} */ n) => (n === null ? '–' : `CC ${n}`);
+      data[dev].instellingen = i;
+      r.push(`      X ${cc(i.cc.x)} · Y ${cc(i.cc.y)} · aanraken ${cc(i.cc.aanraak)} · kanaal ${i.kanaal === null ? 'elk' : i.kanaal + 1} · XY → ${i.xy.x} / ${i.xy.y}${i.hold ? ' · hold' : ''} (te meten: node src/cli.js proef kp3plus)`);
+      continue;
+    }
+    if (!naam) continue;
+    if (await hubDraait()) {
+      data[dev].hubDraait = true;
+      r.push(`  - klok niet gemeten: de hub draait (poort ${config.poorten.http}) en heeft de poort; het tempo staat in de cockpit (beeld.tempo)`);
+      continue;
+    }
+    // Even luisteren naar de klok (een tel op 40 BPM duurt 1,5 s; standaard 2,5 × wachtMs).
+    const meter = new KlokMeter();
+    const t0 = performance.now();
+    let anders = 0;
+    try {
+      const p = systeem.open(naam, { alleenIngang: true, metKlok: true });
+      p.bijBericht((b) => { if (b[0] === EFX.KLOK.tik) meter.tik(performance.now()); else anders++; });
+      await new Promise((res) => setTimeout(res, wachtMs * 2.5));
+      p.sluit();
+    } catch (e) {
+      data[dev].fout = /** @type {Error} */ (e).message;
+      r.push(`      ✗ openen mislukt: ${/** @type {Error} */ (e).message}`);
+      continue;
+    }
+    const s = Math.round((performance.now() - t0) / 100) / 10;
+    Object.assign(data[dev], { tikken: meter.tikken, bpm: meter.bpm, anders });
+    r.push(meter.tikken === 0 ? `      geen klok in ${s} s — staat er muziek op de ingang (of tik TAP)? De EFX-500 stuurt alleen klok als hij een tempo heeft`
+      : `      ${meter.tikken} kloktikken in ${s} s${meter.bpm !== null ? ` · ${meter.bpm} BPM` : ' · nog geen hele tel'}${anders ? ` · ook ${anders} andere berichten` : ''}`);
+  }
 }
 
 /**

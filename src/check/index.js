@@ -12,7 +12,9 @@ import { homedir } from 'node:os';
 import { delimiter, dirname, join, relative, sep } from 'node:path';
 import { HUB_MAP } from '../config.js';
 import { echteKlok } from '../core/klok.js';
-import { zoekNaam } from '../ports/poort.js';
+import { zoekNaam, zoekIngang } from '../ports/poort.js';
+import * as KP3 from '../devices/kp3plus.js';
+import * as EFX from '../devices/efx500.js';
 import { geheugenPad } from '../opslag.js';
 import { avondmapPad } from '../opname/opnemer.js';
 import { tokenPad, isLoopbackHost, GELDIG } from '../lan.js';
@@ -117,11 +119,22 @@ export async function check(o) {
 
   const apparaten = in_('apparaten');
   const namen = /** @type {const} */ ([['apc40', 'APC40'], ['lpd8', 'LPD8']]);
+  // KP3+ en EFX-500 (§20, §21): alleen als config.json ze noemt, en nooit een ✗: zonder speel je gewoon (tap, de APC).
+  const midiDin = /** @type {const} */ ([['kp3plus', 'KP3+', KP3.patroon(config)], ['efx500', 'EFX-500', EFX.patroon(config)]]).filter((x) => x[2]);
+  const nietGezien = (/** @type {string} */ dev, /** @type {string} */ label) => apparaten('let', dev, `de ${label} is niet te zien (hij hangt met MIDI-DIN aan een USB-MIDI-interface)`,
+    `sluit de interface aan en de ${label} op zijn MIDI-ingang; past config.json → apparaten.${dev}.poort_patroon ("${config.apparaten?.[dev]?.poort_patroon}") op de naam van die ingang? npm run doctor toont ze`);
   if (beeld) {
     for (const [dev, label] of namen) {
       const a = beeld.apparaten?.[dev];
       if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}`);
       else apparaten('fout', dev, `de hub ziet de ${label} niet`, `steek de ${label} in (USB; de hub vindt hem vanzelf binnen ${Math.round((config.hotplug_ms ?? 2000) / 1000)} s)`);
+    }
+    for (const [dev, label] of midiDin) {
+      const a = beeld.apparaten?.[dev];
+      if (!a?.verbonden) { nietGezien(dev, label); continue; }
+      const t = beeld.tempo;
+      const klok = dev !== 'efx500' || !t ? '' : t.efx?.bpm != null ? `, klok ${t.efx.bpm} BPM` : `, geen klok${t.efx?.vorige != null ? ` (laatst ${t.efx.vorige} BPM)` : ''} — tempo nu ${t.bpm} uit ${t.bron}`;
+      apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}${klok}`);
     }
   } else {
     // Zoals doctor: alleen de lijst met poorten, niets openen.
@@ -140,6 +153,11 @@ export async function check(o) {
           const naam = zoekNaam(lijst, new RegExp(config.apparaten[dev].naam, 'i'));
           if (naam) apparaten('ok', dev, `${label} zichtbaar als MIDI-poort (${naam})`);
           else apparaten('fout', dev, `${label} niet gevonden tussen de MIDI-poorten`, `steek de ${label} in (USB, en aan) en draai check opnieuw; npm run doctor toont alle poorten`);
+        }
+        for (const [dev, label, patroon] of midiDin) {
+          const naam = zoekIngang(lijst, /** @type {RegExp} */ (patroon));
+          if (naam) apparaten('ok', dev, `${label} zichtbaar als MIDI-ingang (${naam})`);
+          else nietGezien(dev, label);
         }
       }
     }
