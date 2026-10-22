@@ -11,7 +11,8 @@
 import { Kern, PANIEK_MS, LANG_MS, TAP_RESET_MS } from '../core/kern.js';
 import { NepKlok } from '../core/klok.js';
 import { toewijzingen, RIJEN, KOLOMMEN } from '../core/indeling.js';
-import { ROLLEN, macroVan } from '../protocol/manifest.js';
+import { ROLLEN, MOMENTEN, macroVan, rolWoord } from '../protocol/manifest.js';
+import { grammaticaVan } from '../core/grammatica.js';
 import * as APC from '../devices/apc40mk2.js';
 
 /** @typedef {import('../protocol/types.js').Manifest} Manifest @typedef {import('../protocol/types.js').Param} Param
@@ -30,6 +31,7 @@ import * as APC from '../devices/apc40mk2.js';
  *    beginFocus: boolean, opmerking: string|null,
  *    faders: (Vak|null)[], tk: (Vak|null)[], paginas: Pagina[], grid: (Vak|null)[][], scenes: ({ ctrl: string, naam: string }|null)[],
  *    stopAll: Vak|null, overig: Vak[], niet: string[], macros: { knop: string, rol: string, naam: string }[], paniek: boolean,
+ *    maschine: { pad: number, woord: string|null, naam: string }[],
  *  }} AppBlad
  *  @typedef {{ knop: string, ctrl: string, rol: string, naam: string, apps: { app: string, naam: string, param: string }[] }} LpdKnop
  *  @typedef {{ pad: string, ctrl: string, kort: string, uitleg: string }} LpdPad
@@ -160,11 +162,17 @@ function appBlad(id, k, bron, config, set, bronFout) {
     soort: !m ? (k?.fout || bronFout ? 'fout' : 'volgt') : m.lease ? 'lease' : 'indeling', fout: k?.fout ?? (m ? null : bronFout),
     slot: k?.slot ?? null, status: k?.status ?? null, beginFocus: set.focus === id, opmerking: set.apps[id]?.opmerking ?? null,
     faders: [], tk: [], paginas: [], grid: [], scenes: [], stopAll: null, overig: [], niet: [], macros: [], paniek: false,
+    maschine: [],
   };
   if (!m) return blad;
   for (const p of m.params) {
     const i = p.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(macroVan(p.rol) ?? '') : -1; // §19: alfabet.kleur = K5
-    if (i >= 0 && p.soort !== 'trigger') blad.macros.push({ knop: `K${i + 1}`, rol: /** @type {string} */ (p.rol), naam: p.naam });
+    if (i >= 0 && p.soort !== 'trigger') blad.macros.push({ knop: `K${i + 1}`, rol: ROLLEN[i], naam: p.naam });
+  }
+  // §19: wat de app op de Maschine-pads legt (momenten 1–8, vrije pads 9–16 uit de kaart), als de Maschine hem bedient.
+  if (!(m.lease && m.speelt?.includes('maschine-mk2'))) {
+    const g = grammaticaVan(m, config?.kaarten?.[id] ?? null);
+    blad.maschine = [...g.momenten, ...g.vrij].flatMap((p, i) => (p ? [{ pad: i + 1, woord: i < 8 ? rolWoord(MOMENTEN[i]) : null, naam: p.naam }] : []));
   }
   blad.paniek = m.params.some((p) => p.id === 'paniek' && p.soort === 'trigger');
   const ind = k?.indeling;
@@ -187,6 +195,20 @@ function appBlad(id, k, bron, config, set, bronFout) {
   blad.overig = Object.entries(vast).filter(([c]) => !VASTE_CTRLS.has(c)).map(([c, t]) => /** @type {Vak} */ (vak(t, c, m)));
   blad.niet = ind.niet.map((pid) => m.params.find((p) => p.id === pid)?.naam ?? pid);
   return blad;
+}
+
+/**
+ * Een blad voor elke app met een manifest die de draaiende hub kent, los van een set (voor de grammatica-pagina,
+ * §19: per app welke alfabet-plek wat is).
+ * @param {any} kern de kern van de hub @param {any} config
+ * @returns {AppBlad[]}
+ */
+export function liveBladen(kern, config) {
+  const beeld = uitKern(kern);
+  /** @type {any} */
+  const geenSet = { naam: '', apps: {}, focus: null };
+  return [...beeld.apps.values()].filter((a) => a.manifest)
+    .map((a) => appBlad(a.app, a, { manifest: a.manifest, bron: 'live', uitleg: 'live uit de hub' }, config, geenSet, null));
 }
 
 /**

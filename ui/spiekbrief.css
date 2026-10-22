@@ -142,3 +142,17 @@
   .sb-blad[data-dicht="2"] { zoom: .72; }
   .sb-blad[data-dicht="3"] { zoom: .6; }
 }
+
+/* §19 grammatica: het woord van de alfabet-plek boven elk device-vak, en de grammatica-pagina */
+.sb-plek { display: block; font: 9px var(--mono); color: var(--stil); text-transform: uppercase; letter-spacing: .04em; }
+.sb-maschine { white-space: normal; }
+.sb-grammatica .sb-delen { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.sb-deel h2 { font-size: 14px; margin: 0 0 6px; }
+.sb-deel h2 small { font-weight: 400; color: var(--zacht); font-size: 11px; }
+.sb-komt th, .sb-komt td { color: var(--stil); }
+.sb-per-app { grid-column: 1 / -1; }
+@media print {
+  .sb-plek { font-size: 5.5pt; }
+  .sb-grammatica .sb-delen { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .sb-deel h2 { font-size: 9pt; }
+}
