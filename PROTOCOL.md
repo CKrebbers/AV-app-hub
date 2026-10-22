@@ -131,7 +131,7 @@ De LPD8 werkt altijd, los van focus. Knoppen 1–8 zetten globale macro's; elke 
 ## 7. APC-indeling voor manifest-apps
 
 - Faders 1–8: parameters met `hint:"fader"`, daarna overige `waarde`s in manifestvolgorde.
-- Device-knoppen 1–8: `hint:"knop"`; meer dan 8 → pagina's per `groep`, Device ◄/► bladert.
+- Device-knoppen 1–8: eerst het parameter-alfabet (§19): knop N = de parameter met `alfabet`-plek N, een lege plek doet niets (ring uit). Daarna (of zonder alfabet als enige) `hint:"knop"`; meer dan 8 → pagina's per `groep`, Device ◄/► bladert.
 - Track-knoppen 1–8: volgende 8 waarden.
 - Grid: `keuze` → één kolom per keuze (rij = optie); `trigger`/`schakelaar` → pads per `groep`.
 - Scene 1–5: `scenes`. Stop All: trigger `paniek` van die app als die bestaat.
@@ -429,4 +429,11 @@ device-knop N = Maschine-draaiknop N:
   dus een app die het alfabet volgt, schrijft `alfabet.kleur` en niet ook `macro.kleur`. Schaal, vervorming en variatie
   hebben geen macro: die bedien je alleen met de device-knoppen en de Maschine. Waarom zo: het is de eenvoudigste regel
   (geen nieuw veld) en bestaande apps met `macro.*` veranderen niet; dezelfde vijf woorden betekenen al hetzelfde.
+
+**APC-indeling (§7).** Heeft een manifest-app minstens één alfabet-parameter, dan is de eerste device-pagina
+`"alfabet"`: device-knop N = de parameter met plek N, ook als het manifest ze in een andere volgorde noemt. Een lege
+plek doet niets en zijn ring is uit, zodat elke plek in elke app hetzelfde betekent. De alfabet-parameters staan
+alleen daar (niet ook op een fader, track-knop of in het grid). Parameters met `hint:"knop"` komen op de volgende
+pagina's (`"meer"`, of per `groep`), Device ◄/► bladert zoals altijd. Een app zonder alfabet krijgt precies de oude
+indeling. Een kaart (`maps/<app>.json`) gaat nog steeds voor: zet die een alfabet-parameter elders, dan is zijn plek leeg.
 
