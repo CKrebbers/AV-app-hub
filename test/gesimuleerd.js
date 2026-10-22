@@ -4,6 +4,7 @@ import { NepSysteem, NepHidSysteem } from '../src/ports/nep.js';
 import { Zender } from '../src/core/zender.js';
 import * as A from '../src/devices/apc40mk2.js';
 import { nepMaschine, rustFrame, XBOARD_NAAM } from './nep-speelapparaten.js';
+import { KP3_POORT, EFX_POORT, kp3Doet, efxDoet } from './nep-kp3-efx.js';
 
 const later = (fn) => setTimeout(fn, 1);
 
@@ -54,18 +55,21 @@ const masterVolume = (w) => [0xf0, 0x7f, 0x7f, 0x04, 0x01, w & 0x7f, (w >> 7) & 
 
 /**
  * @param {{ antwoorden?: Record<string, string>, schaal?: number, lpd8Toggle?: boolean, padBasis?: number, knopBasis?: number,
- *   speel?: boolean, xbKnopBasis?: number }} o
+ *   speel?: boolean, xbKnopBasis?: number, kp3efx?: boolean, kp3?: import('./nep-kp3-efx.js').Kp3Gedrag }} o
  *   antwoorden per stap-id (standaard "j"); schaal: dezelfde als de runner (vasthouden duurt houdMs·schaal);
  *   lpd8Toggle: de LPD8-pads staan in TOGGLE-modus, zoals de echte: elke druk wisselt tussen note-on (aan) en
  *   note-off (uit), loslaten stuurt niets. De stand per pad staat in `padAan` en gaat bij opnieuw aansluiten terug naar uit;
  *   padBasis/knopBasis: noot van pad 1 en CC van knop 1 (standaard de mk2-fabrieksstand 36 en 70);
  *   speel: ook de speelapparaten (proef speelapparaten): een Xboard49 (alleen ingang, knoppen op CC xbKnopBasis..+15)
- *   en een Maschine MK2 op een NepHidSysteem (`hid`, `maschine`), die bij openen meteen een rustrapport stuurt.
+ *   en een Maschine MK2 op een NepHidSysteem (`hid`, `maschine`), die bij openen meteen een rustrapport stuurt;
+ *   kp3efx: een USB-MIDI-interface met de KP3+ op MIDI 1 en de EFX-500 op MIDI 2 (proeven kp3plus en efx500); kp3: welke
+ *   CC's en welk kanaal de nep-KP3+ stuurt (standaard de gok 12/13/92 op kanaal 11).
  * Met `onderschep(fn)` vervangt een test wat de gebruiker doet: geeft fn true terug, dan doet de simulatie niets.
  */
-export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, padBasis = 36, knopBasis = 70, speel = false, xbKnopBasis = 102 } = {}) {
+export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, padBasis = 36, knopBasis = 70, speel = false, xbKnopBasis = 102, kp3efx = false, kp3 = undefined } = {}) {
   const systeem = new NepSysteem();
-  const poorten = { apc: sluitApcAan(systeem), lpd8: sluitLpd8Aan(systeem, padBasis, knopBasis), xboard: null };
+  const poorten = { apc: sluitApcAan(systeem), lpd8: sluitLpd8Aan(systeem, padBasis, knopBasis), xboard: null, kp3: null, efx: null };
+  if (kp3efx) { poorten.kp3 = systeem.voegToe(KP3_POORT, { uitgang: false }); poorten.efx = systeem.voegToe(EFX_POORT, { uitgang: false }); }
   const hid = speel ? new NepHidSysteem() : null;
   const maschine = hid ? nepMaschine(hid) : null;
   if (hid) hid.bijOpen = (p) => later(() => p.injecteer(rustFrame()));
@@ -96,6 +100,8 @@ export function simulatie({ antwoorden = {}, schaal = 0.01, lpd8Toggle = false, 
     if (w.soort === 'vraag') return typ(antwoorden[w.stap] ?? 'j');
     if (w.dev === 'xboard49') return xboardDoet(w);
     if (w.dev === 'maschine-mk2') return maschineDoet(w);
+    if (w.dev === 'kp3plus') return poorten.kp3 && kp3Doet(w, poorten.kp3, kp3);
+    if (w.dev === 'efx500') return poorten.efx && efxDoet(w, poorten.efx);
     if (w.soort === 'controls') {
       later(() => {
         for (const id of w.ids) {

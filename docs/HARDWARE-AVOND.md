@@ -16,6 +16,7 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 | 6 | Pushen | 5 min |
 | 7 | Als iets niet werkt | (naslag) |
 | 8 | Xboard49 en Maschine MK2: de proef speelapparaten (mag een andere avond) | 25–30 min |
+| 9 | KP3+ en EFX-500: de proeven kp3plus en efx500 (als de USB-MIDI-interface er is) | 10 min |
 
 ---
 
@@ -446,3 +447,64 @@ alle 16 geleerd zijn). Push ze zoals in blok 6, met `xboard49-profiel.json` erbi
 
 **Als de Xboard niet gevonden wordt:** `node src/cli.js doctor` toont alle MIDI-ingangen. Zet een stukje van de naam van
 het keyboard bij `apparaten.xboard49.naam` in `config.json` (nu `xboard`).
+
+## 9. KP3+ en EFX-500: de proeven kp3plus en efx500 (±10 min)
+
+De Kaoss Pad KP3+ (**het gebaar**: XY-vlak, PROTOCOL §21) en de EFX-500 (**de klok**: `globaal.bpm`, §20) hebben geen
+USB-MIDI van zichzelf voor de hub: ze hangen met **MIDI-DIN** aan een **USB-MIDI-interface** (een 2-in/2-uit, bv. KP3+
+op MIDI IN 1, EFX-500 op MIDI IN 2). De Scarlett heeft geen MIDI. Wat de hub nu aanneemt (X = CC 12, Y = CC 13,
+aanraken = CC 92) komt uit bronnen, niet van jouw KP3+; deze proeven meten het. Mag op Linux en op de Mac.
+
+**Voorbereiden**
+
+- [ ] De interface via USB in de pc; de **MIDI OUT** van de KP3+ en van de EFX-500 met een DIN-kabel naar een **MIDI IN**
+  van de interface.
+- [ ] `node src/cli.js doctor`: onder "KP3+ en EFX-500" staat of de hub ze vindt. Staat er "niet gevonden", kijk dan bij
+  "ingangen" hoe de interface heet en zet een stukje van die naam in `config.json` → `apparaten.kp3plus.poort_patroon`
+  en `apparaten.efx500.poort_patroon` (bv. `"MIDI 1"` en `"MIDI 2"`, of de naam van de interface als hij er per poort
+  maar één heeft). Van de EFX telt doctor ook even de klok: zet er muziek op.
+- [ ] Op de KP3+ (Global): MIDI **Control Change** aan, en **Program Change** aan als je de programmageheugens wilt meten.
+- [ ] Geen hub ernaast (`npm start` dicht): de proeven openen de interface zelf.
+
+### KP3+
+
+```bash
+node src/cli.js proef kp3plus
+```
+
+| # | Stap | Wat je doet |
+|---|---|---|
+| 1 | Voorbereiding | lezen, Enter |
+| 2 | KP3+: welke MIDI-ingang? | niets; vindt de hub hem niet, dan typ je welke ingang het is |
+| 3 | KP3+: X (links → rechts) | aanraken en langzaam van links naar rechts vegen, loslaten |
+| 4 | KP3+: Y (onder → boven) | aanraken en langzaam van onder naar boven vegen, loslaten |
+| 5 | KP3+: aanraken en loslaten | drie keer kort op het midden tikken |
+| 6 | KP3+: de programmageheugens 1–8 | programmageheugen 1 tot en met 8 om de beurt indrukken |
+| 7 | KP3+: FX DEPTH | FX DEPTH helemaal open en dicht |
+| 8 | KP3+: HOLD | twee keer op HOLD |
+| 9 | KP3+: wat in config.json hoort | lezen: klopt config.json, of wat moet erin |
+| 10 | Klaar | — |
+
+Aan het eind zegt de proef welke `cc` (en welk `kanaal`) in `config.json` → `apparaten.kp3plus` hoort, als dat anders is
+dan wat er staat. Zet dat erin: de hub leest de KP3+ alleen via `config.json`.
+
+### EFX-500
+
+```bash
+node src/cli.js proef efx500
+```
+
+| # | Stap | Wat je doet |
+|---|---|---|
+| 1 | Voorbereiding | lezen, Enter |
+| 2 | EFX-500: welke MIDI-ingang? | niets; vindt de hub hem niet, dan typ je welke ingang het is |
+| 3 | EFX-500: de klok (tempo en stabiliteit) | muziek op de EFX (of TAP), acht tellen laten lopen; dan het BPM van het display intypen |
+| 4 | EFX-500: een ander tempo | ander nummer of een ander tempo tappen, laten lopen |
+| 5 | EFX-500: zonder muziek | de muziek weg, TAP niet aanraken, 5 s wachten |
+| 6 | EFX-500: sturen knoppen MIDI (of Start/Stop)? | 10 s lang op alle knoppen drukken en aan de knoppen draaien |
+| 7 | Klaar | — |
+
+De proef meet het tempo zoals de hub het toont (mediaan over de tikken, ±0,2 BPM stabiel), de jitter per tik, of de
+klok doortikt zonder muziek (dan blijft de EFX de bron met zijn laatste tempo) en of er knoppen of Start/Stop
+binnenkomen. Push beide logboeken (`proef/<datum-tijd>-kp3plus.jsonl` en `-efx500.jsonl`) zoals in blok 6, met
+commitboodschap `proef kp3plus en efx500`; ze worden golden tests.
