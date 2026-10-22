@@ -126,3 +126,18 @@ describe('§19 een alfabet-rol reageert ook op zijn LPD8-macro', () => {
     expect(van(w, 'zet').filter((b) => b.id === 'spoor').at(-1)?.bron).toBe('lpd8');
   });
 });
+
+describe('§19 conformiteit: de nep-harmonograaf (tools/nep-app.mjs --alfabet)', () => {
+  it('is conform, ook met momenten met velocity en druk; zijn manifest is geldig', async () => {
+    const { toetsApp } = await import('../tools/nep-hub.mjs');
+    const { NepApp, alfabetManifest } = await import('../tools/nep-app.mjs');
+    expect(valideerManifest(alfabetManifest()).ok).toBe(true);
+    /** @type {any} */ let app;
+    /** @type {any[]} */ const ontvangen = [];
+    const r = await toetsApp({ poort: 0, start: (url) => { app = new NepApp({ url, manifest: alfabetManifest() }).start(); app.bij('bericht', (/** @type {any} */ b) => ontvangen.push(b)); } });
+    app.stop();
+    expect(r.uitslagen.filter((u) => !u.ok)).toEqual([]);
+    expect(r.uitslagen.map((u) => u.naam)).toContain('grammatica: overleeft momenten met velocity en druk (§19)');
+    expect(ontvangen).toContainEqual({ t: 'trig', id: 'flits', aan: true, v: 0.8 });
+  }, 20000);
+});
