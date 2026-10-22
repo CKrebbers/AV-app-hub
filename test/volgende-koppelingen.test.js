@@ -156,8 +156,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   // De dragende hub-verwijzingen op inhoud: draait ook in CI.
   /** @type {{ pad: string, regel: number, bevat: string }[]} */
   const hubClaims = [
-    { pad: 'src/core/kern.js', regel: 897, bevat: '#paniek(' },
-    { pad: 'src/core/kern.js', regel: 806, bevat: "'stopall'" },
+    { pad: 'src/core/kern.js', regel: 935, bevat: '#paniek(' },
+    { pad: 'src/core/kern.js', regel: 844, bevat: "'stopall'" },
     { pad: 'src/drivers/midi.js', regel: 156, bevat: '#uit(a)' },
     { pad: 'src/drivers/midi.js', regel: 206, bevat: '#meldPreset' },
     { pad: 'src/drivers/midi.js', regel: 230, bevat: 'globaal' },
@@ -177,8 +177,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
     { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
     { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },
-    { pad: 'config.json', regel: 71, bevat: '"td-lab"' },
-    { pad: 'config.json', regel: 135, bevat: '"koppeling": "td"' },
+    { pad: 'config.json', regel: 77, bevat: '"td-lab"' },
+    { pad: 'config.json', regel: 141, bevat: '"koppeling": "td"' },
   ];
   // Binnen een klein venster rond de genoemde regel: de hub verandert verder (een paar regels erbij in kern.js), en
   // een verwijzing die een paar regels verschoof klopt inhoudelijk nog. Staat het er niet meer in de buurt, dan faalt hij.

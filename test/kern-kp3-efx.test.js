@@ -2,6 +2,7 @@
 // Geen hardware: de bytes gaan door de echte ontleders (src/devices/kp3plus.js, efx500.js), de tijd is een NepKlok.
 // De CC-nummers zijn de gok uit config (12/13/92); wat de echte KP3+ stuurt, meet de proef kp3plus.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import * as KP3 from '../src/devices/kp3plus.js';
 import * as EFX from '../src/devices/efx500.js';
 import { valideerManifest } from '../src/protocol/manifest.js';
@@ -78,6 +79,26 @@ describe('KP3+: het gebaar op de app met focus (§21)', () => {
     const k = kp3(kern, config);
     k.x(127); k.y(127);
     expect(zets(v)).toEqual([['galm', 1, 'kp3plus'], ['licht', 1, 'kp3plus']]);
+  });
+
+  it('standaard (config.json, zonder xy): X stuurt alfabet.vervorming, Y alfabet.ruimte (§19)', () => {
+    const { kern } = opzet();
+    const harmonograaf = {
+      v: 1, app: 'formula-lab', naam: 'Harmonograaf',
+      params: [
+        { id: 'fase', naam: 'Fase', soort: 'waarde', rol: 'alfabet.vervorming', standaard: 0.2 },
+        { id: 'demping', naam: 'Demping', soort: 'waarde', rol: 'alfabet.ruimte', standaard: 0.6 },
+        { id: 'tint', naam: 'Tint', soort: 'waarde', rol: 'alfabet.kleur' },
+      ],
+    };
+    expect(valideerManifest(harmonograaf).ok).toBe(true);
+    expect(KP3.instellingen(JSON.parse(readFileSync(new URL('../config.json', import.meta.url), 'utf8'))).xy).toEqual({ x: 'alfabet.vervorming', y: 'alfabet.ruimte' });
+    const v = meldAan(kern, harmonograaf);
+    kern.focus('formula-lab');
+    leeg(v);
+    const k = kp3(kern);
+    k.raak(); k.x(127); k.y(0); k.los();
+    expect(zets(v)).toEqual([['fase', 1, 'kp3plus'], ['demping', 0, 'kp3plus'], ['fase', 0.2, 'kp3plus'], ['demping', 0.6, 'kp3plus']]);
   });
 
   it('een app die de rollen niet heeft: niets, geen fout', () => {

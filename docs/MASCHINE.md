@@ -123,3 +123,13 @@ nog niet gemeten:
 - shaduzlabs/cabl, `src/devices/ni/MaschineMK2.cpp` (MIT): https://github.com/shaduzlabs/cabl
 - Ardour, `libs/surfaces/maschine2/m2_dev_mk2.*`: https://github.com/Ardour/ardour
 - node-hid 3.4 (`nonExclusive` op macOS, prebuilds): https://github.com/node-hid/node-hid
+
+## De Maschine als hoofdbediening (PROTOCOL §19)
+
+Heeft de app met focus de Maschine niet in `speelt` maar volgt hij de grammatica (alfabet-rollen, momenten of vrije
+pads in zijn kaart), dan gaat de Maschine niet als MIDI naar een lease-app maar bedient de hub die app zelf: de 8
+draaiknoppen zijn het parameter-alfabet (SHIFT = fijn), pads 1–8 de momenten (velocity en aftertouch als 0..1), pads
+9–16 vrij per app (`maps/<app>.json`, `"maschine-mk2:pad9"` …), groep A–H de focus op app-slot 1–8. De schermen tonen
+per knop het woord, de naam en de waarde. Zie PROTOCOL §19 voor het hele contract; instellingen in `config.json` →
+`apparaten.maschine-mk2.grammatica`. Op Clay's toestel nog te voelen: is één omwenteling van 0 naar 1 goed, en is
+SHIFT tien keer fijner genoeg?

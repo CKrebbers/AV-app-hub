@@ -175,6 +175,30 @@ Keuzes om na te lopen (zeg het als je het anders wilt):
 - **Bevriezen, niet terug naar 0**, als de bron wegvalt: de muziek speelt in het tabblad door als alleen de verbinding hapert. Stopt de muziek echt, dan stuurt de app zelf energie 0.
 - **De eerste leverancier wint** (zoals de adem), niet de app met focus: de focus zegt welke app je bedient, niet welke je hoort.
 
+## Grammatica (werkplek, fase C van SYSTEEM.md) — gebouwd en getest zonder hardware
+Eén grammatica voor alle apps (`../werkplek/bediening/SYSTEEM.md` §3, PROTOCOL §19): elk gebaar betekent overal hetzelfde.
+- [x] **Parameter-alfabet als rollen** — `alfabet.schaal` … `alfabet.ruimte` (plek 1–8) en de momenten `moment.flits` … `moment.halvetijd` (pad 1–8); onbekende rol of een dubbele plek in één app = fout (`src/protocol/manifest.js`, `test/grammatica-protocol.test.js`)
+- [x] **Relatie met de LPD8-macro's** — een alfabet-rol reageert ook op de macro met hetzelfde woord (`macroVan`: `alfabet.kleur` = K5, ook pickup en §14); bestaande `macro.*`-apps veranderen niet
+- [x] **APC-indeling volgt het alfabet** — device-knop N = plek N (eerste pagina `alfabet`), een lege plek doet niets en zijn ring is uit; daarna `hint:"knop"`; apps zonder alfabet en de golden tests ongewijzigd (`src/core/indeling.js`, `test/grammatica-indeling.test.js`)
+- [x] **Maschine als hoofdbediening** — focus-app zonder `speelt:["maschine-mk2"]` maar met grammatica: draaiknoppen = alfabet (relatief, SHIFT = fijn, direct zonder slew), pads 1–8 = momenten (`trig` met velocity `v`, aftertouch naar `druk`), pads 9–16 vrij via `maps/<app>.json`, groep A–H = focus op slot 1–8, lampjes; schermen met woord, naam, waarde en balk (puur: lettertype 5×7 en `grammaticaSchermen` in `src/devices/maschine-mk2.js`). Anders blijft §17 zoals het was (`src/core/grammatica.js`, `test/grammatica-maschine.test.js`)
+- [x] **Spiekbrief** — device-rij met het woord van elke plek, Maschine-pads per app, en `/spiekbrief?set=grammatica` (`npm run spiekbrief -- grammatica`) met de rollen uit SYSTEEM §3 op één A4 (`test/grammatica-spiekbrief.test.js`)
+- [x] **Cockpit** — namen onder de virtuele device-knoppen, de plek bij elke parameter, een Maschine-paneel met de schermen zoals de hub ze tekent, en een uitklapbare sectie Grammatica (`test/grammatica-cockpit.test.js`)
+- [x] **Nep-harmonograaf** — `node tools/nep-app.mjs --alfabet` (alfabet door elkaar in het manifest, plek 2 leeg, vier momenten); `nep-hub --toets` toetst momenten met velocity en druk
+- [x] Gezien zonder hardware: hub op een eigen poort met `--zonder-midi --zonder-geheugen` + de nep-harmonograaf; de virtuele device-knoppen tonen Grootte · (dichtheid) · Snelheid · Fase · Tint · Lijndikte · Verhouding · Demping, draaien aan dk3 zet Snelheid en staat op het Maschine-scherm
+
+Klaar als (op jouw pc, met de hardware):
+- [ ] `npm start` + `node tools/nep-app.mjs --alfabet`: device-knop 3 van de APC is Snelheid, knop 2 doet niets en zijn ring is uit
+- [ ] Maschine aangesloten, de nep-harmonograaf heeft focus: de schermen tonen de acht woorden met naam en waarde; draaiknop 3 beweegt Snelheid (één omwenteling = 0 → 1 voelt goed? SHIFT = fijn genoeg?)
+- [ ] pad 1 flitst (lampje vol zolang hij in is), aftertouch beweegt "Flits diep"; pads zonder moment zijn uit
+- [ ] groep B geeft slot 2 de focus; focus naar Varve DJ → de Maschine speelt weer voor Varve DJ
+- [ ] de spiekbrief "Grammatica" geprint: kloppen de acht woorden en hun volgorde voor jou (SYSTEEM §9 vraag 4)?
+
+Keuzes om na te lopen (zeg het als je het anders wilt):
+- **Een alfabet-rol reageert altijd op zijn LPD8-macro** (alfabet.kleur = K5); geen opt-out.
+- **De Maschine bedient alleen een app die de grammatica volgt**; een app zonder alfabet of momenten laat de Maschine spelen voor Varve DJ (zoals nu). Zo verandert er niets voor bestaande apps.
+- **Alfabet-parameters staan alleen op de device-knoppen**, niet ook op een fader of in het grid (een kaart in `maps/` kan dat wel).
+- **Velocity als extra veld `v` in `trig`, aftertouch via een `druk`-parameter** (`zet`): geen nieuw berichttype.
+
 ## Apparaten KP3+/EFX-500 en Linux (werkplek, fase F; gebouwd en getest zonder hardware)
 Werkplek `bediening/SYSTEEM.md` §2, §3.4, §3.5, §10: de Kaoss Pad KP3+ is **het gebaar**, de EFX-500 **de puls**. Plus wat
 de eerste Linux-test (werkplek `onderzoek/hub-linux.md`) opleverde.

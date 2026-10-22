@@ -17,7 +17,7 @@
 //   opname [naam]            speelsessie opnemen in proef/ (Ctrl-C stopt)
 //   herhaal <bestand> [--snelheid x] [--hub adres] [--zonder-beginstand]
 //                            een opgenomen avond (avondmap, LPD8-pad 4) opnieuw afspelen tegen een draaiende hub
-//   spiekbrief <set|alle> [--uit bestand.html]
+//   spiekbrief <set|alle|grammatica> [--uit bestand.html]
 //                            wat doet welke knop, per set: een HTML om te printen (A4 liggend), zonder hub (docs/SPIEKBRIEF.md)
 import { createWriteStream, existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -533,7 +533,7 @@ const opdrachten = {
     const uit = optie('--uit');
     const naam = args.find((a, i) => !a.startsWith('--') && args[i - 1] !== '--uit');
     if (!naam || (args.includes('--uit') && !uit)) {
-      console.error(`gebruik: varve-hub spiekbrief <set|alle> [--uit bestand.html] — sets: ${lijstSets().join(', ') || '(geen)'}`);
+      console.error(`gebruik: varve-hub spiekbrief <set|alle|grammatica> [--uit bestand.html] — sets: ${lijstSets().join(', ') || '(geen)'}`);
       process.exit(1);
     }
     let r;
@@ -570,7 +570,7 @@ const opdrachten = {
   testpatroon       regenboog op de APC + live wat binnenkomt
   opname [naam]     speelsessie opnemen in proef/
   herhaal <bestand> opgenomen avond opnieuw afspelen tegen een draaiende hub (--snelheid x, --hub adres, --zonder-beginstand)
-  spiekbrief <set>  wat doet welke knop: HTML om te printen, zonder hub (alle = elke set een pagina; --uit bestand.html)`);
+  spiekbrief <set>  wat doet welke knop: HTML om te printen, zonder hub (alle = elke set een pagina; grammatica = wat elke knopgroep betekent; --uit bestand.html)`);
   },
 };
 

@@ -229,6 +229,19 @@ export function maakApc(root, { stuur, bpm = () => 120 }) {
       }
       leds.clear();
     },
+    /**
+     * Namen onder de knoppen (§19: wat er op de device-knoppen staat). Wat niet in `namen` staat, verliest zijn naam.
+     * @param {Record<string, { tekst: string, titel?: string, leeg?: boolean }>} namen
+     */
+    zetNamen(namen) {
+      for (const [id, d] of el) {
+        const n = namen[id], c = OP_ID.get(id);
+        if (!n) { if (d.dataset.naam !== undefined) { delete d.dataset.naam; delete d.dataset.naamLeeg; if (c) d.title = `${c.label} · ${c.t} ${c.n} kanaal ${c.ch + 1}`; } continue; }
+        d.dataset.naam = n.tekst;
+        if (n.leeg) d.dataset.naamLeeg = ''; else delete d.dataset.naamLeeg;
+        if (c) d.title = `${c.label} · ${n.titel ?? n.tekst}`;
+      }
+    },
     /** Welke knoppen zijn nu ingedrukt of vastgehouden (ids). */
     get ingedrukt() { return [...ingedrukt.keys()]; },
     /** Laat alles los wat ingedrukt of vastgehouden is (stuurt de note-offs). */

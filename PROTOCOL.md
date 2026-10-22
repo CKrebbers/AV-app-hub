@@ -97,7 +97,8 @@ Parameter:
 | `keuzes` | bij `keuze` | 2..8 namen |
 | `hint` | nee | `"fader"` · `"knop"` · `"pad"` · `"kolom"` — voorkeur voor automatische indeling |
 | `groep` | nee | groepen worden pagina's op de device-knoppen en kolommen op het grid |
-| `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"` |
+| `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"`; of een vaste plek in de grammatica (§19): `"alfabet.<woord>"` (niet op een trigger), `"moment.<woord>"` (alleen op een trigger) |
+| `druk` | nee | alleen op een trigger: de id van een `waarde` van deze app die de aftertouch van de pad krijgt (§19) |
 | `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth): elke `zet` van de hub zelf (cockpit, snapshot, replay, LPD8-macro), niet een directe APC-beweging; alleen bij `soort:"waarde"` (§12) |
 | `takeover` | nee | `"pickup"` (standaard voor faders), `"direct"`, `"schaal"` |
 | `eenheid`, `min`, `max`, `centre` | nee | alleen voor weergave in de cockpit; `centre` = de waarde die op 0,5 ligt (log-schaal zoals JUCE `setSkewForCentre`), zonder `centre` lineair |
@@ -131,7 +132,7 @@ De LPD8 werkt altijd, los van focus. Knoppen 1–8 zetten globale macro's; elke 
 ## 7. APC-indeling voor manifest-apps
 
 - Faders 1–8: parameters met `hint:"fader"`, daarna overige `waarde`s in manifestvolgorde.
-- Device-knoppen 1–8: `hint:"knop"`; meer dan 8 → pagina's per `groep`, Device ◄/► bladert.
+- Device-knoppen 1–8: eerst het parameter-alfabet (§19): knop N = de parameter met `alfabet`-plek N, een lege plek doet niets (ring uit). Daarna (of zonder alfabet als enige) `hint:"knop"`; meer dan 8 → pagina's per `groep`, Device ◄/► bladert.
 - Track-knoppen 1–8: volgende 8 waarden.
 - Grid: `keuze` → één kolom per keuze (rij = optie); `trigger`/`schakelaar` → pads per `groep`.
 - Scene 1–5: `scenes`. Stop All: trigger `paniek` van die app als die bestaat.
@@ -295,7 +296,7 @@ lease-app tegelijk; ze staan buiten de laagstapel van de APC (§7) en de globale
 | **E-MU Xboard49** (`xboard49`) | MIDI, alleen de ingang (class-compliant; het keyboard ontvangt niets). Poortnaam: `config.json` → `apparaten.xboard49.naam` | de ruwe bytes, ongewijzigd: noten, kanaal-aftertouch, pitchbend, CC1, CC64, bank select + programmawissel, CC120/123 (paniek), de 16 knoppen (CC of NRPN), en de schuif als SysEx Master Volume `F0 7F 7F 04 01 ll mm F7` | niets |
 | **Maschine MK2** (`maschine-mk2`) | USB-HID (`src/ports/hid.js`, node-hid, optioneel), VID:PID uit `config.json` → `apparaten.maschine-mk2` | **virtuele MIDI** (docs/MASCHINE.md): pads noot 36–51 kanaal 0 met velocity, polyfone aftertouch (hooguit ±30×/s per pad, alleen bij verandering); knoppen noot = bitnummer (0–47) op kanaal 1; 8 draaiknoppen CC 16–23 relatief; masterwiel CC 24 relatief (tweecomplement) | `{t:"led", dev:"maschine-mk2"}`: noot aan op hetzelfde nummer, pads en groepknoppen velocity = APC-paletindex, andere knoppen velocity = helderheid; `{t:"scherm"}` |
 
-**Wie speelt** (per apparaat apart): de app met APC-focus als die het apparaat in `speelt` heeft; anders de laatst
+**Wie speelt** (per apparaat apart; voor de Maschine gaat §19 voor: bedient hij de focus-app volgens de grammatica, dan speelt niemand): de app met APC-focus als die het apparaat in `speelt` heeft; anders de laatst
 gefocuste app die het heeft; anders de eerste in slotvolgorde die het heeft. Alleen verbonden lease-apps tellen (niet
 `weg`). Niemand: de invoer gaat nergens heen. De hubtoets (Bank) doet hier niets: het keyboard speelt door terwijl je
 focus wisselt. `beeld.spelers` (§8) zegt per apparaat wie er speelt.
@@ -399,6 +400,87 @@ de hub ontbreken energie en label tot de bron weer stuurt.
 
 **Kern-API (§9):** de kern geeft een `globaal` van een app door aan `src/core/bijdragen.js` (puur: bron per groep,
 bewaarde waarden per app, de teller); wat daaruit komt, gaat als één `globaal` naar alle apps. `kern.beeld().bronnen`.
+
+## 19. Grammatica en parameter-alfabet (werkplek, fase C)
+
+Eén grammatica voor alle apps (`../werkplek/bediening/SYSTEEM.md` §3): elk gebaar betekent overal hetzelfde. Een app
+zegt met `rol` (§4) welke van zijn parameters op welke vaste plek staat; de hub legt ze daar neer, op de APC
+(device-knoppen, §7) en op de Maschine (§17, als hoofdbediening). Getoetst in `test/grammatica-*.test.js`.
+
+**Het parameter-alfabet** (`rol: "alfabet.<woord>"`, `ALFABET` in `src/protocol/manifest.js`). Plek N = APC
+device-knop N = Maschine-draaiknop N:
+
+| Plek | Rol | Betekenis | Ook op de LPD8 |
+|---|---|---|---|
+| 1 | `alfabet.schaal` | maat, zoom, rastergrootte | — |
+| 2 | `alfabet.dichtheid` | aantal, fijnheid | K6 (`macro.dichtheid`) |
+| 3 | `alfabet.beweging` | snelheid, tempo-deling | K4 (`macro.beweging`) |
+| 4 | `alfabet.vervorming` | vervormen, draaien, buigen | — |
+| 5 | `alfabet.kleur` | tint, palet | K5 (`macro.kleur`) |
+| 6 | `alfabet.helderheid` | contrast, drempel | K2 (`macro.helderheid`) |
+| 7 | `alfabet.variatie` | toeval, zaadje, mutatie | — |
+| 8 | `alfabet.ruimte` | naloop, terugkoppeling, sporen | K3 (`macro.ruimte`) |
+
+- Op een `waarde`, `keuze` of `schakelaar`, niet op een trigger. Hooguit één parameter per plek in een app; een app
+  hoeft niet alle acht te vullen. Een onbekende `alfabet.*`-rol of een dubbele plek → `{t:"fout"}` (het manifest valt
+  weg, zoals elke andere fout in het manifest).
+- **Relatie met de macro's (§6): een alfabet-rol reageert ook op de LPD8-macro met hetzelfde woord**, als die bestaat
+  (`macroVan()`): `alfabet.kleur` gedraagt zich voor de LPD8 precies als `macro.kleur` (K5 zet hem, met zijn eigen
+  `slew_s`; de eerste app met die rol is het pickup-doel van K5; §14 geldt net zo). Een parameter heeft maar één `rol`,
+  dus een app die het alfabet volgt, schrijft `alfabet.kleur` en niet ook `macro.kleur`. Schaal, vervorming en variatie
+  hebben geen macro: die bedien je alleen met de device-knoppen en de Maschine. Waarom zo: het is de eenvoudigste regel
+  (geen nieuw veld) en bestaande apps met `macro.*` veranderen niet; dezelfde vijf woorden betekenen al hetzelfde.
+
+**Het XY-vlak van de KP3+ (§21)** gebruikt dezelfde rollen: standaard stuurt X `alfabet.vervorming` en Y
+`alfabet.ruimte` van de app met focus (`config.json` → `apparaten.kp3plus.xy`; een app kan het met `xy` in zijn manifest
+anders zetten).
+
+**APC-indeling (§7).** Heeft een manifest-app minstens één alfabet-parameter, dan is de eerste device-pagina
+`"alfabet"`: device-knop N = de parameter met plek N, ook als het manifest ze in een andere volgorde noemt. Een lege
+plek doet niets en zijn ring is uit, zodat elke plek in elke app hetzelfde betekent. De alfabet-parameters staan
+alleen daar (niet ook op een fader, track-knop of in het grid). Parameters met `hint:"knop"` komen op de volgende
+pagina's (`"meer"`, of per `groep`), Device ◄/► bladert zoals altijd. Een app zonder alfabet krijgt precies de oude
+indeling. Een kaart (`maps/<app>.json`) gaat nog steeds voor: zet die een alfabet-parameter elders, dan is zijn plek leeg.
+
+**De momenten** (`rol: "moment.<woord>"`, `MOMENTEN`, alleen op een trigger, hooguit één per moment in een app):
+pad 1 `flits` · 2 `stoot` · 3 `omkeren` · 4 `bevriezen` · 5 `zaad` (nieuw zaadje) · 6 `terug` (naar het begin) ·
+7 `wis` (spoor wissen) · 8 `halvetijd`. Een onbekende `moment.*`-rol → `{t:"fout"}`.
+
+**De Maschine als hoofdbediening.** Heeft de app met focus de Maschine **niet** in `speelt` (§17) en staat er iets
+van hem op de Maschine (een alfabet-parameter, een moment of een vrije pad uit zijn kaart), dan bedient de Maschine
+die app volgens de grammatica; niemand speelt er dan op (`beeld.spelers["maschine-mk2"]` is `null`). Zo niet (een app
+zonder grammatica, een lease-app die de Maschine speelt, geen focus), dan geldt §17 zoals altijd: de Maschine speelt
+voor de laatst gefocuste lease-app die hem in `speelt` heeft. Bestaande apps veranderen dus niet: Varve DJ speelt de
+pads door terwijl av-kern of formula-lab de focus heeft. De Xboard49 blijft altijd een speelapparaat.
+
+| Maschine | Doet | Op de draad naar de app |
+|---|---|---|
+| draaiknop 1–8 | de alfabet-parameter op die plek; relatief: `tellen_vol` (1000, één omwenteling) tellen = van 0 naar 1; **SHIFT** ingedrukt = `fijn` (10) keer fijner. Een keuze of schakelaar stapt per `tellen_stap` (125) tellen. Een lege plek doet niets | `{t:"zet", id, v, bron:"maschine-mk2"}` |
+| pad 1–8 | het moment op die plek (een pad zonder moment doet niets) | `{t:"trig", id, aan:true, v}` met **`v` = velocity 0..1**; loslaten `{t:"trig", id, aan:false}` |
+| aftertouch op pad 1–8 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
+| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, zonder druk); schakelaar: `zet` 0/1 bij elke druk |
+| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit | `{t:"focus"}` zoals altijd |
+| masterwiel en de andere knoppen | (nog) niets | — |
+
+- **Velocity en aftertouch "als de app dat wil".** `v` in `trig` is een extra veld (alleen bij `aan:true` van een
+  Maschine-pad); een app die het niet kent, negeert het (grondregel 5). Aftertouch kost een parameter: een `waarde`
+  die de app noemt in `druk` op de trigger. Zo blijft alles op de draad 0..1 en `zet`/`trig`, zonder nieuw berichttype.
+- **Direct, zoals de APC (§12):** een draaiknop van de Maschine is een hand op een knop: geen `slew_s`, en een lopende
+  slew breekt af. Geen pickup nodig: relatief springt nooit. De APC-ring en -pickup van dezelfde plek gaan mee.
+- **Niets blijft hangen (§11, §17):** het loslaten (en de druk naar 0) gaat naar de app en trigger van het
+  indrukken, ook na een focuswissel of een nieuw manifest; het loslaten van iets dat een speler indrukte voordat de
+  grammatica begon, gaat naar die speler. Valt de Maschine weg, dan laat alles los.
+- **Lampjes:** pads met een moment (of een vrije pad) zacht in de kleur van de app, ingedrukt of aan vol, de rest uit;
+  groep A–H = de app-slots (focus vol, verbonden gedimd, leeg uit); SHIFT brandt zolang hij in is.
+- **Schermen (256×64, §17):** per draaiknop een kolom van 64 pixels: het woord van de plek, de naam van de
+  parameter, zijn waarde (procent, de naam van de keuze, aan/uit) en een balk; een lege plek toont alleen het woord en
+  `-`. Onderaan links de app, rechts `SHIFT = FIJN`. De tekenlaag is puur (`grammaticaSchermen`, lettertype 5×7 in
+  `src/devices/maschine-mk2.js`); de hub tekent bij elke wijziging en de sessie stuurt alleen de stukken die veranderden.
+- **Cockpit:** `beeld.maschine` = `{ app, naam, shift, knoppen:[{plek, woord, id, naam, tekst, v}], pads:[{pad, woord,
+  id, naam, druk?, in, aan?}] }`, of `null` als de Maschine niet bedient.
+- **Instellingen:** `config.json` → `apparaten.maschine-mk2.grammatica` (`tellen_vol`, `fijn`, `tellen_stap`).
+- **Code:** `src/core/grammatica.js` (`MaschineBediening`, puur), `Spelers` met `bezet` (`src/core/spelers.js`), de kern
+  (`#bediend()`).
 
 ## 20. Klokbronnen: EFX-500, tap, config (fase F)
 

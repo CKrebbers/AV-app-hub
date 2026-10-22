@@ -32,7 +32,13 @@
       },
       "encoder_drempel": 12,
       "led_max": 255,
-      "per_burst": 4
+      "per_burst": 4,
+      "grammatica": {
+        "_doc": "De Maschine als hoofdbediening (PROTOCOL §19): tellen_vol = zoveel tellen van een draaiknop is van 0 naar 1 (1 omwenteling ≈ 1000); fijn = met SHIFT zoveel keer fijner; tellen_stap = zoveel tellen per stap bij een keuze of schakelaar",
+        "tellen_vol": 1000,
+        "fijn": 10,
+        "tellen_stap": 125
+      }
     },
     "kp3plus": {
       "_doc": "Korg Kaoss Pad KP3+ (PROTOCOL §21): het gebaar. Hangt met MIDI-DIN aan een USB-MIDI-interface, dus poort_patroon (regex, hoofdletterongevoelig) moet passen op de naam van de INTERFACE-ingang (doctor toont ze; bv. \"UM-ONE\" of \"MIDI 1\"). Weg = de hub opent hem niet. kanaal: 1..16 zoals op het display, null = elk. cc: X, Y, aanraken (≥64 = aan), diepte (FX Depth), hold (de Hold-knop); null = niet toegewezen. TE METEN met node src/cli.js proef kp3plus (12/13/92 komt uit bronnen). xy: welke rol of parameter-id X en Y sturen bij de app met focus (manifest xy en maps/<app>.json xy gaan voor). hold: true = na loslaten blijven staan (anders terugveren naar de waarde van vóór het aanraken)",
