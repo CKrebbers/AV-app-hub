@@ -36,7 +36,9 @@ describe('proef speelapparaten met gesimuleerde gebruiker', () => {
 
   it('docs/HARDWARE-AVOND.md (blok 8) noemt elke stap, in dezelfde volgorde en met hetzelfde nummer als de terminal', () => {
     const draaiboek = readFileSync(new URL('../docs/HARDWARE-AVOND.md', import.meta.url), 'utf8');
-    const blok = draaiboek.slice(draaiboek.indexOf('## 8. Xboard49 en Maschine MK2'));
+    const begin = draaiboek.indexOf('## 8. Xboard49 en Maschine MK2');
+    const eind = draaiboek.indexOf('\n## ', begin + 1);
+    const blok = draaiboek.slice(begin, eind < 0 ? undefined : eind);
     const rijen = [...blok.matchAll(/^\| (\d+) \| ([^|]+?) \|/gm)].map((m) => ({ nr: Number(m[1]), titel: m[2] }));
     expect(rijen).toEqual(speelapparaten.stappen.map((s, i) => ({ nr: i + 1, titel: s.titel })));
     expect(blok).toMatch(/node src\/cli\.js proef speelapparaten/);

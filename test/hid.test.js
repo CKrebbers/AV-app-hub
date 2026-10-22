@@ -89,7 +89,7 @@ describe('doctor: speelapparaten', () => {
     return doctor({
       config, laadMidi: async () => ({ systeem: midi }),
       laadHid: async () => (hid ? { systeem: hid } : { systeem: null, reden: hidReden }), niProgrammas: () => ni, wachtMs: 20,
-      hubDraait: async () => hub,
+      hubDraait: async () => hub, platform: 'darwin',   // de macOS-teksten; Linux: test/linux.test.js
     });
   }
   it('Xboard49 als MIDI-ingang, Maschine gevonden en er komt invoer', async () => {

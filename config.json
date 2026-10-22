@@ -32,7 +32,28 @@
       },
       "encoder_drempel": 12,
       "led_max": 255,
-      "per_burst": 4
+      "per_burst": 4,
+      "grammatica": {
+        "_doc": "De Maschine als hoofdbediening (PROTOCOL §19): tellen_vol = zoveel tellen van een draaiknop is van 0 naar 1 (1 omwenteling ≈ 1000); fijn = met SHIFT zoveel keer fijner; tellen_stap = zoveel tellen per stap bij een keuze of schakelaar",
+        "tellen_vol": 1000,
+        "fijn": 10,
+        "tellen_stap": 125
+      }
+    },
+    "kp3plus": {
+      "_doc": "Korg Kaoss Pad KP3+ (PROTOCOL §21): het gebaar. Hangt met MIDI-DIN aan een USB-MIDI-interface, dus poort_patroon (regex, hoofdletterongevoelig) moet passen op de naam van de INTERFACE-ingang (doctor toont ze; bv. \"UM-ONE\" of \"MIDI 1\"). Weg = de hub opent hem niet. kanaal: 1..16 zoals op het display, null = elk. cc: X, Y, aanraken (≥64 = aan), diepte (FX Depth), hold (de Hold-knop); null = niet toegewezen. TE METEN met node src/cli.js proef kp3plus (12/13/92 komt uit bronnen). xy: welke rol of parameter-id X en Y sturen bij de app met focus (manifest xy en maps/<app>.json xy gaan voor). hold: true = na loslaten blijven staan (anders terugveren naar de waarde van vóór het aanraken)",
+      "poort_patroon": "kp3|kaoss",
+      "kanaal": null,
+      "cc": { "x": 12, "y": 13, "aanraak": 92, "diepte": null, "hold": null },
+      "xy": { "x": "alfabet.vervorming", "y": "alfabet.ruimte" },
+      "hold": false
+    },
+    "efx500": {
+      "_doc": "Pioneer EFX-500 (PROTOCOL §20): de klok (MIDI-klok, 24 per tel, 40-250 BPM). Ook via de USB-MIDI-interface: poort_patroon past op de naam van de interface-ingang. Zolang hij tikt, zet hij globaal.bpm (wint van tap en tempo.bpm). weg_ms: zo lang geen tik = de klok is weg (terug naar tap, anders blijft het laatste tempo). venster: zoveel intervallen middelen (96 = 4 tellen). stabiel_bpm: het getoonde tempo verandert pas bij een grotere afwijking (of als een kleinere een hele tel blijft). Of knoppen of start/stop MIDI sturen: TE METEN met node src/cli.js proef efx500",
+      "poort_patroon": "efx|pioneer",
+      "weg_ms": 2000,
+      "venster": 96,
+      "stabiel_bpm": 0.2
     }
   },
   "hubtoets": "bank",
@@ -42,7 +63,7 @@
     "burst_ms": 4
   },
   "proefmap": "proef",
-  "avondmap": "~/Movies/varve-avonden",
+  "avondmap": "auto",
   "bekende_apps": {
     "uurwerk": {
       "tcp": 8766
@@ -171,5 +192,14 @@
   "geheugen": {
     "_doc": "snapshots en waarden van truth:hub-apps over een herstart heen (src/opslag.js, PROTOCOL §12); ~ = thuismap, $VARVE_HUB_STAAT gaat voor; 'varve-hub start --zonder-geheugen' zet het uit. Optioneel schrijf_ms: hooguit eens per zoveel ms naar schijf (minimum en standaard 1000)",
     "pad": "~/.varve-hub/staat.json"
+  },
+  "linux": {
+    "_doc": "Alleen op Linux (docs/LINUX.md). chrome: pad of naam van Chrome waarmee een set de apps opent (null = zoek google-chrome-stable, google-chrome, chromium, chromium-browser in PATH; niet gevonden of mislukt = xdg-open). drivers_uit: drivers die op Linux niet starten omdat hun programma daar niet bestaat (TouchDesigner: av-scene-kit, td-lab; Logic: sediment); haal een naam weg als hij hier toch moet draaien. avondmap \"auto\" (bovenaan) = de XDG-videomap (xdg-user-dir VIDEOS) of ~/Videos, met varve-avonden erin; op macOS ~/Movies/varve-avonden",
+    "chrome": null,
+    "drivers_uit": ["av-scene-kit", "sediment", "td-lab"]
+  },
+  "tempo": {
+    "_doc": "PROTOCOL §20: het tempo (globaal.bpm) bij de start, tot tap (LPD8 P2) of de EFX-500 iets anders zegt. Volgorde: EFX-500 > tap > dit",
+    "bpm": 120
   }
 }

@@ -6,12 +6,13 @@
  * @typedef {{
  *   id: string, naam: string, soort: ParamSoort, standaard: number,
  *   keuzes?: string[], hint?: 'fader'|'knop'|'pad'|'kolom', groep?: string,
- *   rol?: string, slew_s?: number, takeover?: 'pickup'|'direct'|'schaal',
+ *   rol?: string, druk?: string, slew_s?: number, takeover?: 'pickup'|'direct'|'schaal',
  *   eenheid?: string, min?: number, max?: number, centre?: number,
  * }} Param
  * @typedef {{
  *   v: 1, app: string, naam: string, kleur?: string, truth: 'app'|'hub', hb_s: number,
  *   lease: boolean, rings?: 'host'|'auto', speelt?: ('xboard49'|'maschine-mk2')[], levert?: 'sectie'[], scenes: string[], params: Param[],
+ *   xy?: { x?: string, y?: string },
  * }} Manifest
  *
  * Berichten app → hub
@@ -28,7 +29,7 @@
  * Berichten hub → app
  * @typedef {{ t: 'welkom', hub: 'varve-hub', v: 1 }} Welkom
  * @typedef {{ t: 'zet', id: string, v: number, bron?: string }} HubZet
- * @typedef {{ t: 'trig', id: string, aan: boolean }} Trig
+ * @typedef {{ t: 'trig', id: string, aan: boolean, v?: number }} Trig  (v: velocity 0..1 van een Maschine-pad, §19)
  * @typedef {{ t: 'scene', i: number }} Scene
  * @typedef {{ t: 'focus', aan: boolean }} Focus
  * @typedef {{ t: 'globaal', waarden: Record<string, number|string> }} Globaal

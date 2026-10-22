@@ -9,7 +9,7 @@ import { laadConfig } from '../config.js';
 
 /**
  * @typedef {{ toon: (t: string) => void, regel: () => { p: Promise<string>, annuleer: () => void } }} IO
- * @typedef {'apc40'|'lpd8'|'xboard49'|'maschine-mk2'} Dev
+ * @typedef {'apc40'|'lpd8'|'xboard49'|'maschine-mk2'|'kp3plus'|'efx500'} Dev
  * @typedef {{ id: string, titel: string, vereist?: Dev[], doe: (h: Hulp) => Promise<void> }} Stap
  * @typedef {{ naam: string, titel: string, stappen: Stap[] }} Protocol
  * @typedef {ReturnType<typeof maakHulp>} Hulp
@@ -99,6 +99,9 @@ function maakHulp(ctx) {
     lpd8: apparaten.lpd8,
     /** @type {any} */ xboard: /** @type {any} */ (apparaten).xboard ?? null,
     /** @type {any} */ maschine: /** @type {any} */ (apparaten).maschine ?? null,
+    /** De KP3+ en de EFX-500 (PROTOCOL §20, §21), als config.json ze noemt. */
+    /** @type {any} */ kp3: /** @type {any} */ (apparaten).kp3 ?? null,
+    /** @type {any} */ efx: /** @type {any} */ (apparaten).efx ?? null,
     /** Het MIDI- en HID-systeem (poortlijsten voor de proef speelapparaten). */
     systemen: { midi: /** @type {any} */ (apparaten).systeem ?? null, hid: /** @type {any} */ (apparaten).hid ?? null },
     /** Welke NI-programma's draaien (die kunnen de Maschine vasthouden). */
