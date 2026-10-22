@@ -11,7 +11,7 @@
 import { Kern, PANIEK_MS, LANG_MS, TAP_RESET_MS } from '../core/kern.js';
 import { NepKlok } from '../core/klok.js';
 import { toewijzingen, RIJEN, KOLOMMEN } from '../core/indeling.js';
-import { ROLLEN } from '../protocol/manifest.js';
+import { ROLLEN, macroVan } from '../protocol/manifest.js';
 import * as APC from '../devices/apc40mk2.js';
 
 /** @typedef {import('../protocol/types.js').Manifest} Manifest @typedef {import('../protocol/types.js').Param} Param
@@ -163,7 +163,7 @@ function appBlad(id, k, bron, config, set, bronFout) {
   };
   if (!m) return blad;
   for (const p of m.params) {
-    const i = p.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(p.rol) : -1;
+    const i = p.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(macroVan(p.rol) ?? '') : -1; // §19: alfabet.kleur = K5
     if (i >= 0 && p.soort !== 'trigger') blad.macros.push({ knop: `K${i + 1}`, rol: /** @type {string} */ (p.rol), naam: p.naam });
   }
   blad.paniek = m.params.some((p) => p.id === 'paniek' && p.soort === 'trigger');

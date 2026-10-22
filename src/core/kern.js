@@ -16,7 +16,7 @@
 // Slots en focus alleen na een herstart midden in de set: `slotsEnFocus()`/`herstelSlotsEnFocus(d)` (loopbestand).
 import * as APC from '../devices/apc40mk2.js';
 import { klem01 } from '../protocol/berichten.js';
-import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID, MAX_PARAMS } from '../protocol/manifest.js';
+import { valideerManifest, keuzeNaarWaarde, waardeNaarKeuze, ROLLEN, APP_ID, PARAM_ID, MAX_PARAMS, macroVan } from '../protocol/manifest.js';
 import { Zender } from './zender.js';
 import { maakIndeling, toewijzingen, controlsVoor } from './indeling.js';
 import { nieuwePickup, beweeg, zetDoel, volg } from './pickup.js';
@@ -561,11 +561,13 @@ export class Kern extends Zender {
     // §14: wat een app zelf verandert tijdens (of vlak na) een paniek, verplaatst het doel niet: de knop blijft
     // gevangen en de eerste tik zet weer alle apps met die rol. Was er nog geen pickup, dan wordt het doel van
     // vóór deze zet vastgelegd (anders nam #macroDoel straks de paniekwaarde).
-    const k = p?.rol ? /** @type {readonly string[]} */ (ROLLEN).indexOf(p.rol) : -1;
+    // §19: een alfabet-rol telt hier als de macro met hetzelfde woord (alfabet.kleur → macro.kleur, K5).
+    const macro = macroVan(p?.rol);
+    const k = macro ? /** @type {readonly string[]} */ (ROLLEN).indexOf(macro) : -1;
     const knop = k >= 0 && bron !== 'lpd8' ? `k${k + 1}` : null;
     const lpk = knop ? this.lpdPickups.get(knop) : undefined;
     const vasthouden = knop !== null && bron === 'app' && this.#inPaniek(a);
-    if (knop && (lpk || vasthouden) && p?.rol && this.#rolParam(p.rol)?.a === a) {
+    if (knop && macro && (lpk || vasthouden) && this.#rolParam(macro)?.a === a) {
       if (!vasthouden) this.lpdPickups.set(knop, zetDoel(/** @type {Pickup} */ (lpk), w));
       else if (!lpk) this.lpdPickups.set(knop, nieuwePickup(was ?? p.standaard ?? 0, this.fysiek.get(`lpd8:${knop}`) ?? null));
     }
@@ -834,10 +836,10 @@ export class Kern extends Zender {
     }
   }
 
-  /** De eerste app met een parameter met deze rol (§10), of undefined. @param {string} rol */
+  /** De eerste app met een parameter met deze rol (§10; een alfabet-rol telt als zijn macro, §19), of undefined. @param {string} rol */
   #rolParam(rol) {
     for (const a of this.apps.values()) {
-      const p = a.manifest?.params.find((x) => x.rol === rol && x.soort !== 'trigger');
+      const p = a.manifest?.params.find((x) => macroVan(x.rol) === rol && x.soort !== 'trigger');
       if (p) return { a, p };
     }
     return undefined;
@@ -860,7 +862,7 @@ export class Kern extends Zender {
     if (rol === 'klok.adem_periode') this.adem = { t: this.klok.nu(), fase: this.#ademFase() };
     for (const a of this.apps.values()) {
       for (const p of a.manifest?.params ?? []) {
-        if (p.rol !== rol || p.soort === 'trigger') continue;
+        if (macroVan(p.rol) !== rol || p.soort === 'trigger') continue; // §19: alfabet.kleur hoort bij macro.kleur
         this.#zetZacht(a, p.id, v, 'lpd8');
       }
     }

@@ -96,7 +96,8 @@ Parameter:
 | `keuzes` | bij `keuze` | 2..8 namen |
 | `hint` | nee | `"fader"` · `"knop"` · `"pad"` · `"kolom"` — voorkeur voor automatische indeling |
 | `groep` | nee | groepen worden pagina's op de device-knoppen en kolommen op het grid |
-| `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"` |
+| `rol` | nee | koppelt aan een globale macro (§6), bv. `"macro.ruimte"`; of een vaste plek in de grammatica (§19): `"alfabet.<woord>"` (niet op een trigger), `"moment.<woord>"` (alleen op een trigger) |
+| `druk` | nee | alleen op een trigger: de id van een `waarde` van deze app die de aftertouch van de pad krijgt (§19) |
 | `slew_s` | nee | de hub verloopt waarden over zoveel seconden (voor trage apps als medisynth): elke `zet` van de hub zelf (cockpit, snapshot, replay, LPD8-macro), niet een directe APC-beweging; alleen bij `soort:"waarde"` (§12) |
 | `takeover` | nee | `"pickup"` (standaard voor faders), `"direct"`, `"schaal"` |
 | `eenheid`, `min`, `max`, `centre` | nee | alleen voor weergave in de cockpit; `centre` = de waarde die op 0,5 ligt (log-schaal zoals JUCE `setSkewForCentre`), zonder `centre` lineair |
@@ -398,3 +399,34 @@ de hub ontbreken energie en label tot de bron weer stuurt.
 
 **Kern-API (§9):** de kern geeft een `globaal` van een app door aan `src/core/bijdragen.js` (puur: bron per groep,
 bewaarde waarden per app, de teller); wat daaruit komt, gaat als één `globaal` naar alle apps. `kern.beeld().bronnen`.
+
+## 19. Grammatica en parameter-alfabet (werkplek, fase C)
+
+Eén grammatica voor alle apps (`../werkplek/bediening/SYSTEEM.md` §3): elk gebaar betekent overal hetzelfde. Een app
+zegt met `rol` (§4) welke van zijn parameters op welke vaste plek staat; de hub legt ze daar neer, op de APC
+(device-knoppen, §7) en op de Maschine (§17, als hoofdbediening). Getoetst in `test/grammatica-*.test.js`.
+
+**Het parameter-alfabet** (`rol: "alfabet.<woord>"`, `ALFABET` in `src/protocol/manifest.js`). Plek N = APC
+device-knop N = Maschine-draaiknop N:
+
+| Plek | Rol | Betekenis | Ook op de LPD8 |
+|---|---|---|---|
+| 1 | `alfabet.schaal` | maat, zoom, rastergrootte | — |
+| 2 | `alfabet.dichtheid` | aantal, fijnheid | K6 (`macro.dichtheid`) |
+| 3 | `alfabet.beweging` | snelheid, tempo-deling | K4 (`macro.beweging`) |
+| 4 | `alfabet.vervorming` | vervormen, draaien, buigen | — |
+| 5 | `alfabet.kleur` | tint, palet | K5 (`macro.kleur`) |
+| 6 | `alfabet.helderheid` | contrast, drempel | K2 (`macro.helderheid`) |
+| 7 | `alfabet.variatie` | toeval, zaadje, mutatie | — |
+| 8 | `alfabet.ruimte` | naloop, terugkoppeling, sporen | K3 (`macro.ruimte`) |
+
+- Op een `waarde`, `keuze` of `schakelaar`, niet op een trigger. Hooguit één parameter per plek in een app; een app
+  hoeft niet alle acht te vullen. Een onbekende `alfabet.*`-rol of een dubbele plek → `{t:"fout"}` (het manifest valt
+  weg, zoals elke andere fout in het manifest).
+- **Relatie met de macro's (§6): een alfabet-rol reageert ook op de LPD8-macro met hetzelfde woord**, als die bestaat
+  (`macroVan()`): `alfabet.kleur` gedraagt zich voor de LPD8 precies als `macro.kleur` (K5 zet hem, met zijn eigen
+  `slew_s`; de eerste app met die rol is het pickup-doel van K5; §14 geldt net zo). Een parameter heeft maar één `rol`,
+  dus een app die het alfabet volgt, schrijft `alfabet.kleur` en niet ook `macro.kleur`. Schaal, vervorming en variatie
+  hebben geen macro: die bedien je alleen met de device-knoppen en de Maschine. Waarom zo: het is de eenvoudigste regel
+  (geen nieuw veld) en bestaande apps met `macro.*` veranderen niet; dezelfde vijf woorden betekenen al hetzelfde.
+

@@ -6,7 +6,7 @@
  * @typedef {{
  *   id: string, naam: string, soort: ParamSoort, standaard: number,
  *   keuzes?: string[], hint?: 'fader'|'knop'|'pad'|'kolom', groep?: string,
- *   rol?: string, slew_s?: number, takeover?: 'pickup'|'direct'|'schaal',
+ *   rol?: string, druk?: string, slew_s?: number, takeover?: 'pickup'|'direct'|'schaal',
  *   eenheid?: string, min?: number, max?: number, centre?: number,
  * }} Param
  * @typedef {{

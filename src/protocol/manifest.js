@@ -13,6 +13,37 @@ export const ROLLEN = /** @type {const} */ ([
   'macro.intensiteit', 'macro.helderheid', 'macro.ruimte', 'macro.beweging',
   'macro.kleur', 'macro.dichtheid', 'klok.adem_periode', 'macro.balans',
 ]);
+/**
+ * Het parameter-alfabet (§19): acht vaste betekenissen op vaste plekken. Plek = index + 1 = APC device-knop N =
+ * Maschine-draaiknop N. Elke app legt dezelfde betekenis op dezelfde plek; zo leer je één keer waar "beweging" zit.
+ */
+export const ALFABET = /** @type {const} */ ([
+  'alfabet.schaal', 'alfabet.dichtheid', 'alfabet.beweging', 'alfabet.vervorming',
+  'alfabet.kleur', 'alfabet.helderheid', 'alfabet.variatie', 'alfabet.ruimte',
+]);
+/** De momenten (§19): pads 1–8 van de Maschine. Alleen op een trigger. Plek = index + 1 = pad N. */
+export const MOMENTEN = /** @type {const} */ ([
+  'moment.flits', 'moment.stoot', 'moment.omkeren', 'moment.bevriezen',
+  'moment.zaad', 'moment.terug', 'moment.wis', 'moment.halvetijd',
+]);
+/** Plek 1..8 van een alfabet-rol, 0 als het er geen is. @param {unknown} rol */
+export const alfabetPlek = (rol) => /** @type {readonly unknown[]} */ (ALFABET).indexOf(rol) + 1;
+/** Plek 1..8 van een moment-rol (pad N), 0 als het er geen is. @param {unknown} rol */
+export const momentPlek = (rol) => /** @type {readonly unknown[]} */ (MOMENTEN).indexOf(rol) + 1;
+/** Het woord achter de punt: 'alfabet.kleur' → 'kleur'. @param {string} rol */
+export const rolWoord = (rol) => rol.slice(rol.indexOf('.') + 1);
+/**
+ * Op welke globale macro (§6) een parameter met deze rol reageert (§19). Een macro-rol op zichzelf; een alfabet-rol
+ * op de macro met hetzelfde woord als die bestaat (`alfabet.kleur` → `macro.kleur`); verder niets (null).
+ * @param {string|undefined} rol @returns {string|null}
+ */
+export function macroVan(rol) {
+  if (!rol) return null;
+  if (/** @type {readonly string[]} */ (ROLLEN).includes(rol)) return rol;
+  if (!alfabetPlek(rol)) return null;
+  const m = `macro.${rolWoord(rol)}`;
+  return /** @type {readonly string[]} */ (ROLLEN).includes(m) ? m : null;
+}
 export const MAX_PARAMS = 128;
 /** Speelapparaten die een lease-app in `speelt` kan noemen (§17). Een onbekende naam valt weg (grondregel 5). */
 export const SPEELAPPARATEN = /** @type {const} */ (['xboard49', 'maschine-mk2']);
@@ -54,6 +85,10 @@ export function valideerManifest(m) {
   /** @type {Param[]} */
   const params = [];
   const ids = new Set();
+  /** Alfabet- en moment-rollen die al vergeven zijn → id (§19). @type {Map<string, string>} */
+  const alfabet = new Map();
+  /** Triggers met `druk` (§19): [waar, id van de waarde]. Pas na de lus te controleren. @type {[string, string][]} */
+  const druk = [];
   for (const [i, p] of (Array.isArray(x.params) ? x.params : []).entries()) {
     const waar = `params[${i}]${p && typeof p.id === 'string' ? ` (${p.id})` : ''}`;
     if (!p || typeof p !== 'object') { f.push(`${waar}: geen object`); continue; }
@@ -66,10 +101,31 @@ export function valideerManifest(m) {
     if (p.soort === 'keuze' && !(Array.isArray(p.keuzes) && p.keuzes.length >= 2 && p.keuzes.length <= 8 && p.keuzes.every((k) => isTekst(k, 32)))) f.push(`${waar}: keuze heeft 2..8 keuzes nodig`);
     if (p.hint !== undefined && !HINTS.includes(p.hint)) f.push(`${waar}: hint moet ${HINTS.join('|')} zijn`);
     if (p.groep !== undefined && !isTekst(p.groep, 32)) f.push(`${waar}: groep max 32 tekens`);
-    if (p.rol !== undefined && !ROLLEN.includes(p.rol)) f.push(`${waar}: onbekende rol ${p.rol}`);
+    if (p.rol !== undefined) {
+      if (alfabetPlek(p.rol)) {
+        if (p.soort === 'trigger') f.push(`${waar}: ${p.rol} kan niet op een trigger (het alfabet is voor draaiknoppen)`);
+        else if (alfabet.has(p.rol)) f.push(`${waar}: ${p.rol} staat al op ${alfabet.get(p.rol)} (één parameter per alfabet-plek)`);
+        else alfabet.set(p.rol, p.id);
+      } else if (momentPlek(p.rol)) {
+        if (p.soort !== 'trigger') f.push(`${waar}: ${p.rol} kan alleen op een trigger`);
+        else if (alfabet.has(p.rol)) f.push(`${waar}: ${p.rol} staat al op ${alfabet.get(p.rol)} (één trigger per moment)`);
+        else alfabet.set(p.rol, p.id);
+      } else if (typeof p.rol === 'string' && /^(alfabet|moment)\./.test(p.rol)) {
+        f.push(`${waar}: onbekende rol ${p.rol} (het ${p.rol.startsWith('alfabet.') ? `alfabet: ${ALFABET.map(rolWoord).join(', ')}` : `momenten: ${MOMENTEN.map(rolWoord).join(', ')}`})`);
+      } else if (!ROLLEN.includes(p.rol)) f.push(`${waar}: onbekende rol ${p.rol}`);
+    }
+    if (p.druk !== undefined) {
+      if (p.soort !== 'trigger') f.push(`${waar}: druk kan alleen op een trigger`);
+      else if (typeof p.druk !== 'string' || !PARAM_ID.test(p.druk)) f.push(`${waar}: druk moet de id van een waarde-parameter zijn`);
+      else druk.push([waar, p.druk]);
+    }
     if (p.slew_s !== undefined && !(typeof p.slew_s === 'number' && p.slew_s >= 0 && p.slew_s <= 120)) f.push(`${waar}: slew_s 0..120`);
     if (p.takeover !== undefined && !TAKEOVERS.includes(p.takeover)) f.push(`${waar}: takeover moet ${TAKEOVERS.join('|')} zijn`);
     params.push({ ...p, standaard: p.standaard ?? 0 });
+  }
+  for (const [waar, id] of druk) {
+    const doel = params.find((x) => x.id === id);
+    if (!doel || doel.soort !== 'waarde') f.push(`${waar}: druk ${id} is geen waarde-parameter van deze app`);
   }
   if (f.length) return { ok: false, fouten: f };
   return {
