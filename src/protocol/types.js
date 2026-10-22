@@ -28,7 +28,7 @@
  * Berichten hub → app
  * @typedef {{ t: 'welkom', hub: 'varve-hub', v: 1 }} Welkom
  * @typedef {{ t: 'zet', id: string, v: number, bron?: string }} HubZet
- * @typedef {{ t: 'trig', id: string, aan: boolean }} Trig
+ * @typedef {{ t: 'trig', id: string, aan: boolean, v?: number }} Trig  (v: velocity 0..1 van een Maschine-pad, §19)
  * @typedef {{ t: 'scene', i: number }} Scene
  * @typedef {{ t: 'focus', aan: boolean }} Focus
  * @typedef {{ t: 'globaal', waarden: Record<string, number|string> }} Globaal

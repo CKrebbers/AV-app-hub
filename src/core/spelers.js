@@ -30,7 +30,10 @@ export { SPEELAPPARATEN };
  *   apps: () => Iterable<SpelerApp>, focus: () => string|null, slots: () => readonly (string|null)[],
  *   naar: (app: string, b: { t: 'midi', dev: string, bytes: number[] }) => void,
  *   oppervlakken?: Record<string, SpeelOppervlak|undefined>,
+ *   bezet?: (dev: string) => boolean, tekenBezet?: (dev: string) => void,
  * }} Opties
+ *   bezet: het apparaat is nu voor iets anders dan spelen (de Maschine bedient de app met focus volgens de
+ *   grammatica, §19): dan speelt niemand erop, en bij een repaint tekent `tekenBezet` in plaats van een app
  */
 
 /** Indrukken, loslaten of iets dat een ingedrukte toets volgt. @param {number[]} b */
@@ -57,6 +60,8 @@ export class Spelers {
     this.o = o;
     /** Wie nu speelt, per apparaat. @type {Record<string, string|null>} */
     this.doel = Object.fromEntries(SPEELAPPARATEN.map((d) => [d, null]));
+    /** Per apparaat: is het nu bezet (§19, de grammatica op de Maschine)? @type {Record<string, boolean>} */
+    this.bezet = Object.fromEntries(SPEELAPPARATEN.map((d) => [d, false]));
     /** Apps in de volgorde waarin ze focus kregen (laatste = meest recent). @type {string[]} */
     this.focusVolgorde = [];
     /** Per apparaat: wat er ingedrukt is en naar welke app dat ging. @type {Map<string, Map<string, string>>} */
@@ -106,12 +111,14 @@ export class Spelers {
   bijwerken() {
     let veranderd = false;
     for (const dev of SPEELAPPARATEN) {
-      const nieuw = this.#kies(dev);
+      const bezet = !!this.o.bezet?.(dev);
+      const nieuw = bezet ? null : this.#kies(dev);
       const oud = this.doel[dev];
-      if (nieuw === oud) continue;
+      if (nieuw === oud && bezet === this.bezet[dev]) continue;
       this.doel[dev] = nieuw;
+      this.bezet[dev] = bezet;
       veranderd = true;
-      if (oud) this.#naarRust(dev, oud);
+      if (oud && oud !== nieuw) this.#naarRust(dev, oud);
       this.#teken(dev);
     }
     return veranderd;
@@ -122,6 +129,7 @@ export class Spelers {
     const opp = this.o.oppervlakken?.[dev];
     if (!opp) return;
     opp.leeg();
+    if (this.bezet[dev]) { this.o.tekenBezet?.(dev); return; }
     const app = this.doel[dev];
     if (!app) return;
     for (const m of this.kaarten.get(app)?.get(dev)?.values() ?? []) opp.led(m);

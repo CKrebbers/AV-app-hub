@@ -295,7 +295,7 @@ lease-app tegelijk; ze staan buiten de laagstapel van de APC (§7) en de globale
 | **E-MU Xboard49** (`xboard49`) | MIDI, alleen de ingang (class-compliant; het keyboard ontvangt niets). Poortnaam: `config.json` → `apparaten.xboard49.naam` | de ruwe bytes, ongewijzigd: noten, kanaal-aftertouch, pitchbend, CC1, CC64, bank select + programmawissel, CC120/123 (paniek), de 16 knoppen (CC of NRPN), en de schuif als SysEx Master Volume `F0 7F 7F 04 01 ll mm F7` | niets |
 | **Maschine MK2** (`maschine-mk2`) | USB-HID (`src/ports/hid.js`, node-hid, optioneel), VID:PID uit `config.json` → `apparaten.maschine-mk2` | **virtuele MIDI** (docs/MASCHINE.md): pads noot 36–51 kanaal 0 met velocity, polyfone aftertouch (hooguit ±30×/s per pad, alleen bij verandering); knoppen noot = bitnummer (0–47) op kanaal 1; 8 draaiknoppen CC 16–23 relatief; masterwiel CC 24 relatief (tweecomplement) | `{t:"led", dev:"maschine-mk2"}`: noot aan op hetzelfde nummer, pads en groepknoppen velocity = APC-paletindex, andere knoppen velocity = helderheid; `{t:"scherm"}` |
 
-**Wie speelt** (per apparaat apart): de app met APC-focus als die het apparaat in `speelt` heeft; anders de laatst
+**Wie speelt** (per apparaat apart; voor de Maschine gaat §19 voor: bedient hij de focus-app volgens de grammatica, dan speelt niemand): de app met APC-focus als die het apparaat in `speelt` heeft; anders de laatst
 gefocuste app die het heeft; anders de eerste in slotvolgorde die het heeft. Alleen verbonden lease-apps tellen (niet
 `weg`). Niemand: de invoer gaat nergens heen. De hubtoets (Bank) doet hier niets: het keyboard speelt door terwijl je
 focus wisselt. `beeld.spelers` (§8) zegt per apparaat wie er speelt.
@@ -436,4 +436,44 @@ plek doet niets en zijn ring is uit, zodat elke plek in elke app hetzelfde betek
 alleen daar (niet ook op een fader, track-knop of in het grid). Parameters met `hint:"knop"` komen op de volgende
 pagina's (`"meer"`, of per `groep`), Device ◄/► bladert zoals altijd. Een app zonder alfabet krijgt precies de oude
 indeling. Een kaart (`maps/<app>.json`) gaat nog steeds voor: zet die een alfabet-parameter elders, dan is zijn plek leeg.
+
+**De momenten** (`rol: "moment.<woord>"`, `MOMENTEN`, alleen op een trigger, hooguit één per moment in een app):
+pad 1 `flits` · 2 `stoot` · 3 `omkeren` · 4 `bevriezen` · 5 `zaad` (nieuw zaadje) · 6 `terug` (naar het begin) ·
+7 `wis` (spoor wissen) · 8 `halvetijd`. Een onbekende `moment.*`-rol → `{t:"fout"}`.
+
+**De Maschine als hoofdbediening.** Heeft de app met focus de Maschine **niet** in `speelt` (§17) en staat er iets
+van hem op de Maschine (een alfabet-parameter, een moment of een vrije pad uit zijn kaart), dan bedient de Maschine
+die app volgens de grammatica; niemand speelt er dan op (`beeld.spelers["maschine-mk2"]` is `null`). Zo niet (een app
+zonder grammatica, een lease-app die de Maschine speelt, geen focus), dan geldt §17 zoals altijd: de Maschine speelt
+voor de laatst gefocuste lease-app die hem in `speelt` heeft. Bestaande apps veranderen dus niet: Varve DJ speelt de
+pads door terwijl av-kern of formula-lab de focus heeft. De Xboard49 blijft altijd een speelapparaat.
+
+| Maschine | Doet | Op de draad naar de app |
+|---|---|---|
+| draaiknop 1–8 | de alfabet-parameter op die plek; relatief: `tellen_vol` (1000, één omwenteling) tellen = van 0 naar 1; **SHIFT** ingedrukt = `fijn` (10) keer fijner. Een keuze of schakelaar stapt per `tellen_stap` (125) tellen. Een lege plek doet niets | `{t:"zet", id, v, bron:"maschine-mk2"}` |
+| pad 1–8 | het moment op die plek (een pad zonder moment doet niets) | `{t:"trig", id, aan:true, v}` met **`v` = velocity 0..1**; loslaten `{t:"trig", id, aan:false}` |
+| aftertouch op pad 1–8 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
+| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, zonder druk); schakelaar: `zet` 0/1 bij elke druk |
+| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit | `{t:"focus"}` zoals altijd |
+| masterwiel en de andere knoppen | (nog) niets | — |
+
+- **Velocity en aftertouch "als de app dat wil".** `v` in `trig` is een extra veld (alleen bij `aan:true` van een
+  Maschine-pad); een app die het niet kent, negeert het (grondregel 5). Aftertouch kost een parameter: een `waarde`
+  die de app noemt in `druk` op de trigger. Zo blijft alles op de draad 0..1 en `zet`/`trig`, zonder nieuw berichttype.
+- **Direct, zoals de APC (§12):** een draaiknop van de Maschine is een hand op een knop: geen `slew_s`, en een lopende
+  slew breekt af. Geen pickup nodig: relatief springt nooit. De APC-ring en -pickup van dezelfde plek gaan mee.
+- **Niets blijft hangen (§11, §17):** het loslaten (en de druk naar 0) gaat naar de app en trigger van het
+  indrukken, ook na een focuswissel of een nieuw manifest; het loslaten van iets dat een speler indrukte voordat de
+  grammatica begon, gaat naar die speler. Valt de Maschine weg, dan laat alles los.
+- **Lampjes:** pads met een moment (of een vrije pad) zacht in de kleur van de app, ingedrukt of aan vol, de rest uit;
+  groep A–H = de app-slots (focus vol, verbonden gedimd, leeg uit); SHIFT brandt zolang hij in is.
+- **Schermen (256×64, §17):** per draaiknop een kolom van 64 pixels: het woord van de plek, de naam van de
+  parameter, zijn waarde (procent, de naam van de keuze, aan/uit) en een balk; een lege plek toont alleen het woord en
+  `-`. Onderaan links de app, rechts `SHIFT = FIJN`. De tekenlaag is puur (`grammaticaSchermen`, lettertype 5×7 in
+  `src/devices/maschine-mk2.js`); de hub tekent bij elke wijziging en de sessie stuurt alleen de stukken die veranderden.
+- **Cockpit:** `beeld.maschine` = `{ app, naam, shift, knoppen:[{plek, woord, id, naam, tekst, v}], pads:[{pad, woord,
+  id, naam, druk?, in, aan?}] }`, of `null` als de Maschine niet bedient.
+- **Instellingen:** `config.json` → `apparaten.maschine-mk2.grammatica` (`tellen_vol`, `fijn`, `tellen_stap`).
+- **Code:** `src/core/grammatica.js` (`MaschineBediening`, puur), `Spelers` met `bezet` (`src/core/spelers.js`), de kern
+  (`#bediend()`).
 
