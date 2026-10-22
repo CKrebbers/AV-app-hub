@@ -1,12 +1,14 @@
 // @ts-check
 // Automatische APC-indeling voor een manifest-app (PROTOCOL.md §7). Puur: manifest in, toewijzingen uit.
-//   Faders 1–8      hint "fader", daarna overige waarden (behalve hint "knop") in manifestvolgorde
-//   Device-knoppen  hint "knop"; meer dan 8 → pagina's per groep (Device ◄/► bladert)
+//   Faders 1–8      hint "fader", daarna overige waarden (behalve hint "knop" en het alfabet) in manifestvolgorde
+//   Device-knoppen  het parameter-alfabet (§19): knop N = de parameter met alfabet-plek N, een lege plek doet niets
+//                   (ring uit); daarna (of zonder alfabet) hint "knop", meer dan 8 → pagina's per groep (Device ◄/►)
 //   Track-knoppen   de volgende 8 waarden die nog geen plek hebben
 //   Grid            keuze → één kolom per keuze (optie 0 bovenaan; >5 opties: één stap-pad); trigger/schakelaar → kolommen per groep
 //   Scene 1–5       manifest.scenes · Stop All: trigger "paniek"
 // Overschrijven per app met een kaart { <control-id>: { id, takeover? } } (maps/<app>.json).
 import { OP_ID, padId } from '../devices/apc40mk2.js';
+import { alfabetPlek } from '../protocol/manifest.js';
 
 /** @typedef {import('../protocol/types.js').Manifest} Manifest @typedef {import('../protocol/types.js').Param} Param
  *  @typedef {import('./pickup.js').Modus} Modus
@@ -17,6 +19,8 @@ import { OP_ID, padId } from '../devices/apc40mk2.js';
  *  @typedef {Record<string, { id: string, takeover?: Modus }>} Kaart */
 
 export const RIJEN = 5;
+/** Naam van de device-pagina met het parameter-alfabet (§19). */
+export const ALFABET_PAGINA = 'alfabet';
 export const KOLOMMEN = 8;
 
 /** @param {Param} p @returns {Modus} */
@@ -34,8 +38,11 @@ export function maakIndeling(manifest, kaart = null) {
   const geplaatst = new Set();
   const plaats = (/** @type {string} */ ctrl, /** @type {Toewijzing} */ t, doel = vast) => { doel[ctrl] = t; geplaatst.add(t.id); };
 
+  // §19: het alfabet (geen trigger) staat alleen op de device-knoppen, op zijn eigen plek.
+  const alfabet = params.filter((p) => p.soort !== 'trigger' && alfabetPlek(p.rol));
+  const inAlfabet = new Set(alfabet.map((p) => p.id));
   // Faders en track-knoppen: waarden zonder hint "knop", hint "fader" eerst.
-  const waarden = params.filter((p) => p.soort === 'waarde');
+  const waarden = params.filter((p) => p.soort === 'waarde' && !inAlfabet.has(p.id));
   const kandidaten = [...waarden.filter((p) => p.hint === 'fader'), ...waarden.filter((p) => p.hint !== 'fader' && p.hint !== 'knop')];
   kandidaten.slice(0, 8).forEach((p, i) => plaats(`fader${i + 1}`, { id: p.id, rol: 'fader', takeover: overname(p) }));
   kandidaten.slice(8, 16).forEach((p, i) => plaats(`tk${i + 1}`, { id: p.id, rol: 'ring', takeover: overname(p) }));
@@ -43,7 +50,7 @@ export function maakIndeling(manifest, kaart = null) {
   // Device-knoppen: hint "knop", in pagina's.
   const knoppen = waarden.filter((p) => p.hint === 'knop');
   /** @type {{ naam: string, params: Param[] }[]} */
-  let groepen = [{ naam: '', params: knoppen }];
+  let groepen = alfabet.length && !knoppen.length ? [] : [{ naam: '', params: knoppen }];
   if (knoppen.length > 8) {
     /** @type {Map<string, Param[]>} */
     const g = new Map();
@@ -59,11 +66,19 @@ export function maakIndeling(manifest, kaart = null) {
     return pag;
   });
   const paginaNamen = groepen.map((g) => g.naam);
+  if (alfabet.length) {
+    /** @type {Toewijzingen} */
+    const pag = {};
+    for (const p of alfabet) plaats(`dk${alfabetPlek(p.rol)}`, { id: p.id, rol: 'ring', takeover: overname(p) }, pag);
+    paginas.unshift(pag);
+    paginaNamen.unshift(ALFABET_PAGINA);
+    for (let i = 1; i < paginaNamen.length; i++) if (!paginaNamen[i]) paginaNamen[i] = 'meer';
+  }
 
   // Grid: keuzes eerst, één kolom per keuze; daarna triggers/schakelaars per groep.
   const paniek = params.find((p) => p.id === 'paniek' && p.soort === 'trigger')?.id ?? null;
   let kolom = 1;
-  for (const p of params.filter((x) => x.soort === 'keuze')) {
+  for (const p of params.filter((x) => x.soort === 'keuze' && !inAlfabet.has(x.id))) {
     if (kolom > KOLOMMEN) break;
     const n = p.keuzes?.length ?? 2;
     // Meer opties dan rijen: één pad bovenaan die doorstapt (anders zijn opties 6–8 onbereikbaar).
@@ -74,7 +89,7 @@ export function maakIndeling(manifest, kaart = null) {
   /** @type {Map<string, Param[]>} */
   const padGroepen = new Map();
   for (const p of params) {
-    if ((p.soort !== 'trigger' && p.soort !== 'schakelaar') || p.id === paniek) continue;
+    if ((p.soort !== 'trigger' && p.soort !== 'schakelaar') || p.id === paniek || inAlfabet.has(p.id)) continue;
     const n = p.groep ?? '';
     if (!padGroepen.has(n)) padGroepen.set(n, []);
     /** @type {Param[]} */ (padGroepen.get(n)).push(p);

@@ -56,7 +56,7 @@ describe('cli spiekbrief', () => {
     const zonder = cli(['spiekbrief']);
     expect(zonder.code).toBe(1);
     const sets = lijstSets().join(', ');
-    expect(zonder.uit).toContain(`gebruik: varve-hub spiekbrief <set|alle> [--uit bestand.html] — sets: ${sets}`);
+    expect(zonder.uit).toContain(`gebruik: varve-hub spiekbrief <set|alle|grammatica> [--uit bestand.html] — sets: ${sets}`);
     const onbekend = cli(['spiekbrief', 'bestaat-niet-xyz', '--uit', join(map, 'x.html')]);
     expect(onbekend.code).toBe(1);
     expect(onbekend.uit).toContain(`onbekende set "bestaat-niet-xyz" — beschikbaar: ${sets}`);
