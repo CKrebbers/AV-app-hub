@@ -279,13 +279,17 @@ hub stuurt hem opnieuw en tekent alles opnieuw).
 
 **De APC doet niet wat hij moet** (BANK + Track Select wisselt niet van app, knoppen blijven aan staan, de lampjes doen
 iets anders dan de cockpit, de draaiknoppen doen per track iets anders). *Oorzaak:* de APC staat nog in zijn
-**fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster staat dan
-`APC: geen antwoord op de modus-instructie …`. *Kijk:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de
-APC staat nu per vorm of hij antwoordt: de identiteitsvraag zoals het protocol (omni) en zoals Ableton Live (kanaal 0),
-en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`, dan zet de hub hem
-voortaan zelf zo (sinds de handdruk zoals Live) — start de hub opnieuw. Staat er overal `✗`, dan komt er geen SysEx bij de
-APC aan: stroomadapter in en aan, een andere USB-kabel of -poort (direct op de Mac), Ableton Live helemaal dicht, en de
-firmware bijwerken met Akai's "APC40 mkII firmware updater". *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**
+**fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster en in de cockpit
+(bij APC40) staat dan `geen bevestiging op de modus-instructie — druk op Track Select 1 …`. Druk dan eerst op Track
+Select 1: komt die binnen, dan staat de modus wél goed (niet elke APC stuurt een bevestiging) en verdwijnt de melding.
+*Kijk anders:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de APC staat per vorm of hij antwoordt: de
+identiteitsvraag zoals het protocol (omni, direct en een halve seconde later) en zoals Ableton Live (kanaal 0), het
+product (`0x29` = mkII), en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`,
+dan zet de hub hem zelf zo — start de hub opnieuw. Zo niet, dan vraagt doctor je **Track Select 1 in te drukken en fader 1
+te bewegen** (3 seconden) en zegt hij wat er binnenkwam: Track Select (goed), alleen de fader (fabrieksmodus), of niets
+(er komt helemaal niets van de APC binnen). Dan: de aan/uit-knop achterop aan (de mkII krijgt stroom via USB, er is geen
+adapter), de kabel rechtstreeks in de Mac of een andere kabel of poort, en Ableton Live, Bitwig en Chrome-tabs met
+Varve DJ zonder `?hub=` helemaal dicht (doctor noemt Live en Bitwig als ze draaien). *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**
 (snoize.com, gratis), zet "Spy on output to destinations" aan, en vergelijk wat de hub bij `npm start` naar de APC stuurt
 met wat **Ableton Live** stuurt als je de APC daar als bedieningsoppervlak kiest (eerst de hub dicht). Exporteer beide
 vensters (File → Save) en zet ze in `proef/midimonitor/`.

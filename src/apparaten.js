@@ -108,6 +108,14 @@ class Sessie extends Zender {
 /** Zo lang wacht de APC-sessie op het antwoord op de intro (0x61) voor hij meldt dat de modus niet gezet lijkt. */
 export const HANDDRUK_MS = 1500;
 
+/**
+ * Track Select 1–8 (noot 51, kanaal 0–7) of Master (noot 80) ingedrukt: in de fabrieksmodus (0x40) sturen die niets
+ * (protocol v1.2 p.10), in 0x41/0x42 wel. Komt er zo'n druk binnen, dan staat de modus dus goed, ook als de APC nooit
+ * op de intro antwoordde (dat antwoord, 0x61, staat alleen in Akai's protocol; Live en Bitwig lezen het niet).
+ * @param {number[]} b
+ */
+export const isModusBewijs = (b) => (b[0] & 0xf0) === 0x90 && b[2] > 0 && ((b[1] === 51 && (b[0] & 0x0f) <= 7) || (b[1] === 80 && (b[0] & 0x0f) === 0));
+
 export class ApcSessie extends Sessie {
   /** @param {ConstructorParameters<typeof Sessie>[0] & { modus?: number }} o */
   constructor(o) {
@@ -115,9 +123,11 @@ export class ApcSessie extends Sessie {
     this.modus = o.modus ?? APC.MODUS.alternatief;
     this.leds = new LedBeeld({ controls: APC.CONTROLS, berichten: APC.ledBerichten });
     this.leds.zwart();
-    /** De handdruk van de laatste init(): kwam er een identiteit, een eigen apparaat-id, een antwoord op de intro?
-     *  @type {{ identiteit: boolean, apparaatId: number|null, introAntwoord: boolean }} */
-    this.handdruk = { identiteit: false, apparaatId: null, introAntwoord: false };
+    /** De handdruk van de laatste init(): kwam er een identiteit, een eigen apparaat-id, een antwoord op de intro, een
+     *  druk op Track Select (het bewijs dat de modus goed staat, ook zonder antwoord op de intro)? `stand`: 'bezig'
+     *  (nog geen uitslag), 'ok' of 'geen-antwoord' (PROTOCOL §16).
+     *  @type {{ stand: 'bezig'|'ok'|'geen-antwoord', identiteit: boolean, apparaatId: number|null, introAntwoord: boolean, trackSelect: boolean }} */
+    this.handdruk = { stand: 'bezig', identiteit: false, apparaatId: null, introAntwoord: false, trackSelect: false };
     /** @type {any} */
     this.handdrukTimer = null;
   }
@@ -131,17 +141,17 @@ export class ApcSessie extends Sessie {
    * 2. identiteitsvraag op kanaal 0 (zoals Live) én omni (protocol);
    * 3. noemt de APC in zijn antwoord een eigen apparaat-id, en kwam er nog geen antwoord op de intro, dan de intro
    *    nog eens met dat id (zoals Live) en alles opnieuw tekenen;
-   * 4. geen antwoord op de intro binnen HANDDRUK_MS: meld 'handdruk' { ok: false }. Dan staat de APC waarschijnlijk
-   *    nog in de fabrieksmodus (0x40): knoppen werken anders (Track Select stuurt niets, schakelaars blijven aan) en
-   *    de lampjes volgen de hub niet.
+   * 4. geen antwoord op de intro binnen HANDDRUK_MS: meld 'handdruk' { ok: false }. Dat zegt niet zeker dat de APC in
+   *    de fabrieksmodus (0x40) staat: niet elke APC stuurt dat antwoord. Het bewijs is Track Select (isModusBewijs):
+   *    komt die binnen, dan meldt de sessie alsnog { ok: true, trackSelect: true }.
    */
   init() {
     this.rij.wis();
-    this.handdruk = { identiteit: false, apparaatId: null, introAntwoord: false };
+    this.handdruk = { stand: 'bezig', identiteit: false, apparaatId: null, introAntwoord: false, trackSelect: false };
     if (this.handdrukTimer !== null) this.klok.wis(this.handdrukTimer);
     this.handdrukTimer = this.klok.zet(() => {
       this.handdrukTimer = null;
-      if (!this.handdruk.introAntwoord && this.poort) this.#meldHanddruk(false);
+      if (this.handdruk.stand === 'bezig' && this.poort) this.#meldHanddruk(false);
     }, HANDDRUK_MS);
     this.stuur(APC.intro(this.modus));
     for (const b of APC.ringTypeBerichten(APC.RING.single)) this.stuur(b);
@@ -152,14 +162,24 @@ export class ApcSessie extends Sessie {
   }
   /** @param {boolean} ok */
   #meldHanddruk(ok) {
-    const info = { ok, ...this.handdruk };
+    this.handdruk.stand = ok ? 'ok' : 'geen-antwoord';
+    const { stand: _s, ...rest } = this.handdruk;
+    const info = { ok, ...rest };
     this.logboek?.regel('melding', { dev: this.dev, wat: 'handdruk', ...info });
     this.meld('handdruk', info);
   }
   /** @param {number[]} b */
   bijBinnen(b) {
     super.bijBinnen(b);
-    if (b[0] !== 0xf0) return;
+    if (b[0] !== 0xf0) {
+      // Track Select of Master: de modus staat goed (zie isModusBewijs), ook zonder antwoord op de intro.
+      if (this.handdruk.stand !== 'ok' && isModusBewijs(b)) {
+        this.handdruk.trackSelect = true;
+        if (this.handdrukTimer !== null) { this.klok.wis(this.handdrukTimer); this.handdrukTimer = null; }
+        this.#meldHanddruk(true);
+      }
+      return;
+    }
     const g = APC.ontleed(b);
     if (g.kind === 'identiteit') {
       this.handdruk.identiteit = true;
@@ -176,7 +196,7 @@ export class ApcSessie extends Sessie {
     } else if (g.kind === 'intro-antwoord' && !this.handdruk.introAntwoord) {
       this.handdruk.introAntwoord = true;
       if (this.handdrukTimer !== null) { this.klok.wis(this.handdrukTimer); this.handdrukTimer = null; }
-      this.#meldHanddruk(true);
+      if (this.handdruk.stand !== 'ok') this.#meldHanddruk(true);
     }
   }
   stop() {

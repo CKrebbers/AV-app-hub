@@ -11,6 +11,7 @@ import * as KP3 from './devices/kp3plus.js';
 import * as EFX from './devices/efx500.js';
 import { KlokMeter } from './core/klokbron.js';
 import * as A from './devices/apc40mk2.js';
+import { isModusBewijs } from './apparaten.js';
 import * as L from './devices/lpd8.js';
 
 /** @param {string} cmd @param {string[]} args */
@@ -38,11 +39,14 @@ export const vrij = (poort, soort) => new Promise((r) => {
 /**
  * @param {{ config: any, laadMidi: () => Promise<{ systeem: import('./ports/poort.js').Systeem|null, reden?: string }>,
  *   laadHid?: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>, niProgrammas?: () => string[],
- *   wachtMs?: number, hubDraait?: () => Promise<boolean>, platform?: string }} o  laadHid/niProgrammas/wachtMs/hubDraait/platform: tests geven nep
+ *   wachtMs?: number, hubDraait?: () => Promise<boolean>, platform?: string, apcLuisterMs?: number,
+ *   apcProgrammas?: () => string[], vraag?: (tekst: string) => void }} o  laadHid/niProgrammas/wachtMs/hubDraait/platform/
+ *   apcLuisterMs/apcProgrammas: tests geven nep; vraag: toont een opdracht meteen (de rest komt pas aan het eind)
  * @returns {Promise<{ tekst: string, data: any }>}
  */
 export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600,
-  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')), platform = process.platform }) {
+  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')), platform = process.platform,
+  apcLuisterMs = 3000, apcProgrammas = () => draaiendeApcProgrammas(), vraag = () => {} }) {
   const r = [];
   const data = /** @type {any} */ ({});
   const ok = (/** @type {boolean|null|undefined} */ b) => (b ? '✔' : '✗');
@@ -72,36 +76,12 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
         const p = systeem.open(naam);
         /** @type {number[][]} */
         const ontvangen = [];
-        p.bijBericht((b) => { if (b[0] === 0xf0) ontvangen.push(b); });
+        /** Alle berichten (niet alleen SysEx): zo is te zien of er wel noten en CC's binnenkomen terwijl SysEx uitblijft. */
+        const alle = { n: 0, /** @type {number[][]} */ laatste: [] };
+        p.bijBericht((b) => { alle.n++; if (b[0] === 0xf0) ontvangen.push(b); else alle.laatste.push(b); });
         p.stuur([...A.IDENTITEIT_VRAAG]);
         await new Promise((res) => setTimeout(res, 600));
-        if (dev === 'apc40') {
-          // De handdruk stap voor stap (protocol v1.2 tegenover Ableton Live), zodat zichtbaar is wát de APC beantwoordt.
-          // Zonder antwoord op de intro blijft hij in de fabrieksmodus (0x40) en doet in de hub bijna niets wat je verwacht.
-          const wacht = () => new Promise((res) => setTimeout(res, 600));
-          /** @param {number[]} vraag @param {(b: number[]) => boolean} past */
-          const probeer = async (vraag, past) => { const van = ontvangen.length; p.stuur(vraag); await wacht(); return ontvangen.slice(van).find(past) ?? null; };
-          const isId = (/** @type {number[]} */ b) => b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02;
-          const isIntroAntw = (/** @type {number[]} */ b) => b[1] === 0x47 && b[3] === 0x29 && b[4] === 0x61;
-          const hex = (/** @type {number[]} */ b) => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
-          const omni = ontvangen.find(isId) ?? null;
-          const kanaal0 = await probeer([...A.IDENTITEIT_VRAAG_LIVE], isId);
-          const id = A.apparaatIdUit(omni ?? kanaal0 ?? []);
-          const modus = config.apparaten.apc40.modus ?? A.MODUS.alternatief;
-          const intro7f = await probeer(A.intro(modus), isIntroAntw);
-          const introId = intro7f || id === null || id === A.BROADCAST ? null : await probeer(A.intro(modus, id), isIntroAntw);
-          const intro0 = intro7f || introId || id === 0 ? null : await probeer(A.intro(modus, 0), isIntroAntw);
-          const gezet = !!(intro7f || introId || intro0);
-          data[dev].handdruk = { omni: omni ?? null, kanaal0, apparaatId: id, intro7f: !!intro7f, introId: !!introId, intro0: !!intro0, gezet };
-          r.push(`      identiteit (omni, zoals het protocol): ${omni ? hex(omni) : 'geen antwoord'}`);
-          r.push(`      identiteit (kanaal 0, zoals Ableton Live): ${kanaal0 ? hex(kanaal0) : 'geen antwoord'}${id !== null ? ` · apparaat-id ${id}` : ''}`);
-          r.push(`      modus-instructie (intro, id 0x7f): ${intro7f ? '✔ antwoord' : '✗ geen antwoord'}`);
-          if (id !== null && id !== A.BROADCAST && !intro7f) r.push(`      modus-instructie (intro, id ${id}): ${introId ? '✔ antwoord' : '✗ geen antwoord'}`);
-          if (!intro7f && !introId && id !== 0) r.push(`      modus-instructie (intro, id 0): ${intro0 ? '✔ antwoord' : '✗ geen antwoord'}`);
-          r.push(gezet ? `  ${ok(true)} apc40 gaat in de hub-modus (0x${modus.toString(16)})`
-            : `  ${ok(false)} apc40 reageert op geen enkele modus-instructie: hij blijft in de fabrieksmodus. Kijk: stroomadapter in en aan,`
-              + ' een andere USB-kabel/-poort, Ableton Live helemaal dicht, firmware bijwerken (Akai: "APC40 mkII firmware updater").');
-        }
+        if (dev === 'apc40') await apcHanddruk({ config, p, ontvangen, alle, r, data, ok, hubDraait, apcLuisterMs, apcProgrammas, vraag });
         const model = dev === 'lpd8' ? ontvangen.map((b) => L.modelUit(b)).find(Boolean) ?? null : null;
         if (dev === 'lpd8' && model) { p.stuur(L.vraagProgramma(model, 1)); await new Promise((res) => setTimeout(res, 600)); }
         const prog = dev === 'lpd8' ? ontvangen.map((b) => L.ontleedProgramma(b)).find((x) => x && 'pads' in x) : null;
@@ -142,6 +122,83 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
     r.push(`  ${aan ? '●' : '○'} ${app} ${p.tcp ? `:${p.tcp}/tcp` : `:${p.udp}/udp`}`);
   }
   return { tekst: r.join('\n'), data };
+}
+
+/** Programma's die zelf een intro naar de APC sturen (op macOS delen ze de poort en vechten ze om modus en lampjes). */
+export const APC_PROGRAMMAS = Object.freeze([['Ableton Live', /Ableton Live|(^|\/)Live$/], ['Bitwig Studio', /Bitwig/]]);
+
+/**
+ * Welke van die programma's draaien er nu? Leest de proceslijst (`ps`); lukt dat niet, dan een lege lijst.
+ * @param {() => string} [ps] tests geven een eigen lijst
+ */
+export function draaiendeApcProgrammas(ps = () => execFileSync('ps', ['-axo', 'comm'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })) {
+  let tekst = '';
+  try { tekst = ps(); } catch { return []; }
+  const regels = tekst.split('\n').map((x) => x.trim()).filter(Boolean);
+  return APC_PROGRAMMAS.filter(([, re]) => regels.some((x) => re.test(x))).map(([naam]) => naam);
+}
+
+/** Wat te doen als de APC niets beantwoordt of niets stuurt. De mkII krijgt stroom via USB (geen adapter) en heeft een aan/uit-knop. */
+export const APC_HINT = 'Kijk: de aan/uit-knop achterop aan; de kabel rechtstreeks in de Mac (of in een USB-hub met eigen voeding), of een andere kabel of poort; Ableton Live, Bitwig en Chrome-tabs met Varve DJ of av-kern zonder ?hub= helemaal dicht; draait de hub, stop hem dan voor deze test.';
+
+/**
+ * De APC-handdruk stap voor stap (protocol v1.2 tegenover Ableton Live), zodat zichtbaar is wát de APC beantwoordt.
+ * Een ontbrekend antwoord op de intro (0x61) zegt nog niet dat de modus niet staat (alleen Akai's protocol noemt dat
+ * antwoord): dan luistert doctor even naar Track Select (in de fabrieksmodus 0x40 stuurt die niets, in 0x41/0x42 noot 51).
+ * @param {{ config: any, p: import('./ports/poort.js').Poort, ontvangen: number[][], alle: { n: number, laatste: number[][] },
+ *   r: string[], data: any, ok: (b: boolean) => string, hubDraait: () => Promise<boolean>, apcLuisterMs: number,
+ *   apcProgrammas: () => string[], vraag: (t: string) => void }} o
+ */
+async function apcHanddruk({ config, p, ontvangen, alle, r, data, ok, hubDraait, apcLuisterMs, apcProgrammas, vraag }) {
+  const dev = 'apc40';
+  const wacht = (ms = 600) => new Promise((res) => setTimeout(res, ms));
+  /** @param {number[]} vraagBytes @param {(b: number[]) => boolean} past */
+  const probeer = async (vraagBytes, past) => { const van = ontvangen.length; p.stuur(vraagBytes); await wacht(); return ontvangen.slice(van).find(past) ?? null; };
+  const isId = (/** @type {number[]} */ b) => b[1] === 0x7e && b[3] === 0x06 && b[4] === 0x02;
+  const isIntroAntw = (/** @type {number[]} */ b) => b[1] === 0x47 && b[3] === 0x29 && b[4] === 0x61;
+  const hex = (/** @type {number[]} */ b) => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
+  const andere = [...apcProgrammas()];
+  if (await hubDraait()) andere.push(`de hub zelf (poort ${config.poorten.http})`);
+  if (andere.length) r.push(`  ! draait nu: ${andere.join(', ')} — die sturen zelf een intro naar de APC; op de Mac delen ze de poort en vechten ze om modus en lampjes. Sluit ze voor een zuivere test`);
+  const omni = ontvangen.find(isId) ?? null;
+  // Nog eens omni, nu een halve seconde na het openen: antwoordt alleen deze, dan lag het aan de timing direct na het openen.
+  const omniLater = await probeer([...A.IDENTITEIT_VRAAG], isId);
+  const kanaal0 = await probeer([...A.IDENTITEIT_VRAAG_LIVE], isId);
+  const ident = omni ?? omniLater ?? kanaal0;
+  const id = A.apparaatIdUit(ident ?? []);
+  const product = ident && ident.length > 6 ? ident[6] : null;
+  const modus = config.apparaten.apc40.modus ?? A.MODUS.alternatief;
+  const intro7f = await probeer(A.intro(modus), isIntroAntw);
+  const introId = intro7f || id === null || id === A.BROADCAST ? null : await probeer(A.intro(modus, id), isIntroAntw);
+  const intro0 = intro7f || introId || id === 0 ? null : await probeer(A.intro(modus, 0), isIntroAntw);
+  const antwoord = !!(intro7f || introId || intro0);
+  r.push(`      identiteit (omni, zoals het protocol, direct na openen): ${omni ? hex(omni) : 'geen antwoord'}`);
+  r.push(`      identiteit (omni, 0,5 s later): ${omniLater ? hex(omniLater) : 'geen antwoord'}`);
+  r.push(`      identiteit (kanaal 0, zoals Ableton Live): ${kanaal0 ? hex(kanaal0) : 'geen antwoord'}${id !== null ? ` · apparaat-id ${id}` : ''}`);
+  if (product !== null) {
+    r.push(`      product: 0x${product.toString(16)}${product === 0x29 ? ' (APC40 mkII)' : product === 0x73 ? ' — dat is de originele APC40, niet de mkII: die werkt anders en de hub kan hem niet bedienen' : ' — geen APC40 mkII (0x29)'}`);
+  }
+  r.push(`      modus-instructie (intro, id 0x7f): ${intro7f ? '✔ antwoord' : '✗ geen antwoord'}`);
+  if (id !== null && id !== A.BROADCAST && !intro7f) r.push(`      modus-instructie (intro, id ${id}): ${introId ? '✔ antwoord' : '✗ geen antwoord'}`);
+  if (!intro7f && !introId && id !== 0) r.push(`      modus-instructie (intro, id 0): ${intro0 ? '✔ antwoord' : '✗ geen antwoord'}`);
+  // Geen antwoord op de intro: Track Select beslist.
+  let trackSelect = false, invoer = 0;
+  if (!antwoord && apcLuisterMs > 0) {
+    const tekst = `      → druk nu op Track Select 1 en beweeg fader 1 (doctor luistert ${Math.round(apcLuisterMs / 100) / 10} s)`;
+    r.push(tekst);
+    vraag(tekst.trim());
+    const n0 = alle.n, l0 = alle.laatste.length;
+    await wacht(apcLuisterMs);
+    invoer = alle.n - n0;
+    trackSelect = alle.laatste.slice(l0).some(isModusBewijs);
+  }
+  const gezet = antwoord || trackSelect;
+  data[dev].handdruk = { omni: omni ?? null, omniLater, kanaal0, apparaatId: id, product, intro7f: !!intro7f, introId: !!introId, intro0: !!intro0, trackSelect, invoerTijdensLuisteren: invoer, gezet };
+  r.push(`      ontvangen van de APC: ${alle.n} berichten (${ontvangen.length} SysEx)`);
+  if (antwoord) r.push(`  ${ok(true)} apc40 gaat in de hub-modus (0x${modus.toString(16)})`);
+  else if (trackSelect) r.push(`  ${ok(true)} apc40: Track Select komt binnen, dus de hub-modus staat (deze APC antwoordt alleen niet op de intro; dat is niet erg)`);
+  else if (invoer > 0) r.push(`  ${ok(false)} apc40: wel invoer, maar Track Select stuurt niets: hij staat nog in de fabrieksmodus (0x40). ${APC_HINT}`);
+  else r.push(`  ${ok(false)} apc40: geen antwoord op de modus-instructie en er kwam niets binnen${apcLuisterMs > 0 ? ' (ook geen fader of knop)' : ''}. ${APC_HINT}`);
 }
 
 /**

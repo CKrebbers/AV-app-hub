@@ -16,6 +16,9 @@ import * as MS from './devices/maschine-mk2.js';
 import { Opnemer, avondmapPad } from './opname/opnemer.js';
 import { HINT, invoerHint } from './ports/hid.js';
 
+/** Wat Clay ziet als de APC niet op de modus-instructie antwoordt (hubvenster, cockpit, check; PROTOCOL §16). */
+export const APC_HANDDRUK_HINT = 'geen bevestiging op de modus-instructie — druk op Track Select 1: komt die in de hub binnen (de cockpit ziet hem), dan staat hij goed en verdwijnt dit vanzelf. Komt er niets: node src/cli.js doctor';
+
 /** Zo lang mag het afsluiten van een lopende opname hub.stop() ophouden (schijf weg of traag). */
 export const OPNAME_SLUIT_MS = 2000;
 
@@ -177,11 +180,11 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
         : `${label}: openen mislukt (${e?.message ?? e}) — de hub probeert opnieuw`);
     });
   }
-  // De APC-handdruk (src/apparaten.js ApcSessie.init): zonder antwoord op de intro staat hij waarschijnlijk nog in de
-  // fabrieksmodus, en dan doet bijna niets wat de hub verwacht. Eén regel, met wat te doen.
-  apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null }} */ h) => {
-    log(h.ok ? `APC: modus gezet (antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''})`
-      : `APC: geen antwoord op de modus-instructie${h.identiteit ? '' : ' (ook niet op de identiteitsvraag)'} — waarschijnlijk staat hij nog in de fabrieksmodus en doen knoppen en lampjes niet wat de hub verwacht. Draai: node src/cli.js doctor`);
+  // De APC-handdruk (src/apparaten.js ApcSessie.init). Zonder antwoord op de intro is het nog niet zeker mis (niet
+  // elke APC stuurt dat antwoord): Track Select is het bewijs (PROTOCOL §16). Eén regel, met wat te doen.
+  apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null, trackSelect: boolean }} */ h) => {
+    log(h.ok ? `APC: modus gezet (${h.trackSelect ? 'Track Select komt binnen' : `antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''}`})`
+      : `APC: ${APC_HANDDRUK_HINT}${h.identiteit ? '' : ' (ook geen antwoord op de identiteitsvraag)'}`);
   });
   // De Maschine: bezet (een NI-programma heeft hem), geen rechten (Linux zonder udev-regel) of geen invoer
   // (macOS-Invoermonitoring): zeggen wat te doen.

@@ -375,7 +375,8 @@ const opdrachten = {
   },
 
   async doctor() {
-    const { tekst, data } = await doctor({ config, laadMidi: laadRtMidi });
+    // Een opdracht (druk op Track Select) moet meteen te zien zijn, niet pas in de uitslag: via stderr (--json blijft schoon).
+    const { tekst, data } = await doctor({ config, laadMidi: laadRtMidi, vraag: (t) => process.stderr.write(`${t}\n`) });
     console.log(args.includes('--json') ? JSON.stringify(data, null, 2) : tekst);
   },
 
