@@ -4,7 +4,8 @@ met een meetlat eromheen.
 
   python3 tools/repetitie-flux.py <pad/naar/flux-screensaver> <logbestand> [flux-opties...]
 
-Laadt flux als module en draait main() met de opties. Er wordt niets in flux veranderd; alleen drie
+Laadt flux als module (het pakket varve_album naast flux-screensaver, of het oude losse bestand) en
+draait main() met de opties. Er wordt niets in flux veranderd; alleen drie
 methodes van flux.Hub worden omwikkeld om te loggen (JSON per regel, wandklok in ms):
   {"r":"in","t":..,"d":"<tekst>"}      wat flux van de hub ontving (vóór het eigen filter)
   {"r":"uit","t":..,"d":"<tekst>"}     wat flux naar de hub stuurde
@@ -39,10 +40,31 @@ meld(r="pid", pid=os.getpid())
 sys.stderr = Stderr()
 threading.excepthook = lambda a: meld(r="fout", tekst=f"{a.exc_type.__name__}: {a.exc_value}")
 
-lader = importlib.machinery.SourceFileLoader("flux_screensaver", flux_pad)
-spec = importlib.util.spec_from_loader("flux_screensaver", lader)
-flux = importlib.util.module_from_spec(spec)
-lader.exec_module(flux)
+def laad_flux(pad):
+    """flux als iets met Hub, HUB_WAARDEN, PALETTEN en main.
+
+    Sinds flux-screensaver PR #2 (19 okt) is flux-screensaver een starter van een paar regels en zit
+    alles in het pakket varve_album ernaast (hub.py, runtime.py). Staat die map er, dan komt alles
+    daaruit; anders is het nog de oude vorm: één bestand dat alles zelf bevat."""
+    map_ = os.path.dirname(os.path.realpath(pad))
+    if os.path.isfile(os.path.join(map_, "varve_album", "hub.py")):
+        if map_ not in sys.path:
+            sys.path.insert(0, map_)
+        hub = importlib.import_module("varve_album.hub")
+        runtime = importlib.import_module("varve_album.runtime")
+
+        class Flux:
+            Hub, HUB_WAARDEN, PALETTEN = hub.Hub, hub.HUB_WAARDEN, hub.PALETTEN
+            main = staticmethod(runtime.main)
+        return Flux
+    lader = importlib.machinery.SourceFileLoader("flux_screensaver", pad)
+    spec = importlib.util.spec_from_loader("flux_screensaver", lader)
+    mod = importlib.util.module_from_spec(spec)
+    lader.exec_module(mod)
+    return mod
+
+
+flux = laad_flux(flux_pad)
 Hub = flux.Hub
 
 _ontvang, _stuur, _toepassen = Hub._ontvang, Hub._stuur, Hub.toepassen
