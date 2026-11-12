@@ -729,7 +729,7 @@ dat het lukte**. Wifi werkt wel op `WiFi-XY2`; SSH nooit (`anbernic-cam/docs/TOD
 **Fase A — manifest-app via WS `/app` (op de Mac).** Varve Eye Art draait al op de Mac met de camera in de Mac:
 `ws://127.0.0.1:7700/app`, geen token, geen usb0-vraag. Waarde: met de APC effecten en werkplekken bespelen terwijl je
 filmt (scene-kit-avond). De WS-client bestaat al in stdlib-Python: `flux-screensaver` op tak
-`claude/varve-hub-koppeling`, `flux-screensaver:817-1085` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`) —
+`claude/varve-hub-koppeling` (sinds 19 okt op `master`, in `varve_album/hub.py`), `flux-screensaver:817-1085` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`) —
 overnemen als `varve-eye/knulli/varve-eye/hub.py`, achter `--hub ws://…` (standaard uit). Geen nieuwe dependencies.
 De lus leest hub-berichten uit een wachtrij (draad zoals `Bron`, `:1755-1850`), zodat de 60-per-seconde-lus nooit
 op het netwerk wacht.

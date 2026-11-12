@@ -119,9 +119,9 @@ van apps in een set zelf: paden komen uit `sets/paden.json`, poorten uit `config
 
 | App | Start | Poort | URL | Let op |
 |---|---|---|---|---|
-| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op tak `claude/varve-hub-koppeling` |
+| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op `main` sinds 19 okt (PR #4) |
 | Formula Lab | idem | 5174 | `/?hub=` | idem; zonder vaste poort pakt vite 5173 (van av-kern) |
-| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op tak `claude/varve-hub-koppeling` |
+| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op `main` sinds 19 okt (PR #1) |
 | Varve DJ | `node server/index.js` met `PORT={poort}` | 8777 | `/?hub=` | koppeling staat op youtube-mixer `main` (sinds 5 okt); de patches in `koppelingen/varve-dj/` zijn geschiedenis |
 | Uurwerk | `./start.sh` | 8766 (brug), 8765 (web) | — | start.sh opent zelf de browser; de hub praat via de HTTP-driver met de brug |
 | av-kern | `npm run dev -- --port {poort} --strictPort`, `BROWSER=none` | 5173 | `/?hub=` | **hub-koppeling pas na 25 okt** — zie hieronder |

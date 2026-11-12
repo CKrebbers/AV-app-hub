@@ -50,7 +50,7 @@ Set
   ✓ medisynth: node_modules aanwezig
   ✓ medisynth: poort 5175 vrij
   ✗ medisynth: geen hub-koppeling in ~/Projects/medisynth (src/hub.js ontbreekt)
-      → de app meldt zich niet bij de hub tot de koppeling erin zit (zie koppelingen/ of de PR): de tak claude/varve-hub-koppeling van medisynth (de PR)
+      → de app meldt zich niet bij de hub tot de koppeling erin zit (zie koppelingen/ of de PR): medisynth main sinds 19 okt (PR #4): git switch main && git pull
   …
 
 1 × ✗, 1 × ! — los eerst de ✗ op en draai check opnieuw.
@@ -116,9 +116,9 @@ voor anderen = ! (`chmod 600` en voor de zekerheid een nieuw token met `node src
 
   | App | Wat er moet zijn | Waar hij vandaan komt |
   |---|---|---|
-  | formula-lab | `src/sync/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
-  | medisynth | `src/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
-  | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | tak `claude/varve-hub-koppeling` (PR) |
+  | formula-lab | `src/sync/hub.js` | `main` sinds 19 okt (PR #1) |
+  | medisynth | `src/hub.js` | `main` sinds 19 okt (PR #4) |
+  | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | `main` sinds 19 okt (PR #1) |
   | varve-dj (youtube-mixer) | `src/control/hub.js` | `main` van youtube-mixer (sinds 5 okt, PR #6): `git pull`; de patches in `koppelingen/varve-dj/` zijn alleen nog geschiedenis |
   | av-kern | `src/ui/hub.ts` | `koppelingen/av-kern/` (patch, na 25 okt) |
   | av-scene-kit | `td/td_build_hub.py` | docs/TOUCHDESIGNER.md |

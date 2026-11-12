@@ -7,12 +7,12 @@
     "medisynth": {
       "start": { "commando": "npm run dev -- --port {poort} --strictPort" },
       "url": "http://localhost:{poort}/?hub={hub}",
-      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van medisynth"
+      "opmerking": "hub-koppeling staat op medisynth main sinds 19 okt (PR #4)"
     },
     "waterschaal": {
       "start": { "commando": "python3 -m http.server {poort} --bind 127.0.0.1" },
       "url": "http://localhost:{poort}/td/waterschaal-lokaal.html?hub={hub}",
-      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van waterschaal"
+      "opmerking": "hub-koppeling staat op waterschaal main sinds 19 okt (PR #1)"
     },
     "uurwerk": {
       "start": { "commando": "./start.sh" },

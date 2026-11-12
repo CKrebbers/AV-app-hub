@@ -47,9 +47,9 @@ Klaar als (op jouw Mac):
 ## Golf 2 — breken ✓
 6 zoekers (MIDI-chaos, netwerkchaos, levensduur, lease-chaos, protocol-feiten, volledigheid) → 23 bevindingen door een scepticus bevestigd (6 belangrijk, 17 klein, 0 blokkerend) → per gebied opgelost, elk met een test die de fout eerst liet zien. Belangrijkste: slots komen vrij, twee tabs van dezelfde app verdringen elkaar niet meer, LPD8-pickup volgt snapshots en app-wijzigingen, lease-LEDs strikt gefilterd en begrensd, Sediment-waarden op log-schaal in de cockpit, nette foutmelding als poort 7700 bezet is. Beslissingen: `PROTOCOL.md` §11.
 
-## Golf 3 — koppelingen in de apps ✓ (wacht op Clay's OK per repo)
+## Golf 3 — koppelingen in de apps ✓ (gemerged door Clay op 19 okt)
 Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag verandert er niets.
-- formula-lab (poort 5174), waterschaal (`td/waterschaal-lokaal.html`), medisynth (poort 5175), flux (`flux-<monitor>`): tak `claude/varve-hub-koppeling` in elk repo, met een PR.
+- formula-lab (poort 5174, PR #1), waterschaal (`td/waterschaal-lokaal.html`, PR #1), medisynth (poort 5175, PR #4), flux (`flux-<monitor>`, PR #2): sinds 19 okt op hun hoofdtak (`main`, bij flux `master`): `git switch main && git pull`. De oude tak `claude/varve-hub-koppeling` niet meer gebruiken.
 - Varve DJ: lease-modus; de koppeling staat op youtube-mixer `main` (patches 0001+0002, PR #6, 5 okt: `git pull`). De patches in `koppelingen/varve-dj/` zijn geschiedenis; de repetitie past ze alleen nog toe op een main van vóór 5 okt.
 
 ## Golf 4 — een avond spelen ✓ (gebouwd en getest zonder hardware)
@@ -71,7 +71,7 @@ Klaar als (op jouw Mac):
 Gevonden door de repetitie — opgelost in golf 5 (PROTOCOL §14):
 - ~~Na een paniek doet LPD8-K1 niets meer~~ → wat een app zelf verandert tijdens of vlak na een paniek (`paniek.naloop_s`, standaard 5) verplaatst de LPD8-pickup niet meer.
 - ~~Een LPD8-macro op een keuze stuurt bij elke tik een `zet`~~ → een gelijke keuze/schakelaar gaat niet nog eens (179 → 0).
-- Waterschaal `tempo`: app-kant op de PR-tak (tempo continu, CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app). Helemaal dicht zodra die PR gemerged is.
+- ~~Waterschaal `tempo`~~ → dicht: app-kant (tempo continu) sinds 19 okt op waterschaal main (CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app).
 
 ## Oefenruimte ✓
 http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 14 lessen (les 14, glijden zien, kwam erbij in golf 7) met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
@@ -88,7 +88,7 @@ Klaar als (op jouw Mac):
 - [x] **Onderzoek volgende koppelingen** — `docs/VOLGENDE-KOPPELINGEN.md` (varve-radio, uurwerk, av-scene-kit, Sediment, td-lab, anbernic-cam, musicgen-video-glitch; volgorde in §9)
 - [x] **Beveiliging** — grenzen tegen overvallen zonder token, cockpit alleen same-origin, geen framen, bestandsrechten (PROTOCOL §13, `docs/NETWERK.md`)
 - [x] **Oefenruimte** — review verwerkt (herladen, twee tabs, tempo/adem zichtbaar, lang drukken ruimer)
-- [ ] Waterschaal: tempo continu op de PR-tak (wacht op Clay's OK om te mergen)
+- [x] Waterschaal: tempo continu (op main sinds 19 okt, PR #1)
 
 Klaar als (op jouw Mac):
 - [ ] `npm run check -- meditatie` geeft alleen ✓ en !
@@ -105,8 +105,8 @@ Open vragen voor Clay (uit golf 5):
 - [x] **Paniek voor de driver-apps** — uurwerk volume 0 (`pas_toe +master 0.00`, terug met de trigger `master_terug`), Sediment CC 123 (alle noten uit), Scene Kit noot 42 → master dicht (TD-patch in `koppelingen/av-scene-kit/`, wacht op REGIE; daarna `node tools/genereer-manifesten.mjs`)
 - [x] **uurwerk leest terug** — verandert er iets in de uurwerk-tab, dan volgt de hub (cockpit, pickup); `teruglezen` in `config.json`
 - [x] **td-lab als driver** — `src/drivers/td.js` over de exec-bridge van td-lab, standaard uit (`apps.td-lab.autostart`); zie `docs/TDLAB.md`
-- [ ] **varve-radio: zender-lek dicht** — op de tak `claude/zender-lek` (PR in varve-radio), wacht op jouw OK, deploy en meting
-- [ ] **Varve Eye als app op de Mac** — op de tak `claude/varve-hub-koppeling` (PR in anbernic-cam), wacht op jouw OK
+- [x] **varve-radio: zender-lek dicht** — gemerged op 15 okt (varve-radio PR #1); deploy en meting nog door Clay
+- [x] **Varve Eye als app op de Mac** — gemerged op 19 okt (anbernic-cam PR #1); nog niet op de Mac geprobeerd
 
 Klaar als (op jouw Mac):
 - [ ] LPD8-P1 vasthouden: uurwerk wordt stil, Sediment stopt alle noten, (na de TD-patch) de TD-master gaat dicht
@@ -143,7 +143,7 @@ De hub opent ook het keyboard (E-MU Xboard49) en de Maschine MK2 en geeft ze doo
 - [x] **Maschine MK2 via HID** — node-hid, optioneel (zonder start de hub gewoon); virtuele MIDI-indeling in `docs/MASCHINE.md` (pads 36–51 met velocity en gedunde aftertouch, knoppen op kanaal 1, draaiknoppen en masterwiel relatief); lampjes in APC-kleuren, schermen; "bezet" en "geen invoer" met wat te doen, elke ronde opnieuw proberen
 - [x] **`doctor`** — beide apparaten, de NI-programma's die draaien, of er invoer van de Maschine komt (Invoermonitoring)
 - [x] **Proef `speelapparaten`** — 21 stappen, doorloopbaar door de gesimuleerde gebruiker; golden test op het logboek (`test/fixtures/synthetisch-speelapparaten.jsonl`)
-- [ ] **Varve DJ** — de nep-poorten "Xboard49 (hub)" en "Maschine MK2 (hub)" in `HubMidi` en `speelt` in het manifest: nog niet gebouwd, wacht op jouw OK (`koppelingen/varve-dj/LEESMIJ.md`)
+- [x] **Varve DJ** — de nep-poorten "Xboard49 (hub)" en "Maschine MK2 (hub)" in `HubMidi` en `speelt` in het manifest: staan sinds 7 okt op youtube-mixer main (PR #5, `koppelingen/varve-dj/LEESMIJ.md`); nog niet met echte hardware bespeeld
 
 Klaar als (op jouw Mac):
 - [ ] `npm install` haalt node-hid binnen; `node src/cli.js doctor` toont onder "Speelapparaten" de Xboard49 en de Maschine (17cc:1140), en "invoer komt binnen"

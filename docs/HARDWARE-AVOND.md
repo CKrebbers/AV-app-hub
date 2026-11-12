@@ -38,13 +38,17 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
     `node src/cli.js installeer` deed. Die zet je voor vanavond uit met `node src/cli.js installeer --weg`, en ná de
     avond weer aan met `node src/cli.js installeer`. (Start je toch per ongeluk een tweede hub, dan noemt de melding
     "poort 7700 is bezet" ook de opdracht die de dienst alleen tijdelijk stopt.)
-- [ ] **Voor blok 4 (de set):** de hub-koppeling van MediSynth en Waterschaal staat nog op een eigen tak (de PR's
-  wachten op jouw OK). Zet die twee repo's daarop, anders worden ze in de set "niet klaar":
+- [ ] **Voor blok 4 (de set):** de hub-koppeling van Formula Lab, MediSynth, Waterschaal en flux staat sinds 19 oktober
+  op hun hoofdtak (je hebt de PR's toen gemerged; bij flux heet die `master`). Haal in elk van die repo's de nieuwste main op, anders worden ze in
+  de set "niet klaar":
   ```bash
-  cd <map van medisynth>  && git fetch && git checkout claude/varve-hub-koppeling
-  cd <map van waterschaal> && git fetch && git checkout claude/varve-hub-koppeling
+  cd <map van formula-lab>      && git switch main && git pull
+  cd <map van medisynth>        && git switch main && git pull
+  cd <map van waterschaal>      && git switch main && git pull
+  cd <map van flux-screensaver> && git switch master && git pull
   ```
-  (Of keur eerst die twee PR's goed en zet ze op main.)
+  (Stond een van die repo's nog op de oude tak `claude/varve-hub-koppeling`: dit zet hem terug; die tak mist alles wat
+  er daarna op main kwam, zoals de licentie.)
 - [ ] **Sluit de APC40 en de LPD8 aan** via USB, het liefst rechtstreeks op de Mac.
 - [ ] **Kijk of de hub ze ziet:**
   ```bash
@@ -191,8 +195,8 @@ npm start -- meditatie
 ```
 
 De hub start MediSynth, Waterschaal, Uurwerk en av-kern, opent ze in Chrome met `?hub=` erachter, zet de beginwaarden
-en geeft Waterschaal de focus. MediSynth en Waterschaal praten alleen met de hub als ze op de tak
-`claude/varve-hub-koppeling` staan (blok 1).
+en geeft Waterschaal de focus. MediSynth en Waterschaal praten met de hub zodra ze op een `main` van na 19 oktober
+staan (blok 1).
 
 > **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling komt na 25 oktober). Klik in av-kern
 > **niet** op "Verbind APC40": dan opent av-kern de APC zelf en vechten de lampjes.
@@ -211,7 +215,7 @@ een virtuele APC en LPD8 die meelopen met de echte.
 - [ ] **LPD8 kort los**: hetzelfde met de LPD8-kabel; daarna staat de LPD8 in de cockpit weer op verbonden en doen P1
   en K1 weer wat ze moeten (hooguit één regel `LPD8: sturen mislukt — …`).
 - [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon. Na 60 s "niet klaar" voor MediSynth of
-  Waterschaal: staat die repo op `claude/varve-hub-koppeling` (blok 1)?
+  Waterschaal: staat die repo op een verse `main` (`git switch main && git pull`, blok 1)?
 
 Ctrl-C stopt alles wat de set zelf startte, en dan de hub.
 

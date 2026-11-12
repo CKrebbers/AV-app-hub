@@ -36,10 +36,10 @@ Nodig:
 
 | app | repo (config.json → `apps.<id>.repo`) | tak | hoe hij draait |
 |---|---|---|---|
-| formula-lab | `formula-lab` | `claude/varve-hub-koppeling` | Vite-dev-server op `apps.formula-lab.poort`, vaste formule |
-| waterschaal | `waterschaal` | `claude/varve-hub-koppeling` | `python3 -m http.server` op `apps.waterschaal.poort`, `td/waterschaal-lokaal.html` |
-| medisynth | `medisynth` | `claude/varve-hub-koppeling` | Vite-dev-server op `apps.medisynth.poort`, met `?debug` en één klik (start de klank) |
-| flux | `flux-screensaver` | `claude/varve-hub-koppeling` | pseudo-terminal (`pty.spawn`), eigen lege `XDG_CONFIG_HOME` |
+| formula-lab | `formula-lab` | `main` (koppeling sinds 19 okt, PR #1) | Vite-dev-server op `apps.formula-lab.poort`, vaste formule |
+| waterschaal | `waterschaal` | `main` (sinds 19 okt, PR #1) | `python3 -m http.server` op `apps.waterschaal.poort`, `td/waterschaal-lokaal.html` |
+| medisynth | `medisynth` | `main` (sinds 19 okt, PR #4) | Vite-dev-server op `apps.medisynth.poort`, met `?debug` en één klik (start de klank) |
+| flux | `flux-screensaver` | `master` (sinds 19 okt, PR #2; alles in het pakket `varve_album`) | pseudo-terminal (`pty.spawn`), eigen lege `XDG_CONFIG_HOME` |
 | varve-dj | `youtube-mixer` | `origin/main` (de hub-koppeling staat erop sinds 5 okt; alleen een oudere main krijgt `koppelingen/varve-dj/*.patch`) | eigen server op `apps.varve-dj.poort`, tijdelijke database |
 
 De paden komen uit **`sets/paden.json`** (hetzelfde bestand dat de sets gebruiken; `sets/.gitignore` houdt het

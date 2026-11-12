@@ -103,3 +103,27 @@ describe('opdrachten in de docs bestaan', () => {
     expect(rijen).toEqual(LESSEN.map((_, i) => i + 1));
   });
 });
+
+describe('de koppelingen staan op main sinds 19 okt (geen oude tak meer)', () => {
+  // formula-lab #1, waterschaal #1, medisynth #4 en flux-screensaver #2 zijn op 19 okt gemerged. Wie de oude tak
+  // claude/varve-hub-koppeling uitcheckt, mist alles wat daarna op main kwam (licentie, LEESMIJ).
+  const OUDE_TAK = /claude\/varve-hub-koppeling/;
+  const docs = ['README.md', 'STATUS.md', 'docs/HARDWARE-AVOND.md', 'docs/CHECK.md', 'docs/SETS.md', 'docs/REPETITIE.md', 'koppelingen/varve-dj/LEESMIJ.md'];
+  it.each(docs)('%s stuurt niemand naar de oude tak (hooguit als waarschuwing)', (pad) => {
+    for (const regel of lees(pad).split('\n')) {
+      if (!OUDE_TAK.test(regel)) continue;
+      expect(regel, `${pad}: ${regel}`).toMatch(/oude tak|niet meer gebruiken|toen op/);
+    }
+  });
+  it('git checkout claude/varve-hub-koppeling staat nergens in het draaiboek', () => {
+    expect(lees('docs/HARDWARE-AVOND.md')).not.toMatch(/checkout claude\/varve-hub-koppeling/);
+    expect(lees('docs/HARDWARE-AVOND.md')).toMatch(/git switch main && git pull/);
+  });
+  it('check en de sets noemen main, niet de tak', async () => {
+    const { KOPPELINGEN } = await import('../src/check/koppelingen.js');
+    for (const [app, k] of Object.entries(KOPPELINGEN)) if (k) expect(k.waar, app).not.toMatch(OUDE_TAK);
+    for (const set of readdirSync(new URL('../sets/', import.meta.url)).filter((f) => f.endsWith('.json'))) {
+      expect(lees(`sets/${set}`), set).not.toMatch(OUDE_TAK);
+    }
+  });
+});
