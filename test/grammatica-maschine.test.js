@@ -268,6 +268,67 @@ describe('§19 groep A–H = focus op app-slot 1–8', () => {
   });
 });
 
+describe('§19 groep A–H: altijd een weg terug (de kiezer)', () => {
+  const groep = (/** @type {number} */ nr) => `groep${String.fromCharCode(64 + nr)}`;
+  it('focus via groep naar een app zonder grammatica, en niemand speelt: groep A–H werkt nog, en de lampjes tonen de slots', () => {
+    const { kern, maschine, drukKnop, losKnop, knopNoot, ms } = opzet();
+    meldAan(kern, GRAM);
+    const fl = meldAan(kern, FL);
+    kern.focus('gram');
+    const nrGram = kern.slots.indexOf('gram') + 1, nrFl = kern.slots.indexOf('formula-lab') + 1;
+    drukKnop(groep(nrFl)); losKnop(groep(nrFl));
+    expect(kern.focusApp).toBe('formula-lab');
+    expect(kern.beeld().maschine).toBe(null);           // de cockpit: de Maschine bedient niets
+    expect(kern.beeld().spelers['maschine-mk2']).toBe(null);
+    const f = /** @type {any} */ (kern.apps.get('formula-lab')), g = /** @type {any} */ (kern.apps.get('gram'));
+    expect(maschine.leds.get(`1:${knopNoot(groep(nrFl))}`)).toBe(f.kleur);
+    expect(maschine.leds.get(`1:${knopNoot(groep(nrGram))}`)).toBe(g.dim);
+    expect(maschine.leds.get('0:36')).toBe(0);           // pads uit: formula-lab heeft geen momenten
+    expect(MS.leesTekst(maschine.schermen[0], 2, MS.KOLOM.rijOnder, 33)).toBe('FORMULA LAB: NIETS OP DE MASCHINE');
+    expect(MS.leesTekst(maschine.schermen[1], 2, MS.KOLOM.rijOnder, 22)).toBe('GROEP A-H = ANDERE APP');
+    // Een pad of draaiknop doet niets (en gaat nergens heen).
+    leeg(fl);
+    ms([0x90, 36, 100]); ms([0x80, 36, 0]);
+    expect([...van(fl, 'zet'), ...van(fl, 'trig'), ...van(fl, 'midi')]).toEqual([]);
+    drukKnop(groep(nrGram)); losKnop(groep(nrGram));
+    expect(kern.focusApp).toBe('gram');
+    expect(kern.beeld().maschine?.app).toBe('gram');
+  });
+
+  it('de hub start met de focus op een app zonder grammatica: groep A–H kiest toch', () => {
+    const { kern, drukKnop, losKnop } = opzet();
+    meldAan(kern, FL);
+    meldAan(kern, GRAM);
+    expect(kern.focusApp).toBe('formula-lab');
+    const nrGram = kern.slots.indexOf('gram') + 1;
+    drukKnop(groep(nrGram)); losKnop(groep(nrGram));
+    expect(kern.focusApp).toBe('gram');
+  });
+
+  it('een slot waarvan de app weg is (lampje uit): de groepknop verplaatst de focus niet', () => {
+    const { kern, maschine, drukKnop, losKnop, knopNoot } = opzet();
+    meldAan(kern, GRAM);
+    const twee = meldAan(kern, TWEE);
+    kern.focus('gram');
+    kern.verbreek(twee);
+    const nr = kern.slots.indexOf('twee') + 1;
+    expect(maschine.leds.get(`1:${knopNoot(groep(nr))}`)).toBe(0);
+    drukKnop(groep(nr)); losKnop(groep(nr));
+    expect(kern.focusApp).toBe('gram');
+  });
+
+  it('speelt er wel een lease-app op de Maschine, dan blijft hij voor die app (geen kiezer)', () => {
+    const { kern, ms } = opzet();
+    const dj = meldAan(kern, SPELER);
+    meldAan(kern, FL);
+    kern.focus('formula-lab');
+    leeg(dj);
+    ms([0x91, 48, 127]);
+    expect(van(dj, 'midi').length).toBe(1);
+    expect(kern.focusApp).toBe('formula-lab');
+  });
+});
+
 describe('§19 lampjes en schermen', () => {
   it('pads van momenten die de app heeft zacht aan, de rest uit; ingedrukt vol', () => {
     const { kern, ms, maschine } = opzet();

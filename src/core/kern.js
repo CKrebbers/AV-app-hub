@@ -265,8 +265,9 @@ export class Kern extends Zender {
       slots: () => this.slots,
       naar: (app, b) => { const a = this.apps.get(app); if (a) this.#naar(a, b); },
       oppervlakken: speelOppervlakken,
-      // §19: bedient de Maschine de app met focus volgens de grammatica, dan speelt er niemand op.
-      bezet: (dev) => dev === 'maschine-mk2' && this.#bediend() !== null,
+      // §19: bedient de Maschine de app met focus volgens de grammatica, dan speelt er niemand op. Speelt er geen
+      // lease-app op (kandidaat null), dan is hij ook van de grammatica: als kiezer, zodat groep A–H de focus kiest.
+      bezet: (dev, kandidaat) => dev === 'maschine-mk2' && (this.#bediend() !== null || kandidaat === null),
       tekenBezet: () => this.bediening.teken(),
     });
     /** De grammatica op de Maschine (§19): draaiknoppen = alfabet, pads = momenten, groepen = focus. */
@@ -288,7 +289,9 @@ export class Kern extends Zender {
         if (!a || (aan && this.#param(a, id)?.soort !== 'trigger')) return;
         this.#naar(a, { t: 'trig', id, aan, ...(aan && typeof kracht === 'number' ? { v: kracht } : {}) });
       },
-      focusSlot: (nr) => { const app = this.slots[nr - 1]; if (app) this.focus(app); },
+      // Een slot waarvan de app weg is, heeft een lampje uit: daar gaat de focus ook niet heen.
+      focusSlot: (nr) => { const a = this.apps.get(this.slots[nr - 1] ?? ''); if (a && a.status !== 'weg') this.focus(a.app); },
+      focusNaam: () => this.#focusAppStaat()?.naam ?? null,
       oppervlak: speelOppervlakken['maschine-mk2'],
       instellingen: this.config.apparaten?.['maschine-mk2']?.grammatica,
     });

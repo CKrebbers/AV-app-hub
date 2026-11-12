@@ -453,13 +453,20 @@ zonder grammatica, een lease-app die de Maschine speelt, geen focus), dan geldt 
 voor de laatst gefocuste lease-app die hem in `speelt` heeft. Bestaande apps veranderen dus niet: Varve DJ speelt de
 pads door terwijl av-kern of formula-lab de focus heeft. De Xboard49 blijft altijd een speelapparaat.
 
+**Altijd een weg terug: de kiezer.** Heeft de app met focus geen grammatica (of is hij weg, of is er geen focus) en
+speelt er ook geen lease-app op de Maschine, dan is de Maschine **kiezer**: groep A–H kiest nog steeds de focus en
+brandt zoals hieronder, pads en SHIFT zijn uit, en het linkerscherm zegt `<app>: niets op de Maschine`, het rechter
+`GROEP A-H = ANDERE APP`. Pads en draaiknoppen doen dan niets. Zo kom je met de Maschine altijd terug bij een app met
+grammatica, ook als de hub start met de focus op een app zonder. `beeld.maschine` blijft `null` (hij bedient niets).
+Een slot waarvan de app weg is (lampje uit) krijgt geen focus.
+
 | Maschine | Doet | Op de draad naar de app |
 |---|---|---|
 | draaiknop 1–8 | de alfabet-parameter op die plek; relatief: `tellen_vol` (1000, één omwenteling) tellen = van 0 naar 1; **SHIFT** ingedrukt = `fijn` (10) keer fijner. Een keuze of schakelaar stapt per `tellen_stap` (125) tellen. Een lege plek doet niets | `{t:"zet", id, v, bron:"maschine-mk2"}` |
 | pad 1–8 | het moment op die plek (een pad zonder moment doet niets) | `{t:"trig", id, aan:true, v}` met **`v` = velocity 0..1**; loslaten `{t:"trig", id, aan:false}` |
 | aftertouch op pad 1–8 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
 | pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, zonder druk); schakelaar: `zet` 0/1 bij elke druk |
-| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit | `{t:"focus"}` zoals altijd |
+| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit. Een slot met een app die weg is, doet niets | `{t:"focus"}` zoals altijd |
 | masterwiel en de andere knoppen | (nog) niets | — |
 
 - **Velocity en aftertouch "als de app dat wil".** `v` in `trig` is een extra veld (alleen bij `aan:true` van een
