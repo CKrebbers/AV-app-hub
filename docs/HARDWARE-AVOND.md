@@ -6,8 +6,57 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 
 **Hoe lang:** ±2 uur in totaal. Je kunt na elk blok stoppen; het belangrijkste is blok 2 (de proef) en blok 6 (pushen).
 
+## Eerst dit (5 minuten)
+
+Na je eerste test in oktober is de manier veranderd waarop de hub de APC aanzet (de "handdruk", nu zoals Ableton Live het
+doet). Kijk eerst of dat werkt. Daarna pas de rest van dit draaiboek.
+
+1. Open Terminal en ga naar de map AV-app-hub.
+2. Haal de nieuwe versie op:
+   ```bash
+   git pull
+   ```
+   Klaagt git over `package.json` ("Your local changes … would be overwritten")? Zet dat bestand terug en probeer opnieuw:
+   ```bash
+   git checkout package.json
+   git pull
+   ```
+3. Installeer wat erbij kwam:
+   ```bash
+   npm install
+   ```
+4. Sluit Ableton Live (en Bitwig) en Chrome-tabs met Varve DJ of av-kern. Steek de APC40 en de LPD8 in. Zet de APC aan
+   met de knop achterop.
+5. Kijk wat de hub ziet:
+   ```bash
+   node src/cli.js doctor
+   ```
+   Bij de APC staan nu een paar regels onder elkaar, één per vorm van de handdruk:
+   - `identiteit (omni, …)` en `identiteit (kanaal 0, zoals Ableton Live)`: staat er bij minstens één een rij getallen
+     (geen "geen antwoord"), dan antwoordt de APC. Bij `product` hoort `0x29 (APC40 mkII)` te staan.
+   - `modus-instructie (intro, …)`: `✔ antwoord` is goed. Staat er overal `✗ geen antwoord`, dan vraagt doctor je
+     **Track Select 1 in te drukken en fader 1 te bewegen**. Doe dat meteen; je hebt 3 seconden.
+   - De laatste regel bij de APC zegt hoe het afliep. Goed is `✔ apc40 gaat in de hub-modus` of `✔ apc40: Track Select
+     komt binnen`. Staat er een ✗, lees dan wat erachter staat, en kijk in blok 7 ("De APC doet niet wat hij moet").
+6. Start de hub:
+   ```bash
+   npm start
+   ```
+   Kijk in het Terminal-venster. Je wilt binnen een paar seconden **`APC: modus gezet`** zien. Staat er
+   `APC: geen bevestiging op de modus-instructie`? Druk dan op Track Select 1: komt daarna `APC: modus gezet`, dan is
+   het goed. Ctrl-C stopt de hub.
+7. Stuur Claude de hele uitvoer van doctor, en zeg of `APC: modus gezet` verscheen. Kopiëren mag gewoon uit het
+   Terminal-venster.
+
+Staat er `APC: modus gezet`? Ga dan door met blok 1 (blok 1 doet `git pull` en `npm install` nog eens; dat kan geen
+kwaad). Staat het er niet, ook niet na Track Select 1? Stuur dan alleen de uitvoer en wacht op Claude: de rest van de
+avond heeft een APC nodig die in de hub-modus staat.
+
+---
+
 | Blok | Wat | ±Tijd |
 |---|---|---|
+| 0 | Eerst dit: de APC-handdruk (hierboven) | 5 min |
 | 1 | Voorbereiden | 15 min |
 | 2 | De F0-proef: elke knop, elk lampje, vijf open vragen | 35–45 min |
 | 3 | Oefenruimte met de echte controllers | 20–30 min |

@@ -143,3 +143,24 @@ describe('av-kern: 25 okt is voorbij, de tekst noemt de echte stand (PR in av-ke
     expect(lees('sets/meditatie.json')).not.toMatch(/25 okt/);
   });
 });
+
+describe('HARDWARE-AVOND: "Eerst dit (5 minuten)" na de eerste test op de Mac', () => {
+  const doc = lees('docs/HARDWARE-AVOND.md');
+  const blok = doc.slice(doc.indexOf('## Eerst dit (5 minuten)'), doc.indexOf('## 1. Voorbereiden'));
+  it('staat bovenaan, vóór blok 1, met de stappen in volgorde', () => {
+    expect(doc.indexOf('## Eerst dit (5 minuten)')).toBeGreaterThan(0);
+    expect(doc.indexOf('## Eerst dit (5 minuten)')).toBeLessThan(doc.indexOf('## 1. Voorbereiden'));
+    const plek = ['git pull', 'git checkout package.json', 'npm install', 'node src/cli.js doctor', 'npm start', 'APC: modus gezet'].map((t) => blok.indexOf(t));
+    expect(plek.every((i) => i >= 0), String(plek)).toBe(true);
+    expect([...plek].sort((x, y) => x - y)).toEqual(plek);
+  });
+  it('de regels die het blok noemt, bestaan echt in doctor en de hub', () => {
+    const doctor = lees('src/doctor.js'), hub = lees('src/hub.js');
+    for (const t of ['identiteit (kanaal 0, zoals Ableton Live)', 'modus-instructie (intro, ', '✔ antwoord', 'apc40 gaat in de hub-modus', 'apc40: Track Select komt binnen', '(APC40 mkII)']) {
+      expect(blok.replace(/\s+/g, ' '), t).toContain(t);
+      expect(doctor, t).toContain(t);
+    }
+    expect(hub).toContain('APC: modus gezet');
+    expect(hub).toContain('geen bevestiging op de modus-instructie');
+  });
+});
