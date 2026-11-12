@@ -188,8 +188,10 @@ export class MaschineBediening {
     // Keuze of schakelaar: tellen opsparen tot een hele stap, zodat een kleine draai niets verspringt.
     const k = `${b.app}\u0000${p.id}`;
     const n2 = p.soort === 'keuze' ? p.keuzes?.length ?? 2 : 2;
-    let rest = (this.rest.get(k) ?? 0) + delta;
-    const stap = this.inst.tellen_stap * deler;
+    // De rest in grove tellen (delta / deler): wisselt SHIFT halverwege, dan telt wat je fijn draaide niet ineens
+    // tien keer zo zwaar (anders sprong een keuze na 600 fijne tellen en SHIFT los bij één tel van optie 1 naar 3).
+    let rest = (this.rest.get(k) ?? 0) + delta / deler;
+    const stap = this.inst.tellen_stap;
     let i = waardeNaarKeuze(huidig, n2);
     while (Math.abs(rest) >= stap) { i += Math.sign(rest); rest -= Math.sign(rest) * stap; }
     i = Math.max(0, Math.min(n2 - 1, i));

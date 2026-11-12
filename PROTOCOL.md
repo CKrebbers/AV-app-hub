@@ -37,8 +37,8 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | app → hub | `{t:"led", dev?, bytes:[[…],…]}` | alleen lease: LED-berichten. Zonder `dev` (of `"apc40"`) voor de APC; `dev:"maschine-mk2"` voor de Maschine (§17); `"xboard49"` wordt bewaard maar nergens getoond (het keyboard ontvangt niets); een onbekend apparaat: genegeerd |
 | app → hub | `{t:"scherm", dev:"maschine-mk2", nr, data}` | alleen lease, met `maschine-mk2` in `speelt`: scherm `nr` (0 = links, 1 = rechts), `data` = base64 van precies 2048 bytes (§17) |
 | app → hub | `{t:"globaal", waarden}` | alleen met `levert` in het manifest: de app levert iets aan de globale laag, nu de sectie van het nummer (`sectie.energie` 0..1, `sectie.label` tekst, `sectie.nieuw: true`; §18) |
-| hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"` |
-| hub → app | `{t:"trig", id, aan}` | trigger in (`aan:true`) en uit (`aan:false`) |
+| hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"`, `"maschine-mk2"` (§19), `"kp3plus"` (§21) |
+| hub → app | `{t:"trig", id, aan, v?}` | trigger in (`aan:true`) en uit (`aan:false`); `v` = velocity 0..1, alleen bij `aan:true` van een Maschine-pad (§19) |
 | hub → app | `{t:"scene", i}` | scène `i` (0-based) uit `manifest.scenes` |
 | hub → app | `{t:"focus", aan}` | de app kreeg of verloor de APC-focus |
 | hub → app | `{t:"globaal", waarden}` | globale macro's, klokken en de sectie (§6, §18), alleen gewijzigde sleutels; bij elke `hallo` eerst alles |
@@ -465,14 +465,19 @@ Een slot waarvan de app weg is (lampje uit) krijgt geen focus.
 |---|---|---|
 | draaiknop 1–8 | de alfabet-parameter op die plek; relatief: `tellen_vol` (1000, één omwenteling) tellen = van 0 naar 1; **SHIFT** ingedrukt = `fijn` (10) keer fijner. Een keuze of schakelaar stapt per `tellen_stap` (125) tellen. Een lege plek doet niets | `{t:"zet", id, v, bron:"maschine-mk2"}` |
 | pad 1–8 | het moment op die plek (een pad zonder moment doet niets) | `{t:"trig", id, aan:true, v}` met **`v` = velocity 0..1**; loslaten `{t:"trig", id, aan:false}` |
-| aftertouch op pad 1–8 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
-| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, zonder druk); schakelaar: `zet` 0/1 bij elke druk |
+| aftertouch op pad 1–16 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
+| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, en de druk als de trigger `druk` heeft); schakelaar: `zet` 0/1 bij elke druk |
 | groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit. Een slot met een app die weg is, doet niets | `{t:"focus"}` zoals altijd |
 | masterwiel en de andere knoppen | (nog) niets | — |
 
 - **Velocity en aftertouch "als de app dat wil".** `v` in `trig` is een extra veld (alleen bij `aan:true` van een
   Maschine-pad); een app die het niet kent, negeert het (grondregel 5). Aftertouch kost een parameter: een `waarde`
   die de app noemt in `druk` op de trigger. Zo blijft alles op de draad 0..1 en `zet`/`trig`, zonder nieuw berichttype.
+- **LPD8-macro en pickup (§10, §11):** een LPD8-knop zet elke app met die rol (ook een alfabet-rol, `macroVan`) op de
+  knopstand, maar zijn pickup volgt alleen de **eerste** app met die rol. Draai je met de Maschine (of de APC, de
+  cockpit) aan dezelfde parameter van een andere app, dan blijft de LPD8-knop gevangen, en zet zijn eerstvolgende tik
+  die parameter in één sprong terug naar de knopstand. Voor de eerste app met de rol wacht de knop wel (§14). Zo is het
+  ook voor `macro.*` op main; met de grammatica komt het vaker voor (vijf alfabet-plekken hangen aan K2–K6).
 - **Direct, zoals de APC (§12):** een draaiknop van de Maschine is een hand op een knop: geen `slew_s`, en een lopende
   slew breekt af. Geen pickup nodig: relatief springt nooit. De APC-ring en -pickup van dezelfde plek gaan mee.
 - **Niets blijft hangen (§11, §17):** het loslaten (en de druk naar 0) gaat naar de app en trigger van het

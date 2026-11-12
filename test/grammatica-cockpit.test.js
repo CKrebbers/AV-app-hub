@@ -101,6 +101,9 @@ describe.skipIf(!heeftBrowser)('§19 cockpit in de browser met de nep-harmonogra
     hub.kern.focus('formula-lab');
     await page.waitForFunction(() => document.getElementById('maschine-wie')?.textContent === 'focus-app volgt geen grammatica');
     expect(await page.evaluate(() => document.querySelector('.ctl[data-id="dk2"]')?.hasAttribute('data-naam'))).toBe(false);
+    // Review #23: de schermen en pads hadden hidden, maar `.mk2-schermen { display: grid }` won: ±250 px leeg paneel.
+    await expect.poll(() => page.locator('#mk2-schermen').isVisible()).toBe(false);
+    expect(await page.locator('#mk2-pads').isVisible()).toBe(false);
     expect(fouten).toEqual([]);
     await page.close();
   }, 30000);

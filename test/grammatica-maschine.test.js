@@ -144,6 +144,20 @@ describe('§19 draaiknoppen = het alfabet', () => {
     expect(zetten(g, 'modus').at(-1)?.v).toBe(0.5);
   });
 
+  it('SHIFT los midden in een keuze-stap: wat je fijn draaide, telt fijn (geen sprong over een optie)', () => {
+    // Review #23: SHIFT in, 600 fijne tellen (= 60 grove, geen stap), SHIFT los, 1 tel: de keuze sprong van 1 naar 3.
+    const { kern, knop, drukKnop, losKnop } = opzet();
+    const g = meldAan(kern, GRAM);
+    leeg(g);
+    drukKnop('shift');
+    for (let i = 0; i < 10; i++) knop(4, 60);
+    losKnop('shift');
+    knop(4, 1);
+    expect(zetten(g, 'modus')).toEqual([]);              // 60 + 1 van de 125: nog geen stap
+    knop(4, 64);
+    expect(zetten(g, 'modus').map((b) => b.v)).toEqual([0.5]); // precies één stap, naar optie 2
+  });
+
   it('een lege plek (knop 2, 6, 7, 8) doet niets', () => {
     const { kern, knop } = opzet();
     const g = meldAan(kern, GRAM);
@@ -191,6 +205,17 @@ describe('§19 pads: momenten en vrije pads', () => {
     ms([0x90, 37, 80]); ms([0x80, 37, 0]); // pad 2 = stoot: niet in deze app
     expect(van(g, 'trig').map((b) => [b.id, b.aan])).toEqual([['wis', true], ['wis', false]]);
     expect(van(g, 'zet')).toEqual([]);
+  });
+
+  it('een vrije pad (9–16) met een trigger uit de kaart: met v, en de druk als die trigger er een heeft (§19)', () => {
+    const { kern, ms } = opzet({ kaarten: { gram: { 'maschine-mk2:pad9': { id: 'flits' } } } });
+    const g = meldAan(kern, GRAM);
+    leeg(g);
+    ms([0x90, 44, 100]);
+    ms([0xa0, 44, 64]);
+    ms([0x80, 44, 0]);
+    expect(van(g, 'trig')).toEqual([{ t: 'trig', id: 'flits', aan: true, v: expect.closeTo(100 / 127, 5) }, { t: 'trig', id: 'flits', aan: false }]);
+    expect(zetten(g, 'flits_diep').map((b) => b.v)).toEqual([expect.closeTo(64 / 127, 5), 0]);
   });
 
   it('pad 9 uit de kaart (maps/gram.json "maschine-mk2:pad9") schakelt "aan"', () => {

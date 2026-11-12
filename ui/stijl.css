@@ -286,6 +286,7 @@ body.paniek .kop { box-shadow: inset 0 -2px 0 var(--fout); }
 .ctl[data-naam-leeg]::before { color: #4a505c; font-style: italic; }
 #maschine-paneel h2 small, .grammatica summary small { font-weight: 400; color: var(--zacht); font-size: 12px; letter-spacing: 0; text-transform: none; }
 .mk2-schermen { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.mk2-schermen[hidden], .mk2-pads[hidden] { display: none; }
 .mk2-schermen canvas { width: 100%; image-rendering: pixelated; border: 1px solid var(--rand); border-radius: 4px; background: #0c0e14; }
 .mk2-pads { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .mk2-pads li { min-height: 34px; padding: 3px 5px; border: 1px solid var(--rand); border-radius: 4px; background: var(--vlak2); font-size: 11px; overflow: hidden; }
