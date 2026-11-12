@@ -393,8 +393,9 @@ export class TdDriver extends DriverBasis {
     this.#meld('gezond');
     const herbouwd = vorig !== null && id !== vorig;
     if (herbouwd) this.log('driver', this.manifest.app, `${this.comp} is herbouwd: de hub speelt alles opnieuw af`);
-    if (herbouwd || was === false || this.gemist) {
-      // Terug na een storing of een rebuild: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt.
+    if (herbouwd || was !== true || this.gemist) {
+      // De eerste gezonde check (pas dan staat de app er), terug na een storing of een rebuild: (opnieuw) aanmelden,
+      // zodat de kern (truth:"hub") alles opnieuw afspeelt.
       // Ook bij dezelfde id na een storing: TD kan intussen herstart zijn (de .toe opnieuw geopend). Een nieuwe inst
       // alleen na een rebuild; anders ziet de kern een hapering en stuurt hij de waarden zonder slew vanaf de standaard.
       this.gemist = false;
@@ -441,7 +442,7 @@ export class TdDriver extends DriverBasis {
     this.gestopt = false;
     this.ronde++;
     this.missers = 0;
-    this.koppel(kern);
+    this.koppel(kern, { aanmelden: false }); // aanmelden pas na de eerste gezonde check (controleer)
     this.#rondeCheck();
   }
 

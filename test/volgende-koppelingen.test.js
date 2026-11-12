@@ -173,7 +173,7 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
     { pad: 'src/transports/server.js', regel: 88, bevat: 'originToegestaan' },
     { pad: 'tools/genereer-manifesten.mjs', regel: 122, bevat: 'VERBODEN_CC = [0, 1, 7, 10, 11, 32, 64, 120, 121, 122, 123' },
     { pad: 'test/drivers.test.js', regel: 389, bevat: 'alle 22 parameters op eigen CC' },
-    { pad: 'test/drivers.test.js', regel: 753, bevat: 'actueel t.o.v. de bronnen' },
+    { pad: 'test/drivers.test.js', regel: 774, bevat: 'actueel t.o.v. de bronnen' },
     // golf 6: de td-lab-driver is gebouwd (src/drivers/td.js); §6.2/§6.5 zeggen dat nu ook
     { pad: 'PROTOCOL.md', regel: 20, bevat: 'driver** `td`' },
     { pad: 'PROTOCOL.md', regel: 21, bevat: '**bestaat niet.**' },

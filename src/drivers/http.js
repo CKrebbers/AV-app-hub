@@ -250,8 +250,9 @@ export class HttpDriver extends DriverBasis {
       this.leesFouten = 0;
       if (this.leesTimer !== null) { this.klok.wis(this.leesTimer); this.leesTimer = null; this.#planLees(); }
     }
-    if (was === false || this.gemist) {
-      // terug na een storing: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt
+    if (was !== true || this.gemist) {
+      // de eerste geslaagde check (pas dan staat de app er: niet 'actief' voor een brug die niet draait of geen tab
+      // heeft), of terug na een storing: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt
       this.gemist = false;
       this.aanmelden();
     }
@@ -401,7 +402,7 @@ export class HttpDriver extends DriverBasis {
   start(kern) {
     if (!this.gestopt) return; // loopt al: geen tweede timerketen
     this.gestopt = false;
-    this.koppel(kern);
+    this.koppel(kern, { aanmelden: false }); // aanmelden pas na de eerste geslaagde check (controleer)
     if (this.lezer) this.log('driver', this.manifest.app, `teruglezen aan: elke ${this.leesMs / 1000} s (config.json teruglezen.elke_s; 0 = uit)`);
     this.controleer();
     this.#plan();

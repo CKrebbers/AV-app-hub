@@ -1,8 +1,8 @@
 // @ts-check
 // Gedeelde basis voor drivers: een driver doet zich tegenover de kern voor als een app
 // (PROTOCOL.md §2, §9). Hij is zelf de Verbinding, meldt zich aan met hallo + manifest en
-// stuurt hartslagen zolang de app bereikbaar lijkt. Wat er naar de app moet, vertaalt de
-// concrete driver (midi.js, http.js).
+// stuurt hartslagen zolang de app bereikbaar lijkt (http en td: pas aanmelden na de eerste geslaagde check).
+// Wat er naar de app moet, vertaalt de concrete driver (midi.js, http.js).
 import { nieuweInst } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').Manifest} Manifest @typedef {import('../protocol/types.js').NaarApp} NaarApp */
@@ -63,11 +63,15 @@ export class DriverBasis {
     this.kern.ontvang(this.verbinding, { t: 'manifest', manifest: this.manifest });
   }
 
-  /** @param {KernVoorDriver} kern */
-  koppel(kern) {
+  /**
+   * @param {KernVoorDriver} kern
+   * @param {{ aanmelden?: boolean }} [o] aanmelden false: alleen verbinden; de driver meldt zich pas aan als de app echt
+   *   bereikbaar is (HTTP en TD: na de eerste geslaagde check). Tot dan staat de app niet in het beeld.
+   */
+  koppel(kern, { aanmelden = true } = {}) {
     this.kern = kern;
     kern.verbind(this.verbinding);
-    this.aanmelden();
+    if (aanmelden) this.aanmelden();
   }
 
   hartslag() { this.kern?.ontvang(this.verbinding, { t: 'hb' }); }

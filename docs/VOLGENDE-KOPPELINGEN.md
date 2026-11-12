@@ -517,7 +517,7 @@ dan zijn de Controller Assignments niet meer nodig. Nu niet: Sediment is nog noo
 gegenereerd** (`_bron`: `tools/genereer-manifesten.mjs` ← `Params.h`) en de generator verbiedt CC 123 bewust
 (`VERBODEN_CC`, `tools/genereer-manifesten.mjs:122`). Een paniek die je met de hand toevoegt, verdwijnt bij de volgende
 generatie en laat drie dingen falen: `node tools/genereer-manifesten.mjs --toets`, de test "actueel t.o.v. de bronnen"
-(`test/drivers.test.js:753-758`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:389-397`: precies
+(`test/drivers.test.js:774-779`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:389-397`: precies
 22 CC's, geen in `VERBODEN_CC`). Dus:
 - `sedimentManifest()` maakt de paniek-trigger zelf, buiten `SEDIMENT_CC`, als uitzondering naast `VERBODEN_CC` met
   de reden erbij: CC 123 is een kanaalmodus-bericht, hier alleen als bedoelde paniek, nooit als parameter.
@@ -547,7 +547,7 @@ houdt een geladen plug-in vast; bouwen alleen met Logic dicht.
 
 ### 5.6 Werk en risico's
 Paniek **S-M**: geen manifest-regel maar een generator-wijziging (`sedimentManifest()` + uitzondering op
-`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:389-397`, `:753-758`); idem voor av-scene-kit
+`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:389-397`, `:774-779`); idem voor av-scene-kit
 (`sceneKitManifest()`, §4.4). Logic-setup ±15 min (Clay). Risico's: Logic luistert standaard naar alle ingangen (staat in
 `docs/LOGIC.md`, stap 2); de doorvoer naar TD via TO_TD (§4.2 punt 3) staat er nog **niet** in.
 
@@ -867,7 +867,7 @@ een tak met een PR in dat repo en wachten op Clay. De tabel hieronder is de volg
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|
 | 1 | **varve-radio: lek dichten** (§2.3) | live voor iedereen, los van de hub, kleinste herstel, geen DDL | Claude bouwt + suite, Clay deployt en meet | varve-radio |
-| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:389-397`/`:753-758`; TD-tak in av-scene-kit | hub + av-scene-kit |
+| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:389-397`/`:774-779`; TD-tak in av-scene-kit | hub + av-scene-kit |
 | 3 | **uurwerk teruglezen** (§3.3), met tolerantie; lagen samenvoegen alleen als Clay het wil | de hub en de tab lopen nu uit elkaar; de lagenvloed raakt Clay's eigen geschiedenis (en vraagt uurwerk-code) | hub; uurwerk voor de lagen | `src/drivers/http.js`; `uurwerk/taal.js` |
 | 4 | **td-lab driver** (§6.3) + `PROTOCOL.md` §2 en `config.json` → `apps.td-lab` bijwerken | nul code in td-lab, een heel nieuw instrument erbij; wel eerst de 9981-vraag | hub | `src/drivers/td.js`, `PROTOCOL.md`, `config.json` |
 | 5 | **Varve Eye als app** op de Mac (§7.3 fase A) | stdlib-client bestaat al (flux); geen netwerkvragen | Claude in anbernic-cam, Clay proeft | anbernic-cam |
