@@ -226,7 +226,7 @@ Klaar als (op de pc, door Clay):
 - [ ] `node src/cli.js proef kp3plus`: wat de proef zegt in `config.json` → `apparaten.kp3plus.cc` (en `kanaal`); push het logboek
 - [ ] `node src/cli.js proef efx500`: tempo klopt met het display (±0,5), push het logboek
 - [ ] `npm start`, een app met `xy` (of de alfabet-rollen) in focus: het XY-vlak beweegt twee parameters en veert terug;
-  muziek op de EFX: de cockpit toont het tempo onder Globaal, muziek weg: na 2 s het tap-tempo
+  muziek op de EFX: de cockpit toont het tempo onder Globaal, muziek weg: na 2 s blijft het laatste tempo staan (of het tempo dat je tijdens de muziek tapte)
 - [ ] udev-regel voor de Maschine (eigen script in `~/Documents/systeem/scripts/`, zelf met sudo): `doctor` → `✔ invoer komt binnen`
 
 Te meten (staat nu als gok in `config.json`, nooit in een golden test): de CC's van X, Y en aanraken (12/13/92 uit

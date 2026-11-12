@@ -520,12 +520,15 @@ interface-ingang). De EFX telt 40–250 BPM uit de audio-ingang of met TAP en st
   echte hangen). Zo springt `bpm` niet heen en weer tussen 119,9 en 120,1.
 - Een gat van meer dan `weg_ms` (2 s) tussen twee tikken: opnieuw meten.
 
-**De klok valt weg** (meer dan `weg_ms` geen tik, of de interface is losgetrokken): als er ooit getapt is, wordt tap de
-bron (met het laatste tap-tempo); anders blijft het laatste EFX-tempo staan (bron `"laatste"`), want een sprong naar
-120 midden in een nummer is erger. Komt de klok terug, dan is de EFX pas weer de bron na een nieuwe meting van een hele
+**De klok valt weg** (meer dan `weg_ms` geen tik, of de interface is losgetrokken): als er getapt is terwijl de EFX
+tikte, wordt tap de bron (met dat tap-tempo); anders blijft het laatste EFX-tempo staan (bron `"laatste"`), want een
+sprong naar 120 midden in een nummer is erger. Een tap van vóór de EFX de bron werd, telt dan niet meer (die wordt
+gewist zodra de EFX de bron wordt): een tap van een uur geleden is net zo'n sprong. Liep de klok (`klok.loopt` 1),
+dan gaat `klok.loopt` naar 0. Komt de klok terug, dan is de EFX pas weer de bron na een nieuwe meting van een hele
 tel (niet met zijn oude tempo).
 
-**Tap terwijl de EFX tikt:** de EFX wint; het tap-tempo wordt onthouden voor als de klok wegvalt.
+**Tap terwijl de EFX tikt:** de EFX wint; het tap-tempo wordt onthouden voor als de klok wegvalt (je kunt dus tijdens
+de muziek alvast een reservetempo tappen).
 
 **Start/Stop** (FA/FB/FC, als de EFX ze stuurt: te meten): `globaal["klok.loopt"]` 1 (start, verder) of 0 (stop),
 alleen bij verandering. Knoppen die MIDI sturen: alleen in het logboek (te meten, `node src/cli.js proef efx500`).
@@ -563,7 +566,9 @@ parameter-alfabet, §19). Heeft de app er geen van, dan doet die as niets.
   verder. (Zonder dit bleef het vlak bij een verkeerd CC-nummer de hele avond bij één app.)
 - Bewegen zet alleen de as die bewoog: `zet` met `bron: "kp3plus"`, direct (geen `slew_s`: het is een hand, zoals een
   APC-fader); pickup en LEDs van de APC gaan mee.
-- **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. **Hold**
+- **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. Zette iets anders
+  (cockpit, snapshot, APC, LPD8, Maschine) die parameter tijdens het aanraken, dan veert hij terug naar díe waarde.
+  Wat de app zelf meldt telt daarvoor niet (dat kan een echo van het gebaar zijn). **Hold**
   (`apparaten.kp3plus.hold: true`, of de Hold-knop van de KP3+ als die een CC heeft): blijven staan.
 - Wisselt de focus tijdens het aanraken, dan blijft het gebaar (en het terugveren) bij de app waar het begon, zoals een
   ingedrukte toets (§11). Valt de KP3+ weg tijdens het aanraken: terugveren.

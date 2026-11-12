@@ -156,8 +156,8 @@ describe('docs/VOLGENDE-KOPPELINGEN.md', () => {
   // De dragende hub-verwijzingen op inhoud: draait ook in CI.
   /** @type {{ pad: string, regel: number, bevat: string }[]} */
   const hubClaims = [
-    { pad: 'src/core/kern.js', regel: 935, bevat: '#paniek(' },
-    { pad: 'src/core/kern.js', regel: 844, bevat: "'stopall'" },
+    { pad: 'src/core/kern.js', regel: 941, bevat: '#paniek(' },
+    { pad: 'src/core/kern.js', regel: 850, bevat: "'stopall'" },
     { pad: 'src/drivers/midi.js', regel: 156, bevat: '#uit(a)' },
     { pad: 'src/drivers/midi.js', regel: 206, bevat: '#meldPreset' },
     { pad: 'src/drivers/midi.js', regel: 230, bevat: 'globaal' },

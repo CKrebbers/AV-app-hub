@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import * as KP3 from '../src/devices/kp3plus.js';
 import * as EFX from '../src/devices/efx500.js';
 import { valideerManifest } from '../src/protocol/manifest.js';
-import { CONFIG, MS, opzet, meldAan, van, leeg, lpdDruk } from './kern-hulp.js';
+import { CONFIG, MS, opzet, meldAan, van, leeg, lpdDruk, stuurApp } from './kern-hulp.js';
 
 /** Een app met twee waarden die het XY-vlak via `xy` (op id) aanstuurt, en een trigger voor programmageheugen 3. */
 const VORM = {
@@ -44,6 +44,25 @@ describe('KP3+: het gebaar op de app met focus (§21)', () => {
     k.los();
     expect(zets(v)).toEqual([['vorm', 0.25, 'kp3plus'], ['galm', 0.5, 'kp3plus']]);
     expect(kern.beeld().apps[0].waarden).toMatchObject({ vorm: 0.25, galm: 0.5 });
+  });
+
+  it('verandert de cockpit (of de APC, een snapshot) een vastgehouden parameter, dan veert hij terug naar díe waarde', () => {
+    // Review #24: tijdens het aanraken zette de cockpit vorm = 0,8; bij loslaten kreeg de app weer 0,25.
+    const { kern } = opzet();
+    const v = meldAan(kern, VORM, { staat: { vorm: 0.25, galm: 0.5 } });
+    kern.focus('formula-lab');
+    const k = kp3(kern);
+    k.raak(); k.x(127); k.y(0);
+    kern.cockpit({ t: 'zet', app: 'formula-lab', id: 'vorm', v: 0.8 });
+    leeg(v);
+    k.los();
+    expect(zets(v)).toEqual([['vorm', 0.8, 'kp3plus'], ['galm', 0.5, 'kp3plus']]);
+    // wat de app zelf meldt (kan een echo van het gebaar zijn) verplaatst het terugveren niet
+    k.raak(); k.x(0);
+    stuurApp(kern, v, { t: 'zet', id: 'vorm', v: 0 });
+    leeg(v);
+    k.los();
+    expect(zets(v)).toEqual([['vorm', 0.8, 'kp3plus']]);
   });
 
   it('een tweede aanraking zet niets tot X of Y beweegt (geen sprong naar waar de vorige eindigde)', () => {
@@ -294,18 +313,36 @@ describe('klokbronnen: EFX-500 > tap > config (§20)', () => {
     expect(kern.globaal.bpm).toBe(120);
   });
 
-  it('de EFX losgetrokken: meteen terug; komt hij terug, dan pas na een nieuwe meting (een hele tel) weer de bron', () => {
+  it('de EFX losgetrokken: het laatste EFX-tempo blijft (een tap van vóór de EFX telt niet); komt hij terug, dan pas na een nieuwe meting (een hele tel) weer de bron', () => {
+    // Review #24: tap 100, een uur EFX op 128, klok weg → sprong naar 100. Een oude tap is net zo'n sprong als 120.
     const { kern, klok } = opzet();
     for (let i = 0; i < 3; i++) { lpdDruk(kern, 2); klok.loop(600); }
     expect(kern.globaal.bpm).toBe(100);
     efxTikken(kern, klok, 128, 30);
     expect(kern.globaal.bpm).toBe(128);
+    expect(kern.beeld().tempo.tap).toBe(null);
     kern.apparaatWeg('efx500');
-    expect(kern.globaal.bpm).toBe(100);
+    expect(kern.globaal.bpm).toBe(128);
+    expect(kern.beeld().tempo.bron).toBe('laatste');
     efxTikken(kern, klok, 140, 10);
-    expect(kern.globaal.bpm).toBe(100);
+    expect(kern.globaal.bpm).toBe(128);
     efxTikken(kern, klok, 140, 20);
     expect(kern.globaal.bpm).toBe(140);
+  });
+
+  it('valt de klok weg na een Start (stil zonder Stop, of losgetrokken), dan klok.loopt 0', () => {
+    for (const weg of ['stil', 'los']) {
+      const { kern, klok } = opzet();
+      const v = meldAan(kern, MS);
+      kern.invoer(EFX.ontleed([0xfa]), [0xfa]);
+      efxTikken(kern, klok, 120, 30);
+      expect(kern.globaal['klok.loopt'], weg).toBe(1);
+      leeg(v);
+      if (weg === 'stil') klok.loop(3000); else kern.apparaatWeg('efx500');
+      expect(kern.globaal['klok.loopt'], weg).toBe(0);
+      expect(kern.beeld().tempo.efx.loopt, weg).toBe(false);
+      expect(van(v, 'globaal').filter((b) => 'klok.loopt' in b.waarden).map((b) => b.waarden['klok.loopt']), weg).toEqual([0]);
+    }
   });
 
   it('start en stop van de EFX (als hij ze stuurt): globaal klok.loopt 1/0, alleen bij verandering', () => {

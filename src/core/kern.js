@@ -191,7 +191,7 @@ export class Kern extends Zender {
     const efxInst = EFX.instellingen(this.config);
     /**
      * Klokbronnen (§20): wie zet globaal.bpm nu. 'efx500' (MIDI-klok, wint), 'tap' (LPD8 P2), 'config' (tempo.bpm),
-     * of 'laatste' (de EFX viel weg zonder dat er ooit getapt werd: zijn laatste tempo blijft staan).
+     * of 'laatste' (de EFX viel weg zonder dat er tijdens zijn klok getapt werd: zijn laatste tempo blijft staan).
      * @type {{ bron: 'efx500'|'tap'|'config'|'laatste', tap: number|null, efx: KlokMeter, wegMs: number, timer: any, loopt: boolean|null }}
      */
     this.tempo = { bron: 'config', tap: null, efx: new KlokMeter({ venster: efxInst.venster, stabiel: efxInst.stabiel, wegMs: efxInst.wegMs }), wegMs: efxInst.wegMs, timer: null, loopt: null };
@@ -601,6 +601,7 @@ export class Kern extends Zender {
     if (!slew) this.slews.delete(`${a.app}\u0000${id}`);
     const was = a.waarden[id];
     a.waarden[id] = w;
+    this.#kp3Voor(a, id, this.#doel(a, id) ?? w, bron);
     // §14: een keuze of schakelaar die al op deze stand staat, krijgt geen zet nog eens (LEDs en pickup gaan wel mee).
     // Replay altijd: na een herstart weet de app het nog niet.
     const zelfde = (p?.soort === 'keuze' || p?.soort === 'schakelaar') && w === was && bron !== 'replay';
@@ -670,6 +671,7 @@ export class Kern extends Zender {
    */
   #zetZacht(a, id, v, bron) {
     const p = this.#param(a, id);
+    if (p) this.#kp3Voor(a, id, kwantiseer(p, v), bron);
     if (p && this.#slewt(p) && kwantiseer(p, v) !== a.waarden[id]) this.#startSlew(a, id, kwantiseer(p, v), /** @type {number} */ (p.slew_s), bron);
     else this.#zetWaarde(a, id, v, { naarApp: true, bron });
   }
@@ -971,6 +973,9 @@ export class Kern extends Zender {
     if (bpm === null) return;
     const werdBron = t.bron !== 'efx500';
     t.bron = 'efx500';
+    // §20: een tap van vóór de EFX telt niet meer als hij wegvalt (een tap van een uur geleden is net zo'n sprong als
+    // 120); een tap terwijl de EFX tikt wel.
+    if (werdBron) t.tap = null;
     if (this.globaal.bpm !== bpm) this.#globaal({ bpm });
     else if (werdBron) this.#beeldGewijzigd();
   }
@@ -989,6 +994,8 @@ export class Kern extends Zender {
     const t = this.tempo;
     if (t.timer !== null) { this.klok.wis(t.timer); t.timer = null; }
     t.efx.wis();
+    // Geen klok meer (stil zonder Stop, of losgetrokken): dan loopt hij ook niet meer (§20).
+    if (t.loopt === true) { t.loopt = false; this.#globaal({ 'klok.loopt': 0 }); }
     if (t.bron !== 'efx500') return;
     if (t.tap !== null) {
       t.bron = 'tap';
@@ -1073,6 +1080,18 @@ export class Kern extends Zender {
       d.laatst = v;
       this.#zetWaarde(a, d.id, v, { naarApp: true, bron: KP3.DEV });
     }
+  }
+
+  /**
+   * Zet iets anders dan de KP3+ zelf (cockpit, snapshot, APC, LPD8, Maschine) een parameter die het gebaar nu vasthoudt,
+   * dan veert hij bij loslaten terug naar díe waarde, niet naar die van vóór het aanraken (§21). Niet voor wat de app
+   * zelf meldt ('app': dat kan een echo van het gebaar zijn) en niet voor een replay.
+   * @param {AppStaat} a @param {string} id @param {number} v @param {string|undefined} bron
+   */
+  #kp3Voor(a, id, v, bron) {
+    const k = this.kp3?.vast;
+    if (!k || k.app !== a.app || bron === KP3.DEV || bron === 'app' || bron === 'replay') return;
+    for (const d of [k.x, k.y]) if (d && d.id === id) d.voor = v;
   }
 
   /** Losgelaten (of de KP3+ viel weg): terug naar de waarden van vóór het aanraken, tenzij hold (config of de Hold-knop). */
