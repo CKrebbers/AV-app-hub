@@ -13,8 +13,10 @@ const draai = (midi, c = config) => doctor({ config: c, laadMidi: async () => ({
 describe('doctor: KP3+ en EFX-500', () => {
   it('niets aangesloten: allebei niet gevonden, met wat te doen; geen fout', async () => {
     const { tekst, data } = await draai(new NepSysteem(), basis);
-    expect(tekst).toMatch(/✗ kp3plus \(KP3\+\): niet gevonden — geen MIDI-ingang past op "kp3\|kaoss".*apparaten\.kp3plus\.poort_patroon/);
-    expect(tekst).toMatch(/✗ efx500 \(EFX-500\): niet gevonden/);
+    // Geen ✗: niet aangesloten is gewoon (zoals check: "zonder speel je gewoon"); de uitleg komt daarna.
+    expect(tekst).not.toMatch(/✗ (kp3plus|efx500)/);
+    expect(tekst).toMatch(/○ kp3plus \(KP3\+\): niet aangesloten — zonder speel je gewoon\. Gebruik je hem wel: .*apparaten\.kp3plus\.poort_patroon \(nu "kp3\|kaoss"\)/);
+    expect(tekst).toMatch(/○ efx500 \(EFX-500\): niet aangesloten — zonder speel je gewoon \(tempo via tap\)/);
     expect(tekst).toMatch(/X CC 12 · Y CC 13 · aanraken CC 92 · kanaal elk · XY → alfabet\.vervorming \/ alfabet\.ruimte/);
     expect(data.kp3plus).toMatchObject({ naam: null, patroon: 'kp3|kaoss' });
     expect(data.efx500).toEqual({ naam: null, patroon: 'efx|pioneer' });

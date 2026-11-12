@@ -459,7 +459,7 @@ aanraken = CC 92) komt uit bronnen, niet van jouw KP3+; deze proeven meten het. 
 
 - [ ] De interface via USB in de pc; de **MIDI OUT** van de KP3+ en van de EFX-500 met een DIN-kabel naar een **MIDI IN**
   van de interface.
-- [ ] `node src/cli.js doctor`: onder "KP3+ en EFX-500" staat of de hub ze vindt. Staat er "niet gevonden", kijk dan bij
+- [ ] `node src/cli.js doctor`: onder "KP3+ en EFX-500" staat of de hub ze vindt. Staat er "○ … niet aangesloten" terwijl hij er wel is, kijk dan bij
   "ingangen" hoe de interface heet en zet een stukje van die naam in `config.json` → `apparaten.kp3plus.poort_patroon`
   en `apparaten.efx500.poort_patroon` (bv. `"MIDI 1"` en `"MIDI 2"`, of de naam van de interface als hij er per poort
   maar één heeft). Van de EFX telt doctor ook even de klok: zet er muziek op.

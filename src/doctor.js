@@ -159,7 +159,9 @@ async function kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok }) {
     if (!systeem) { data[dev] = { naam: null }; r.push(`  ✗ ${dev}: geen MIDI (zie boven)`); continue; }
     const naam = zoekIngang({ ingangen }, patroon);
     data[dev] = { naam, patroon: cfg.poort_patroon };
-    r.push(`  ${ok(!!naam)} ${dev} (${label}): ${naam ?? `niet gevonden — geen MIDI-ingang past op "${cfg.poort_patroon}". Hij hangt aan een USB-MIDI-interface: zet een stukje van de naam van die ingang (zie de ingangen hierboven) in config.json → apparaten.${dev}.poort_patroon`}`);
+    // Niet gevonden is geen fout: zonder KP3+ of EFX-500 speel je gewoon (tempo via tap), net als in check.
+    r.push(naam ? `  ${ok(true)} ${dev} (${label}): ${naam}`
+      : `  ○ ${dev} (${label}): niet aangesloten — zonder speel je gewoon${dev === 'efx500' ? ' (tempo via tap)' : ''}. Gebruik je hem wel: hij hangt aan een USB-MIDI-interface, dus zet een stukje van de naam van die ingang (zie de ingangen hierboven) in config.json → apparaten.${dev}.poort_patroon (nu "${cfg.poort_patroon}")`);
     if (dev === 'kp3plus') {
       const i = KP3.instellingen(config);
       const cc = (/** @type {number|null} */ n) => (n === null ? '–' : `CC ${n}`);
