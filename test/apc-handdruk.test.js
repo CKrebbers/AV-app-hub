@@ -47,7 +47,7 @@ describe('APC-handdruk', () => {
     // na de tweede intro is het hele beeld opnieuw getekend (de modus-wissel kan de LEDs gewist hebben)
     const naTweede = apc.verstuurd.slice(apc.verstuurd.findIndex((b) => isIntro(b) && b[2] === 0) + 1);
     expect(naTweede.filter((b) => (b[0] & 0xf0) === 0x90 || (b[0] & 0xf0) === 0x80).length).toBeGreaterThanOrEqual(100);
-    expect(handdruk).toEqual([{ ok: true, identiteit: true, apparaatId: 0, introAntwoord: true }]);
+    expect(handdruk).toEqual([{ ok: true, identiteit: true, apparaatId: 0, introAntwoord: true, trackSelect: false }]);
     klok.loop(HANDDRUK_MS * 2);
     expect(handdruk).toHaveLength(1);                   // geen valse melding achteraf
     expect(app.apc.handdruk.introAntwoord).toBe(true);
@@ -66,14 +66,41 @@ describe('APC-handdruk', () => {
     klok.loop(HANDDRUK_MS - 10);
     expect(handdruk).toEqual([]);
     klok.loop(HANDDRUK_MS * 3);
-    expect(handdruk).toEqual([{ ok: false, identiteit: false, apparaatId: null, introAntwoord: false }]);
+    expect(handdruk).toEqual([{ ok: false, identiteit: false, apparaatId: null, introAntwoord: false, trackSelect: false }]);
+  });
+
+  it('geen antwoord op de intro, maar Track Select komt binnen: de modus staat wel goed (alsnog ok, geen vals alarm)', () => {
+    // Het intro-antwoord (0x61) staat alleen in Akai's protocol; Live en Bitwig lezen het niet. In de fabrieksmodus
+    // (0x40) stuurt Track Select niets (protocol v1.2 p.10), in 0x41/0x42 noot 51: dat is het bewijs.
+    const { klok, apc, app, handdruk } = opzet({ stil: true });
+    klok.loop(HANDDRUK_MS + 10);
+    expect(handdruk.map((h) => h.ok)).toEqual([false]);
+    expect(app.apc.handdruk.stand).toBe('geen-antwoord');
+    apc.injecteer([0x90, 36, 127]);                     // een clip-pad: geen bewijs (stuurt in elke modus)
+    klok.loop(10);
+    expect(handdruk).toHaveLength(1);
+    apc.injecteer([0x92, 51, 127]);                     // Track Select 3
+    klok.loop(10);
+    expect(handdruk.at(-1)).toEqual({ ok: true, identiteit: false, apparaatId: null, introAntwoord: false, trackSelect: true });
+    expect(app.apc.handdruk.stand).toBe('ok');
+    apc.injecteer([0x90, 51, 127]);
+    klok.loop(HANDDRUK_MS * 2);
+    expect(handdruk).toHaveLength(2);                   // één keer is genoeg
+  });
+
+  it('Track Select (of Master) vóór de time-out: meteen ok, en daarna geen melding "geen antwoord"', () => {
+    const { klok, apc, handdruk } = opzet({ stil: true });
+    klok.loop(100);
+    apc.injecteer([0x90, 80, 127]);                     // Master
+    klok.loop(HANDDRUK_MS * 2);
+    expect(handdruk.map((h) => [h.ok, h.trackSelect])).toEqual([[true, true]]);
   });
 
   it('een identiteit maar geen antwoord op de intro: de melding zegt dat de identiteit er wel was', () => {
     const { klok, apc, handdruk } = opzet({ omni: false, id: 5 });
     apc.antwoord = (b) => { if (b[1] === 0x7e && b[2] === 0x00) apc.injecteer(identiteit(5)); };
     klok.loop(HANDDRUK_MS + 100);
-    expect(handdruk).toEqual([{ ok: false, identiteit: true, apparaatId: 5, introAntwoord: false }]);
+    expect(handdruk).toEqual([{ ok: false, identiteit: true, apparaatId: 5, introAntwoord: false, trackSelect: false }]);
     expect(apc.verstuurd.filter(isIntro).map((b) => b[2])).toEqual([0x7f, 5]);
   });
 
@@ -99,5 +126,30 @@ describe('APC-handdruk', () => {
     expect(A.apparaatIdUit([0xf0, 0x7e, 0x00, 0x06, 0x02, 0x47, 0x29, 0x00, 0x19, 0, 1, 0, 0xf7])).toBe(null);
     expect(A.apparaatIdUit([0xf0, 0x7e, 0x00, 0x06, 0x02, 0x47, 0x4c, 0, 0x19, 0, 0, 0, 0, 0, 0, 0xf7])).toBe(null);   // LPD8
     expect(A.ontleed(identiteit(3))).toMatchObject({ kind: 'identiteit', apparaatId: 3 });
+  });
+});
+
+describe('APC-handdruk in het beeld (cockpit, check)', () => {
+  it('bezig → geen-antwoord (met wat te doen) → ok zodra Track Select binnenkomt', async () => {
+    const { startHub, APC_HANDDRUK_HINT } = await import('../src/hub.js');
+    const { laadConfig } = await import('../src/config.js');
+    const systeem = new NepSysteem();
+    const apc = systeem.voegToe('APC40 mkII');                // antwoordt nergens op
+    const log = [];
+    const hub = await startHub({ config: { ...laadConfig(), hotplug_ms: 20 }, systeem, poort: 0, drivers: false, opname: false, log: (t) => log.push(String(t)) });
+    try {
+      const wacht = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
+      const apc40 = () => hub.kern.beeld().apparaten.apc40;
+      for (let i = 0; i < 100 && !apc40()?.verbonden; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ verbonden: true, handdruk: 'bezig', hint: null });
+      for (let i = 0; i < 300 && apc40()?.handdruk !== 'geen-antwoord'; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ handdruk: 'geen-antwoord', hint: APC_HANDDRUK_HINT });
+      expect(APC_HANDDRUK_HINT).toMatch(/druk op Track Select 1/);
+      expect(log.filter((t) => /^APC: geen bevestiging/.test(t))).toHaveLength(1);
+      apc.injecteer([0x90, 51, 127]);
+      for (let i = 0; i < 100 && apc40()?.handdruk !== 'ok'; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ handdruk: 'ok', hint: null });
+      expect(log.at(-1)).toMatch(/APC: modus gezet \(Track Select komt binnen\)/);
+    } finally { await hub.stop(); }
   });
 });

@@ -7,7 +7,8 @@
 //   draaiknop 1–8   het parameter-alfabet (plek N), relatief; SHIFT ingedrukt = fijn. Geen pickup (relatief springt
 //                   nooit) en geen slew: een hand op een knop is direct, zoals een APC-knop (§12)
 //   schermen        per knop het woord van de plek, de naam en waarde van de parameter, een balk
-//   groep A–H       focus op app-slot 1–8 (zoals Bank + Track Select)
+//   groep A–H       focus op app-slot 1–8 (zoals Bank + Track Select); ook als de app met focus geen grammatica
+//                   heeft en niemand op de Maschine speelt ("kiezer": alleen de groep-lampjes, zo kom je altijd terug)
 //   pad 1–8         de momenten (moment.flits … moment.halvetijd): trig met velocity als `v`, aftertouch naar `druk`
 //   pad 9–16        vrij per app: maps/<app>.json → "maschine-mk2:pad9" … "maschine-mk2:pad16": { id }
 //
@@ -80,11 +81,13 @@ export class MaschineBediening {
    *   bediend: () => Bediend|null, actief: () => boolean, slots: () => SlotInfo[],
    *   zet: (app: string, id: string, v: number) => void,
    *   trig: (app: string, id: string, aan: boolean, kracht?: number) => void,
-   *   focusSlot: (nr: number) => void,
+   *   focusSlot: (nr: number) => void, focusNaam?: () => string|null,
    *   oppervlak?: SpeelOppervlak, instellingen?: Partial<Instellingen>,
    * }} o
    *   bediend: de app die de Maschine nu bedient (null = de Maschine speelt voor een lease-app of niemand, §17);
-   *   actief: de spelers hebben de Maschine vrijgegeven voor de grammatica (src/core/spelers.js `bezet`)
+   *   actief: de spelers hebben de Maschine vrijgegeven voor de grammatica (src/core/spelers.js `bezet`): er
+   *   speelt niemand op. Met bediend null is de Maschine dan alleen "kiezer": groep A–H kiest de focus.
+   *   focusNaam: de naam van de app met focus (voor het scherm van de kiezer)
    */
   constructor(o) {
     this.o = o;
@@ -124,7 +127,16 @@ export class MaschineBediening {
       return true;
     }
     const b = this.#bezig() ? this.o.bediend() : null;
-    if (!b) return false;
+    if (!b) {
+      // Kiezer: de app met focus volgt geen grammatica en niemand speelt erop. Groep A–H kiest dan toch de focus,
+      // anders is er vanaf de Maschine geen weg terug (de rest doet niets; dat gaat naar de spelers, die niemand hebben).
+      const gr = g.kind === 'druk' && this.#kiezer() ? /^groep([A-H])$/.exec(el) : null;
+      if (!gr) return false;
+      this.vast.set(el, { app: '', id: null, soort: null, druk: null });
+      this.o.focusSlot(gr[1].charCodeAt(0) - 64);
+      this.teken();
+      return true;
+    }
     if (g.kind === 'druk') { this.#druk(b, el, g.v ?? 1); return true; }
     if (g.kind === 'delta') {
       const n = /^enc([1-8])$/.exec(el);
@@ -135,6 +147,7 @@ export class MaschineBediening {
   }
 
   #bezig() { return this.o.actief() && this.o.bediend() !== null; }
+  #kiezer() { return this.o.actief() && this.o.bediend() === null; }
 
   /** @param {Bediend} b @param {string} el @param {number} kracht velocity 0..1 */
   #druk(b, el, kracht) {
@@ -175,8 +188,10 @@ export class MaschineBediening {
     // Keuze of schakelaar: tellen opsparen tot een hele stap, zodat een kleine draai niets verspringt.
     const k = `${b.app}\u0000${p.id}`;
     const n2 = p.soort === 'keuze' ? p.keuzes?.length ?? 2 : 2;
-    let rest = (this.rest.get(k) ?? 0) + delta;
-    const stap = this.inst.tellen_stap * deler;
+    // De rest in grove tellen (delta / deler): wisselt SHIFT halverwege, dan telt wat je fijn draaide niet ineens
+    // tien keer zo zwaar (anders sprong een keuze na 600 fijne tellen en SHIFT los bij één tel van optie 1 naar 3).
+    let rest = (this.rest.get(k) ?? 0) + delta / deler;
+    const stap = this.inst.tellen_stap;
     let i = waardeNaarKeuze(huidig, n2);
     while (Math.abs(rest) >= stap) { i += Math.sign(rest); rest -= Math.sign(rest) * stap; }
     i = Math.max(0, Math.min(n2 - 1, i));
@@ -226,6 +241,7 @@ export class MaschineBediening {
    */
   teken() {
     const opp = this.o.oppervlak;
+    if (opp && this.#kiezer()) { this.#tekenKiezer(opp); return; }
     const bl = opp ? this.beeld() : null;
     const b = bl ? this.o.bediend() : null;
     if (!opp || !bl || !b) return;
@@ -234,15 +250,31 @@ export class MaschineBediening {
       const v = !p.id ? 0 : p.in || p.aan ? b.kleur : b.dim;
       opp.led([0x90, MK2.padNoot(i + 1), v]);
     });
-    // Groep A–H: de app-slots (focus vol, verbonden gedimd, leeg uit).
+    this.#tekenGroepen(opp);
+    opp.led([0x90 | MK2.KNOP_KANAAL, /** @type {number} */ (MK2.KNOP_NR.get('shift')), this.shift ? 127 : 0]);
+    const [l, r] = MK2.grammaticaSchermen({ app: bl.naam, knoppen: bl.knoppen, onder: this.shift ? 'FIJN' : 'SHIFT = FIJN' });
+    opp.scherm(0, l);
+    opp.scherm(1, r);
+  }
+
+  /** De kiezer: pads en shift uit, groep A–H de app-slots, op het scherm de focus-app en hoe je wisselt. @param {SpeelOppervlak} opp */
+  #tekenKiezer(opp) {
+    for (let i = 1; i <= 16; i++) opp.led([0x90, MK2.padNoot(i), 0]);
+    this.#tekenGroepen(opp);
+    opp.led([0x90 | MK2.KNOP_KANAAL, /** @type {number} */ (MK2.KNOP_NR.get('shift')), 0]);
+    const naam = this.o.focusNaam?.() ?? null;
+    const knoppen = ALFABET.map((r) => ({ woord: rolWoord(r), naam: null, tekst: null, v: null }));
+    const [l, r] = MK2.grammaticaSchermen({ app: naam ? `${naam}: niets op de Maschine` : 'geen app gekozen', knoppen, onder: 'GROEP A-H = ANDERE APP' });
+    opp.scherm(0, l);
+    opp.scherm(1, r);
+  }
+
+  /** Groep A–H: de app-slots (focus vol, verbonden gedimd, leeg uit). @param {SpeelOppervlak} opp */
+  #tekenGroepen(opp) {
     const slots = this.o.slots();
     for (let i = 0; i < 8; i++) {
       const s = slots[i];
       opp.led([0x90 | MK2.KNOP_KANAAL, /** @type {number} */ (MK2.KNOP_NR.get(`groep${String.fromCharCode(65 + i)}`)), !s ? 0 : s.focus ? s.kleur : s.dim]);
     }
-    opp.led([0x90 | MK2.KNOP_KANAAL, /** @type {number} */ (MK2.KNOP_NR.get('shift')), this.shift ? 127 : 0]);
-    const [l, r] = MK2.grammaticaSchermen({ app: bl.naam, knoppen: bl.knoppen, onder: this.shift ? 'FIJN' : 'SHIFT = FIJN' });
-    opp.scherm(0, l);
-    opp.scherm(1, r);
   }
 }

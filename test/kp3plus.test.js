@@ -14,11 +14,12 @@ describe('kp3plus: herkennen en instellingen', () => {
     expect(K.patroon({ apparaten: { kp3plus: { poort_patroon: 'UM-ONE(' } } })?.test('UM-ONE(x')).toBe(true);
   });
   it('standaard: X CC 12, Y CC 13, aanraken CC 92, elk kanaal, XY = vervorming/ruimte, geen hold', () => {
-    expect(inst).toEqual({ kanaal: null, cc: { x: 12, y: 13, aanraak: 92, diepte: null, hold: null }, xy: { x: 'alfabet.vervorming', y: 'alfabet.ruimte' }, hold: false });
+    expect(inst).toEqual({ kanaal: null, cc: { x: 12, y: 13, aanraak: 92, diepte: null, hold: null }, xy: { x: 'alfabet.vervorming', y: 'alfabet.ruimte' }, hold: false, losMs: 400 });
   });
   it('alles is te overschrijven; kanaal 1..16 zoals op het display; een CC null = niet toegewezen', () => {
-    const i = K.instellingen({ apparaten: { kp3plus: { kanaal: 11, cc: { x: 70, y: 71, aanraak: null, diepte: 94, hold: 95 }, xy: { x: 'zoom', y: 'macro.ruimte' }, hold: true } } });
-    expect(i).toEqual({ kanaal: 10, cc: { x: 70, y: 71, aanraak: null, diepte: 94, hold: 95 }, xy: { x: 'zoom', y: 'macro.ruimte' }, hold: true });
+    const i = K.instellingen({ apparaten: { kp3plus: { kanaal: 11, cc: { x: 70, y: 71, aanraak: null, diepte: 94, hold: 95 }, xy: { x: 'zoom', y: 'macro.ruimte' }, hold: true, los_ms: 300 } } });
+    expect(i).toEqual({ kanaal: 10, cc: { x: 70, y: 71, aanraak: null, diepte: 94, hold: 95 }, xy: { x: 'zoom', y: 'macro.ruimte' }, hold: true, losMs: 300 });
+    expect(K.instellingen({ apparaten: { kp3plus: { los_ms: 'lang' } } }).losMs).toBe(400);
     expect(K.instellingen({ apparaten: { kp3plus: { kanaal: 0, cc: { x: 300 }, xy: { x: 'Foute Naam' } } } })).toMatchObject({ kanaal: null, cc: { x: 12 }, xy: { x: 'alfabet.vervorming' } });
   });
 });
@@ -53,16 +54,34 @@ describe('kp3plus: ontleden', () => {
 describe('kp3plus: het gebaar {x, y, aan}', () => {
   const o = K.maakOntleder(inst);
   /** @param {number[][]} reeks */
-  const speel = (reeks) => {
-    let staat = K.nieuwGebaar();
+  const speel = (/** @type {(number[]|number)[]} */ reeks) => {
+    let staat = K.nieuwGebaar(), nu = 0;
     const uit = [];
-    for (const b of reeks) { const r = K.gebaarStap(staat, o(b)); staat = r.staat; if (r.gebaar) uit.push(r.gebaar); }
+    // Een getal in de reeks = zoveel ms wachten.
+    for (const b of reeks) {
+      if (typeof b === 'number') { nu += b; continue; }
+      const r = K.gebaarStap(staat, o(b), nu); staat = r.staat; if (r.gebaar) uit.push(r.gebaar);
+    }
     return uit;
   };
   it('aanraken, bewegen, loslaten', () => {
     expect(speel([[0xb0, 92, 127], [0xb0, 12, 127], [0xb0, 13, 0], [0xb0, 92, 0]])).toEqual([
-      { x: null, y: null, aan: true }, { x: 1, y: null, aan: true }, { x: 1, y: 0, aan: true }, { x: 1, y: 0, aan: false },
+      { x: null, y: null, aan: true }, { x: 1, y: null, aan: true }, { x: 1, y: 0, aan: true }, { x: null, y: null, aan: false },
     ]);
+  });
+  it('een tweede aanraking begint zonder de X en Y van de vorige (anders sprongen beide parameters eerst daarheen)', () => {
+    expect(speel([[0xb0, 92, 127], [0xb0, 12, 127], [0xb0, 13, 127], [0xb0, 92, 0], 500, [0xb0, 92, 127], [0xb0, 12, 10]])).toEqual([
+      { x: null, y: null, aan: true }, { x: 1, y: null, aan: true }, { x: 1, y: 1, aan: true }, { x: null, y: null, aan: false },
+      { x: null, y: null, aan: true }, { x: 10 / 127, y: null, aan: true },
+    ]);
+  });
+  it('kwam de aanraak-CC al eens: X of Y na het loslaten (napijlen) begint geen nieuw gebaar', () => {
+    expect(speel([[0xb0, 92, 127], [0xb0, 12, 100], [0xb0, 92, 0], [0xb0, 12, 101], 500, [0xb0, 92, 127]])).toEqual([
+      { x: null, y: null, aan: true }, { x: 100 / 127, y: null, aan: true }, { x: null, y: null, aan: false }, { x: null, y: null, aan: true },
+    ]);
+  });
+  it('X en Y net vóór het aanraken (binnen 50 ms) horen bij die aanraking', () => {
+    expect(speel([[0xb0, 92, 127], [0xb0, 92, 0], 300, [0xb0, 12, 64], [0xb0, 13, 32], 10, [0xb0, 92, 127]]).at(-1)).toEqual({ x: 64 / 127, y: 32 / 127, aan: true });
   });
   it('bewegen zonder aanraak-CC telt als aanraken (een KP3+ zonder toegewezen touch-CC)', () => {
     expect(speel([[0xb0, 13, 64]])).toEqual([{ x: null, y: 64 / 127, aan: true }]);

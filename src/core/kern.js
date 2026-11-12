@@ -191,7 +191,7 @@ export class Kern extends Zender {
     const efxInst = EFX.instellingen(this.config);
     /**
      * Klokbronnen (§20): wie zet globaal.bpm nu. 'efx500' (MIDI-klok, wint), 'tap' (LPD8 P2), 'config' (tempo.bpm),
-     * of 'laatste' (de EFX viel weg zonder dat er ooit getapt werd: zijn laatste tempo blijft staan).
+     * of 'laatste' (de EFX viel weg zonder dat er tijdens zijn klok getapt werd: zijn laatste tempo blijft staan).
      * @type {{ bron: 'efx500'|'tap'|'config'|'laatste', tap: number|null, efx: KlokMeter, wegMs: number, timer: any, loopt: boolean|null }}
      */
     this.tempo = { bron: 'config', tap: null, efx: new KlokMeter({ venster: efxInst.venster, stabiel: efxInst.stabiel, wegMs: efxInst.wegMs }), wegMs: efxInst.wegMs, timer: null, loopt: null };
@@ -201,7 +201,8 @@ export class Kern extends Zender {
      * @type {{ inst: KP3.Instellingen, gebaar: KP3.Gebaar, holdKnop: boolean,
      *   vast: { app: string, x: { id: string, voor: number, laatst: number|null }|null, y: { id: string, voor: number, laatst: number|null }|null }|null }}
      */
-    this.kp3 = { inst: KP3.instellingen(this.config), gebaar: KP3.nieuwGebaar(), holdKnop: false, vast: null };
+    // timer: zonder (geziene) aanraak-CC eindigt een gebaar na inst.losMs zonder beweging (§21).
+    this.kp3 = { inst: KP3.instellingen(this.config), gebaar: KP3.nieuwGebaar(), holdKnop: false, vast: null, /** @type {any} */ timer: null };
     this.adem = { t: klok.nu(), fase: 0 };
     /** @type {Map<string, number>} laatst bekende fysieke stand per control (apc: id, lpd8: 'lpd8:k1') */
     this.fysiek = new Map();
@@ -265,8 +266,9 @@ export class Kern extends Zender {
       slots: () => this.slots,
       naar: (app, b) => { const a = this.apps.get(app); if (a) this.#naar(a, b); },
       oppervlakken: speelOppervlakken,
-      // §19: bedient de Maschine de app met focus volgens de grammatica, dan speelt er niemand op.
-      bezet: (dev) => dev === 'maschine-mk2' && this.#bediend() !== null,
+      // §19: bedient de Maschine de app met focus volgens de grammatica, dan speelt er niemand op. Speelt er geen
+      // lease-app op (kandidaat null), dan is hij ook van de grammatica: als kiezer, zodat groep A–H de focus kiest.
+      bezet: (dev, kandidaat) => dev === 'maschine-mk2' && (this.#bediend() !== null || kandidaat === null),
       tekenBezet: () => this.bediening.teken(),
     });
     /** De grammatica op de Maschine (§19): draaiknoppen = alfabet, pads = momenten, groepen = focus. */
@@ -288,7 +290,9 @@ export class Kern extends Zender {
         if (!a || (aan && this.#param(a, id)?.soort !== 'trigger')) return;
         this.#naar(a, { t: 'trig', id, aan, ...(aan && typeof kracht === 'number' ? { v: kracht } : {}) });
       },
-      focusSlot: (nr) => { const app = this.slots[nr - 1]; if (app) this.focus(app); },
+      // Een slot waarvan de app weg is, heeft een lampje uit: daar gaat de focus ook niet heen.
+      focusSlot: (nr) => { const a = this.apps.get(this.slots[nr - 1] ?? ''); if (a && a.status !== 'weg') this.focus(a.app); },
+      focusNaam: () => this.#focusAppStaat()?.naam ?? null,
       oppervlak: speelOppervlakken['maschine-mk2'],
       instellingen: this.config.apparaten?.['maschine-mk2']?.grammatica,
     });
@@ -597,6 +601,7 @@ export class Kern extends Zender {
     if (!slew) this.slews.delete(`${a.app}\u0000${id}`);
     const was = a.waarden[id];
     a.waarden[id] = w;
+    this.#kp3Voor(a, id, this.#doel(a, id) ?? w, bron);
     // §14: een keuze of schakelaar die al op deze stand staat, krijgt geen zet nog eens (LEDs en pickup gaan wel mee).
     // Replay altijd: na een herstart weet de app het nog niet.
     const zelfde = (p?.soort === 'keuze' || p?.soort === 'schakelaar') && w === was && bron !== 'replay';
@@ -666,6 +671,7 @@ export class Kern extends Zender {
    */
   #zetZacht(a, id, v, bron) {
     const p = this.#param(a, id);
+    if (p) this.#kp3Voor(a, id, kwantiseer(p, v), bron);
     if (p && this.#slewt(p) && kwantiseer(p, v) !== a.waarden[id]) this.#startSlew(a, id, kwantiseer(p, v), /** @type {number} */ (p.slew_s), bron);
     else this.#zetWaarde(a, id, v, { naarApp: true, bron });
   }
@@ -967,6 +973,9 @@ export class Kern extends Zender {
     if (bpm === null) return;
     const werdBron = t.bron !== 'efx500';
     t.bron = 'efx500';
+    // §20: een tap van vóór de EFX telt niet meer als hij wegvalt (een tap van een uur geleden is net zo'n sprong als
+    // 120); een tap terwijl de EFX tikt wel.
+    if (werdBron) t.tap = null;
     if (this.globaal.bpm !== bpm) this.#globaal({ bpm });
     else if (werdBron) this.#beeldGewijzigd();
   }
@@ -985,6 +994,8 @@ export class Kern extends Zender {
     const t = this.tempo;
     if (t.timer !== null) { this.klok.wis(t.timer); t.timer = null; }
     t.efx.wis();
+    // Geen klok meer (stil zonder Stop, of losgetrokken): dan loopt hij ook niet meer (§20).
+    if (t.loopt === true) { t.loopt = false; this.#globaal({ 'klok.loopt': 0 }); }
     if (t.bron !== 'efx500') return;
     if (t.tap !== null) {
       t.bron = 'tap';
@@ -1022,11 +1033,23 @@ export class Kern extends Zender {
       }
       return;
     }
-    const r = KP3.gebaarStap(k.gebaar, /** @type {any} */ (g));
+    const r = KP3.gebaarStap(k.gebaar, /** @type {any} */ (g), this.klok.nu());
     k.gebaar = r.staat;
     if (!r.gebaar) return;
-    if (r.gebaar.aan) this.#xyBeweeg(r.gebaar);
-    else this.#xyLos();
+    this.#xyWekker(null);
+    if (r.gebaar.aan) {
+      this.#xyBeweeg(r.gebaar);
+      // Kwam de aanraak-CC nooit (geen CC, of een ander nummer dan in config.json), dan zegt niets dat de vinger eraf
+      // is: na losMs zonder beweging telt het als loslaten. Anders bleef het gebaar de hele avond bij één app.
+      if (!k.gebaar.gezien) this.#xyWekker(() => { k.gebaar = { ...k.gebaar, x: null, y: null, aan: false }; this.#xyLos(); });
+    } else this.#xyLos();
+  }
+
+  /** De time-out van het gebaar opnieuw zetten (fn) of wissen (null). @param {(() => void)|null} fn */
+  #xyWekker(fn) {
+    const k = this.kp3;
+    if (k.timer !== null) { this.klok.wis(k.timer); k.timer = null; }
+    if (fn) k.timer = this.klok.zet(() => { k.timer = null; fn(); }, k.inst.losMs);
   }
 
   /**
@@ -1057,6 +1080,18 @@ export class Kern extends Zender {
       d.laatst = v;
       this.#zetWaarde(a, d.id, v, { naarApp: true, bron: KP3.DEV });
     }
+  }
+
+  /**
+   * Zet iets anders dan de KP3+ zelf (cockpit, snapshot, APC, LPD8, Maschine) een parameter die het gebaar nu vasthoudt,
+   * dan veert hij bij loslaten terug naar díe waarde, niet naar die van vóór het aanraken (§21). Niet voor wat de app
+   * zelf meldt ('app': dat kan een echo van het gebaar zijn) en niet voor een replay.
+   * @param {AppStaat} a @param {string} id @param {number} v @param {string|undefined} bron
+   */
+  #kp3Voor(a, id, v, bron) {
+    const k = this.kp3?.vast;
+    if (!k || k.app !== a.app || bron === KP3.DEV || bron === 'app' || bron === 'replay') return;
+    for (const d of [k.x, k.y]) if (d && d.id === id) d.voor = v;
   }
 
   /** Losgelaten (of de KP3+ viel weg): terug naar de waarden van vóór het aanraken, tenzij hold (config of de Hold-knop). */
@@ -1357,7 +1392,7 @@ export class Kern extends Zender {
       return;
     }
     if (dev === EFX.DEV) { this.#efxWeg(); return; }
-    if (dev === KP3.DEV) { this.kp3.gebaar = KP3.nieuwGebaar(); this.kp3.holdKnop = false; this.#xyLos(); return; }
+    if (dev === KP3.DEV) { this.#xyWekker(null); this.kp3.gebaar = KP3.nieuwGebaar(); this.kp3.holdKnop = false; this.#xyLos(); return; }
     if (dev === 'apc40') {
       this.hubIn = false;
       this.shiftIn = false;
@@ -1727,6 +1762,7 @@ export class Kern extends Zender {
       this[k] = null;
     }
     if (this.tempo.timer !== null) { this.klok.wis(this.tempo.timer); this.tempo.timer = null; }
+    this.#xyWekker(null);
     for (const a of this.apps.values()) this.#wisHartslag(a);
     // De slews blijven staan (hun timer is weg): exporteer() bewaart daarvan het doel, ook als het geheugen
     // pas ná kern.stop() wegschrijft.

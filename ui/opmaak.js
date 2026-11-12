@@ -75,6 +75,17 @@ export function isVerbonden(x) {
   return false;
 }
 
+/**
+ * De APC-handdruk uit `beeld.apparaten.apc40` (PROTOCOL §16): `stand` 'bezig', 'ok', 'geen-antwoord' of null (niet
+ * verbonden, of een oudere hub), en de hint met wat te doen.
+ * @param {unknown} x @returns {{ stand: 'bezig'|'ok'|'geen-antwoord'|null, hint: string|null }}
+ */
+export function handdrukVan(x) {
+  const o = x && typeof x === 'object' ? /** @type {Record<string, unknown>} */ (x) : {};
+  const stand = o.handdruk === 'bezig' || o.handdruk === 'ok' || o.handdruk === 'geen-antwoord' ? o.handdruk : null;
+  return { stand: isVerbonden(x) ? stand : null, hint: typeof o.hint === 'string' && o.hint ? o.hint : null };
+}
+
 /** Ademperiode in seconden uit K7 (0..1 → 4..16 s, standaard 10 s). @param {unknown} k7 */
 export const ademPeriode = (k7) => (typeof k7 === 'number' && Number.isFinite(k7) ? 4 + 12 * Math.max(0, Math.min(1, k7)) : 10);
 

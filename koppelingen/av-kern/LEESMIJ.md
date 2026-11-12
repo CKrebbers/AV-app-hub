@@ -1,25 +1,30 @@
 # av-kern — koppeling met de hub (patch)
 
-## Stand 6 okt 2026
+## Stand 12 nov 2026
 
 | patch | wat | stand |
 |---|---|---|
 | `0001` | ◄/► volgens protocol v1.2 (right = 96, left = 97) | **op main** sinds 5 okt: commit `b6e3c49`, merge **`a9010e9`** (PR #1), op Clay's besluit van 5 okt |
-| `0002` | Hub-koppeling: av-kern als lease-app (`?hub=ws://…`) | **nog niet toegepast**, bevroren tot na de publicatie van **25 okt** |
+| `0002` | Hub-koppeling: av-kern als lease-app (`?hub=ws://…`) | **klaar als PR in av-kern** (tak `claude/varve-hub-koppeling`, op main `b71690a`), wacht op jouw OK; nog niet op main |
 
-- Nagekeken 6 okt via GitHub: `src/kern/apc40.ts` (`e5581ba`) en `test/kern.test.ts` (`264573f`) op main zijn precies het resultaat van 0001. Op main staat geen `src/ui/hub.ts` en geen `test/hub.test.ts`: 0002 zit er niet in.
-- 0002 past nog op de huidige main: het enige bestaande bestand dat hij wijzigt, `src/main.ts`, is op main nog dezelfde versie (`c5f434d`) als waarop de patch gemaakt is.
-- Tot 25 okt raken we av-kern verder niet aan (alleen de ◄/►-fix mocht eerder). Daarna: alleen 0002 toepassen, zie "Toepassen".
+- De publicatie van 25 okt is voorbij; de bevriezing van av-kern is daarmee ook voorbij. De koppeling is daarna niet meer
+  als patch toegepast, maar staat als tak met een PR in av-kern zelf (met de regels voor `LOG.md` en `CLAUDE.md` erin).
+- **Tot die PR gemerged is, praat av-kern niet met de hub.** In de meditatie-set gaat hij wel open, maar klik daar
+  **niet** op "Verbind APC40": dan zet av-kern de APC in zijn eigen modus (0x41, de hub gebruikt 0x42) en doet de APC
+  voor de hub niet meer wat hij moet. Gebeurd? Trek de APC even los en weer vast: de hub zet hem binnen ±2 s goed.
+- Na het mergen: `git switch main && git pull` in av-kern; daarna in `sets/meditatie.json` bij av-kern `"wacht": "kern"`
+  en een snapshot erbij (Claude doet dat als je het zegt).
+- Nagekeken 6 okt via GitHub: `src/kern/apc40.ts` (`e5581ba`) en `test/kern.test.ts` (`264573f`) op main zijn precies het resultaat van 0001.
 
 ## Wat nog open is
-- **0002 toepassen na 25 okt** (Clay, of Claude met jouw oké), met daarna de hand-regels voor `LOG.md` en `CLAUDE.md`.
+- **De PR in av-kern mergen** (jouw OK). De patch 0002 hieronder is de vorm van vóór de PR; je hoeft hem niet meer zelf toe te passen.
 - **Niet getest met je echte APC en LPD8** in je eigen Chrome, ook de ◄/►-fix niet op de echte APC (de hub-proef F0 doet dat: één knop tegelijk indrukken).
 - De open vragen onderaan (master op K1, balans/ademtempo, paniek, actielog, achtergrond-tabblad, `*.ts.net`).
 - De tak `afmaker/2026-10-05-pijlfix` staat nog op GitHub; hij is gemerged en kan weg (Clay).
 
 ## Geschiedenis
 
-Tot de publicatie van **25 okt** zouden we av-kern niet aanraken: geen push, geen PR, geen branch op GitHub. Daarom kwam de koppeling hier als twee patches. Op 5 okt besloot Clay de ◄/►-fix (0001) toch al op main te zetten; de rest bleef bevroren.
+Tot de publicatie van **25 okt** zouden we av-kern niet aanraken: geen push, geen PR, geen branch op GitHub. Daarom kwam de koppeling hier als twee patches. Op 5 okt besloot Clay de ◄/►-fix (0001) toch al op main te zetten; de rest bleef bevroren tot na 25 okt, en staat nu als PR in av-kern (zie Stand).
 
 ### Wat zit erin
 - **0001 — ◄/► volgens protocol v1.2** (losse commit; **op main sinds 5 okt**, `a9010e9`). In `src/kern/apc40.ts` stonden de pijlen omgedraaid (left = 96, right = 97). Volgens Akai protocol v1.2 is ► (right) 0x60 = 96 en ◄ (left) 0x61 = 97. `apc40.ts` valt **niet** onder de bevroren regel (die geldt alleen voor `midi.ts` en `bus.ts`), dus hier is het echt gerepareerd, met een test die zonder de fix faalt. In de Ademmachine zitten op ◄/► alleen AI-stubs, dus je hoort niets anders.
@@ -58,7 +63,7 @@ Tot de publicatie van **25 okt** zouden we av-kern niet aanraken: geen push, gee
 - 6 okt: 0001 op main nagekeken (zie Stand); 0002 past op de preimage van `src/main.ts` op main `a9010e9`. `npm test` in av-kern is niet opnieuw gedraaid (privé repo, alleen via de GitHub-connector gelezen).
 - **Nog niet** met je echte APC en LPD8 in je eigen Chrome.
 
-## Toepassen (na 25 okt, alleen 0002)
+## Toepassen met de hand (alleen 0002; alleen als je de PR níét gebruikt)
 0001 staat al op main: **niet opnieuw toepassen** (`git apply --check` op 0001 faalt daarom, en dat is goed).
 ```bash
 cd ~/…/av-kern                     # waar je av-kern hebt staan
@@ -100,6 +105,6 @@ Gebruik: start de hub (`npm start` in AV-app-hub), dan `npm run dev` in av-kern 
 - **Master op K1 (`macro.intensiteit`)?** Zo gevraagd. Maar de pickup van een LPD8-knop volgt de *eerste* app met die rol; staat er een andere app eerder in de hub die intensiteit als beeldintensiteit gebruikt (zoals bij Varve DJ bleek), dan kan K1 ook het geluid van av-kern dempen terwijl je naar iets anders kijkt. Voor av-kern (meditatie, alles langzaam) leek het juist goed. Eén veld weghalen in `hub-manifest.json` als je het anders wilt.
 - **Balans op K8 en ademtempo op K7** heb ik erbij gedaan omdat ze precies passen (geluid ↔ beeld, ademklok). Goed zo?
 - **Paniek = Stop All** (τ 10 s naar stilte en zwart, zoals de knop op de APC). Snel genoeg als paniek, of wil je een snellere variant? Paniek werkt ook tijdens een replay (bewust: stilte gaat voor), en verandert die replay dan.
-- **Actielog/replay:** wat de hub zet (LPD8-knoppen, snapshots) gaat buiten `Driver.input` om en staat dus niet in het actielog. Een opname met LPD8-bewegingen speelt niet identiek terug. Tijdens een replay negeert av-kern hub-zets wel, zodat de replay zelf niet verstoord wordt. Echt oplossen (zets in het log) kan alleen in de kern (bevroren), dus na 25 okt beslissen.
+- **Actielog/replay:** wat de hub zet (LPD8-knoppen, snapshots) gaat buiten `Driver.input` om en staat dus niet in het actielog. Een opname met LPD8-bewegingen speelt niet identiek terug. Tijdens een replay negeert av-kern hub-zets wel, zodat de replay zelf niet verstoord wordt. Echt oplossen (zets in het log) kan alleen in de kern; dat was tot 25 okt bevroren, en is nu een keuze voor jou.
 - **Tabblad op de achtergrond:** `computeLeds` loopt in `requestAnimationFrame`; staat av-kern op de achtergrond, dan komen LED-wijzigingen pas als het tabblad weer zichtbaar is (hartslag en invoer lopen wel door). Is dat zo zonder hub ook, maar met de hub wissel je vaker. Laten zo?
 - **Hub op een `*.ts.net`-naam?** Die vraagt nu `&hub_extern=1` (publieke Funnel-namen vallen er ook onder). Gebruik je de hub via je tailnet, dan kan het tailnet-IP (100.x) zonder extra vlag; of we halen je eigen tailnet-naam uit een instelling.

@@ -21,6 +21,7 @@
     <div class="apparaten" aria-label="controllers">
       <span class="chip" id="dev-apc40">APC40</span>
       <span class="chip" id="dev-lpd8">LPD8</span>
+      <span class="apc-melding" id="apc-melding" role="status" hidden></span>
     </div>
     <div class="verbinding" id="verbinding" role="status" aria-live="polite" data-status="verbinden"><i aria-hidden="true"></i><span>verbinden…</span></div>
   </header>
@@ -37,9 +38,11 @@
         <h2>Apps</h2>
         <ol id="apps" class="apps"></ol>
         <p id="apps-leeg" class="leeg">Nog geen apps verbonden.</p>
+        <p id="apps-tik" class="hint" hidden>geen geluid? tik één keer in elke app-tab (Chrome laat een tab pas geluid maken na een tik)</p>
       </section>
       <section class="paneel">
         <h2 id="focus-titel">Focus</h2>
+        <p id="focus-weg" class="focus-weg" hidden></p>
         <div id="params" class="params"></div>
       </section>
       <section class="paneel" id="maschine-paneel">

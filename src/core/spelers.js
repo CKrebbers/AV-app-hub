@@ -30,10 +30,11 @@ export { SPEELAPPARATEN };
  *   apps: () => Iterable<SpelerApp>, focus: () => string|null, slots: () => readonly (string|null)[],
  *   naar: (app: string, b: { t: 'midi', dev: string, bytes: number[] }) => void,
  *   oppervlakken?: Record<string, SpeelOppervlak|undefined>,
- *   bezet?: (dev: string) => boolean, tekenBezet?: (dev: string) => void,
+ *   bezet?: (dev: string, kandidaat: string|null) => boolean, tekenBezet?: (dev: string) => void,
  * }} Opties
  *   bezet: het apparaat is nu voor iets anders dan spelen (de Maschine bedient de app met focus volgens de
- *   grammatica, §19): dan speelt niemand erop, en bij een repaint tekent `tekenBezet` in plaats van een app
+ *   grammatica, §19): dan speelt niemand erop, en bij een repaint tekent `tekenBezet` in plaats van een app.
+ *   `kandidaat` is wie er anders zou spelen (null = niemand)
  */
 
 /** Indrukken, loslaten of iets dat een ingedrukte toets volgt. @param {number[]} b */
@@ -111,8 +112,9 @@ export class Spelers {
   bijwerken() {
     let veranderd = false;
     for (const dev of SPEELAPPARATEN) {
-      const bezet = !!this.o.bezet?.(dev);
-      const nieuw = bezet ? null : this.#kies(dev);
+      const kandidaat = this.#kies(dev);
+      const bezet = !!this.o.bezet?.(dev, kandidaat);
+      const nieuw = bezet ? null : kandidaat;
       const oud = this.doel[dev];
       if (nieuw === oud && bezet === this.bezet[dev]) continue;
       this.doel[dev] = nieuw;

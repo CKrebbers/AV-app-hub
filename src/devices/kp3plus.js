@@ -18,10 +18,13 @@
 
 /**
  * @typedef {{ x: number, y: number, aanraak: number|null, diepte: number|null, hold: number|null }} CcIndeling
- * @typedef {{ kanaal: number|null, cc: CcIndeling, xy: { x: string, y: string }, hold: boolean }} Instellingen
+ * @typedef {{ kanaal: number|null, cc: CcIndeling, xy: { x: string, y: string }, hold: boolean, losMs: number }} Instellingen
  * @typedef {{ dev: 'kp3plus', el: string|null, kind: 'waarde'|'druk'|'los'|'keuze'|'tik'|'onbekend', v?: number, raw?: number,
  *             ch?: number, cc?: number, nr?: number, bytes?: number[] }} Gebeurtenis
  * @typedef {{ x: number|null, y: number|null, aan: boolean }} Gebaar
+ * @typedef {Gebaar & { gezien: boolean, t: number|null }} GebaarStaat
+ *   gezien: de aanraak-CC kwam al eens binnen (dan begint alleen aanraken een gebaar); t: wanneer X of Y buiten een
+ *   aanraking het laatst kwam (een KP3+ die X en Y net vóór het aanraken stuurt)
  */
 
 export const DEV = 'kp3plus';
@@ -30,6 +33,10 @@ export const NAAM = 'Korg Kaoss Pad KP3+';
 export const STANDAARD_CC = Object.freeze({ x: 12, y: 13, aanraak: 92, diepte: null, hold: null });
 /** Standaard stuurt het XY-vlak vervorming (X) en ruimte (Y) van de app met focus (SYSTEEM §3.4). */
 export const STANDAARD_XY = Object.freeze({ x: 'alfabet.vervorming', y: 'alfabet.ruimte' });
+/** Zonder aanraak-CC (of zolang die nooit kwam): zo lang (ms) geen beweging = losgelaten. */
+export const LOS_MS = 400;
+/** X of Y die zo kort (ms) vóór het aanraken kwamen, horen bij die aanraking; ouder is van de vorige (napijlen). */
+export const VOOR_MS = 50;
 /** Een rol of parameter-id in `xy` (manifest, maps/<app>.json, config.json). */
 export const XY_NAAM = /^[a-z0-9_.-]{1,48}$/;
 
@@ -58,6 +65,7 @@ export function instellingen(config) {
   const cc = c.cc ?? {};
   const of = (/** @type {unknown} */ n, /** @type {number|null} */ s) => (n === null ? null : isCc(n) ? /** @type {number} */ (n) : s);
   const xy = c.xy ?? {};
+  const los = Number(c.los_ms);
   return {
     kanaal: Number.isInteger(k) && k >= 1 && k <= 16 ? k - 1 : null,
     cc: {
@@ -69,6 +77,7 @@ export function instellingen(config) {
     },
     xy: { x: XY_NAAM.test(xy.x ?? '') ? xy.x : STANDAARD_XY.x, y: XY_NAAM.test(xy.y ?? '') ? xy.y : STANDAARD_XY.y },
     hold: c.hold === true,
+    losMs: Number.isFinite(los) && los >= 50 && los <= 5000 ? los : LOS_MS,
   };
 }
 
@@ -98,27 +107,40 @@ export function maakOntleder(inst) {
   };
 }
 
-/** Een gebaar dat nog niets weet. @returns {Gebaar} */
-export const nieuwGebaar = () => ({ x: null, y: null, aan: false });
+/** Een gebaar dat nog niets weet. @returns {GebaarStaat} */
+export const nieuwGebaar = () => ({ x: null, y: null, aan: false, gezien: false, t: null });
+
+/** @param {GebaarStaat} s @returns {Gebaar} */
+const naarGebaar = (s) => ({ x: s.x, y: s.y, aan: s.aan });
 
 /**
  * Eén gebeurtenis verder. Geeft het nieuwe gebaar terug als het veranderde (anders null):
- * - X of Y beweegt: de nieuwe stand; zonder aanraak-CC (of als die nog niet kwam) telt bewegen als aanraken.
- * - aanraken (CC ≥ 64): `aan` true, met de laatst bekende X en Y (null = nog niet bekend).
- * - loslaten (CC < 64): `aan` false, X en Y blijven staan (wat ermee gebeurt, beslist de kern: terugveren of hold).
- * @param {Gebaar} staat @param {Gebeurtenis} g @returns {{ staat: Gebaar, gebaar: Gebaar|null }}
+ * - X of Y beweegt tijdens een aanraking: de nieuwe stand. Zolang de aanraak-CC nooit kwam (geen toegewezen CC, of
+ *   een ander nummer dan in config.json), telt bewegen als aanraken; het loslaten komt dan van de kern (na `losMs`
+ *   zonder beweging). Kwam de aanraak-CC wel al eens, dan begint X of Y buiten een aanraking geen gebaar (een KP3+
+ *   die na het loslaten nog één X stuurt); zo'n X of Y telt alleen mee als het aanraken binnen VOOR_MS volgt.
+ * - aanraken (CC ≥ 64): `aan` true, met alleen de X en Y van deze aanraking (null = nog niet bekend; nooit de stand
+ *   van de vorige aanraking, anders sprongen beide parameters eerst daarheen).
+ * - loslaten (CC < 64): `aan` false; X en Y worden vergeten (wat er met de parameters gebeurt, beslist de kern:
+ *   terugveren of hold).
+ * @param {GebaarStaat} staat @param {Gebeurtenis} g @param {number} [nu] ms (de Klok van de hub)
+ * @returns {{ staat: GebaarStaat, gebaar: Gebaar|null }}
  */
-export function gebaarStap(staat, g) {
+export function gebaarStap(staat, g, nu = 0) {
   if (g.dev !== DEV) return { staat, gebaar: null };
   if ((g.el === 'x' || g.el === 'y') && typeof g.v === 'number') {
-    const nieuw = { ...staat, [g.el]: g.v, aan: true };
-    return { staat: nieuw, gebaar: { ...nieuw } };
+    if (staat.gezien && !staat.aan) return { staat: { ...staat, [g.el]: g.v, t: nu }, gebaar: null };
+    const nieuw = { ...staat, [g.el]: g.v, aan: true, t: null };
+    return { staat: nieuw, gebaar: naarGebaar(nieuw) };
   }
   if (g.el === 'aanraak' && (g.kind === 'druk' || g.kind === 'los')) {
     const aan = g.kind === 'druk';
-    if (aan === staat.aan) return { staat, gebaar: null };
-    const nieuw = { ...staat, aan };
-    return { staat: nieuw, gebaar: { ...nieuw } };
+    if (aan === staat.aan) return { staat: { ...staat, gezien: true, ...(aan ? {} : { x: null, y: null, t: null }) }, gebaar: null };
+    const vers = staat.t !== null && nu - staat.t <= VOOR_MS;
+    const nieuw = aan
+      ? { x: vers ? staat.x : null, y: vers ? staat.y : null, aan: true, gezien: true, t: null }
+      : { x: null, y: null, aan: false, gezien: true, t: null };
+    return { staat: nieuw, gebaar: naarGebaar(nieuw) };
   }
   return { staat, gebaar: null };
 }

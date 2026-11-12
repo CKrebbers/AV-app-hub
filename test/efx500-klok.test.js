@@ -34,6 +34,36 @@ describe('KlokMeter', () => {
     for (let k = 2; k < na.length; k++) expect(na[k]).not.toBe(na[k - 2]);
     expect(na.length).toBeLessThanOrEqual(2);
   });
+  it('ruis van 2 ms (sigma, normaal verdeeld) bij 174 BPM: het getoonde tempo beweegt hooguit 0,5 BPM, en zelden', () => {
+    // Een late tik maakt één interval te lang en het volgende te kort. Door een keten van gefilterde intervallen hief
+    // die fout zich niet op (25 wijzigingen per seconde tussen 165,8 en 184); door de tiktijden zelf wel.
+    let zaad = 12345;
+    const rnd = () => { zaad = (zaad * 1103515245 + 12345) % 2147483648; return zaad / 2147483648; };
+    const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+    const m = new KlokMeter();
+    const d = 60000 / (PPQN * 174), sec = 120, n = Math.round((sec * 1000) / d);
+    /** @type {number[]} */
+    const getoond = [];
+    let vorige = -Infinity, wissels = 0;
+    for (let i = 0; i < n; i++) {
+      const t = Math.max(vorige, 1000 + i * d + gauss() * 2);
+      vorige = t;
+      const b = m.tik(t);
+      if (b !== null) { wissels++; if (i > 2 * 96) getoond.push(b); }
+    }
+    expect(Math.abs(/** @type {number} */ (m.bpm) - 174)).toBeLessThanOrEqual(0.25);
+    const s = spreiding(getoond);
+    expect(/** @type {number} */ (s.verschil)).toBeLessThanOrEqual(0.5);
+    expect(wissels / sec).toBeLessThan(1);
+  });
+  it('tikken die in stappen van 4 ms aankomen (een lus die zo aflevert), en twee op dezelfde ms: toch het juiste tempo', () => {
+    for (const [bpm, raster] of [[128, 4], [174, 4], [128, 16]]) {
+      const m = new KlokMeter();
+      const d = 60000 / (PPQN * bpm);
+      for (let i = 0; i < 24 * 16; i++) m.tik(Math.ceil((1000 + i * d) / raster) * raster);
+      expect(Math.abs(/** @type {number} */ (m.bpm) - bpm)).toBeLessThanOrEqual(0.1);
+    }
+  });
   it('één late tik (een hapering) trekt het tempo niet scheef', () => {
     const t = tikken(120, 100);
     t[60] += 15;   // één tik 15 ms te laat

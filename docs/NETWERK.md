@@ -158,7 +158,7 @@ VARVE_HUB='ws://<mac>.local:7700/app?token=…' flux-screensaver
 ```
 
 `node src/cli.js token` op de Mac drukt deze regel kant-en-klaar af. Gecontroleerd in flux
-(tak `claude/varve-hub-koppeling`): de koppeling neemt het pad **met** de query over in de handdruk
+(toen op de tak `claude/varve-hub-koppeling`, sinds 19 okt op `master` in `varve_album/hub.py`): de koppeling neemt het pad **met** de query over in de handdruk
 (`GET /app?token=… HTTP/1.1`), stuurt geen `Origin` en geen `token` in `hallo` — het token in de URL is dus
 genoeg. Zet `flux-args` op `chmod 600` als het token erin staat. Liever nog `VARVE_HUB` als omgevingsvariabele
 dan `--hub` op de opdrachtregel: argumenten zijn voor iedereen op de machine zichtbaar (`ps`), de omgeving niet.

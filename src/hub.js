@@ -12,8 +12,12 @@ import { koppelGeheugen, schrijfMsUit } from './opslag.js';
 import { HUB_MAP, laadKaarten } from './config.js';
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
+import * as MS from './devices/maschine-mk2.js';
 import { Opnemer, avondmapPad } from './opname/opnemer.js';
 import { HINT, invoerHint } from './ports/hid.js';
+
+/** Wat Clay ziet als de APC niet op de modus-instructie antwoordt (hubvenster, cockpit, check; PROTOCOL §16). */
+export const APC_HANDDRUK_HINT = 'geen bevestiging op de modus-instructie — druk op Track Select 1: komt die in de hub binnen (de cockpit ziet hem), dan staat hij goed en verdwijnt dit vanzelf. Komt er niets: node src/cli.js doctor';
 
 /** Zo lang mag het afsluiten van een lopende opname hub.stop() ophouden (schijf weg of traag). */
 export const OPNAME_SLUIT_MS = 2000;
@@ -138,7 +142,11 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   // Echte controllers → kern; hun stand → cockpit.
   apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { opnemer?.invoer('apc40', b); kern.invoer(g, b); });
   apparaten.lpd8.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { opnemer?.invoer('lpd8', b); kern.invoer(g, b); });
-  const meldApc = () => kern.zetApparaat('apc40', { verbonden: apparaten.apc.verbonden, naam: apparaten.apc.poort?.naam ?? null });
+  // §16/§8: de stand van de handdruk (bezig, ok, geen-antwoord) staat bij de APC in het beeld, met wat te doen als het mis is.
+  const meldApc = () => {
+    const stand = apparaten.apc.verbonden ? apparaten.apc.handdruk.stand : null;
+    kern.zetApparaat('apc40', { verbonden: apparaten.apc.verbonden, naam: apparaten.apc.poort?.naam ?? null, handdruk: stand, hint: stand === 'geen-antwoord' ? APC_HANDDRUK_HINT : null });
+  };
   const meldLpd8 = () => kern.zetApparaat('lpd8', { verbonden: apparaten.lpd8.verbonden, naam: apparaten.lpd8.poort?.naam ?? null, model: apparaten.lpd8.model });
   for (const e of ['verbonden', 'weg']) { apparaten.apc.bij(e, meldApc); apparaten.lpd8.bij(e, meldLpd8); }
   apparaten.lpd8.bij('model', meldLpd8);
@@ -176,11 +184,12 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
         : `${label}: openen mislukt (${e?.message ?? e}) — de hub probeert opnieuw`);
     });
   }
-  // De APC-handdruk (src/apparaten.js ApcSessie.init): zonder antwoord op de intro staat hij waarschijnlijk nog in de
-  // fabrieksmodus, en dan doet bijna niets wat de hub verwacht. Eén regel, met wat te doen.
-  apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null }} */ h) => {
-    log(h.ok ? `APC: modus gezet (antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''})`
-      : `APC: geen antwoord op de modus-instructie${h.identiteit ? '' : ' (ook niet op de identiteitsvraag)'} — waarschijnlijk staat hij nog in de fabrieksmodus en doen knoppen en lampjes niet wat de hub verwacht. Draai: node src/cli.js doctor`);
+  // De APC-handdruk (src/apparaten.js ApcSessie.init). Zonder antwoord op de intro is het nog niet zeker mis (niet
+  // elke APC stuurt dat antwoord): Track Select is het bewijs (PROTOCOL §16). Eén regel, met wat te doen.
+  apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null, trackSelect: boolean }} */ h) => {
+    meldApc();
+    log(h.ok ? `APC: modus gezet (${h.trackSelect ? 'Track Select komt binnen' : `antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''}`})`
+      : `APC: ${APC_HANDDRUK_HINT}${h.identiteit ? '' : ' (ook geen antwoord op de identiteitsvraag)'}`);
   });
   // De Maschine: bezet (een NI-programma heeft hem), geen rechten (Linux zonder udev-regel) of geen invoer
   // (macOS-Invoermonitoring): zeggen wat te doen.
@@ -194,9 +203,10 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   // Virtuele controllers uit de cockpit: precies alsof de bytes van USB kwamen.
   // De virtuele LPD8 stuurt altijd de mk2-fabrieksstand, los van het profiel van de echte LPD8.
   const virtueleLpd8 = LPD8.maakOntleder(LPD8.standaardProfiel('mk2'));
-  /** @param {'apc40'|'lpd8'} dev @param {number[]} bytes */
+  // De virtuele Maschine is zijn virtuele MIDI (docs/MASCHINE.md); de cockpit tekent hem niet, herhaal gebruikt hem.
+  /** @param {'apc40'|'lpd8'|'maschine-mk2'} dev @param {number[]} bytes */
   const opVirtueel = (dev, bytes) => {
-    const g = dev === 'apc40' ? APC.ontleed(bytes) : virtueleLpd8(bytes);
+    const g = dev === 'apc40' ? APC.ontleed(bytes) : dev === 'maschine-mk2' ? MS.ontleedMidi(bytes) : virtueleLpd8(bytes);
     logboek?.midi('in', `${dev}-virtueel`, bytes);
     opnemer?.invoer(`${dev}-virtueel`, bytes);
     kern.invoer(g, bytes);

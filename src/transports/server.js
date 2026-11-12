@@ -307,7 +307,7 @@ function veiligJson(x) { try { return JSON.stringify(x); } catch (e) { console.e
 /**
  * Een bericht van de cockpit controleren (PROTOCOL.md §8). Onbekend → negeren.
  * @param {unknown} ruw
- * @returns {{ ok: true, virtueel: { dev: 'apc40'|'lpd8', bytes: number[] } } | { ok: true, kern: CockpitOpdracht } | { ok: true, onbekend: true } | { ok: false, fout: string }}
+ * @returns {{ ok: true, virtueel: { dev: 'apc40'|'lpd8'|'maschine-mk2', bytes: number[] } } | { ok: true, kern: CockpitOpdracht } | { ok: true, onbekend: true } | { ok: false, fout: string }}
  */
 export function leesVanCockpit(ruw) {
   let x = ruw;
@@ -316,7 +316,8 @@ export function leesVanCockpit(ruw) {
   const b = /** @type {Record<string, any>} */ (x);
   switch (b.t) {
     case 'virtueel': {
-      if (b.dev !== 'apc40' && b.dev !== 'lpd8') return { ok: false, fout: 'virtueel: dev moet apc40 of lpd8 zijn' };
+      // maschine-mk2: de virtuele MIDI van de Maschine (docs/MASCHINE.md), voor `herhaal` (de cockpit tekent hem niet).
+      if (b.dev !== 'apc40' && b.dev !== 'lpd8' && b.dev !== 'maschine-mk2') return { ok: false, fout: 'virtueel: dev moet apc40, lpd8 of maschine-mk2 zijn' };
       const ok = Array.isArray(b.bytes) && b.bytes.length > 0 && b.bytes.length <= 512
         && b.bytes.every((/** @type {unknown} */ n) => Number.isInteger(n) && /** @type {number} */ (n) >= 0 && /** @type {number} */ (n) <= 255);
       if (!ok) return { ok: false, fout: 'virtueel: bytes moet een lijst getallen 0..255 zijn' };
@@ -342,7 +343,7 @@ export function leesVanCockpit(ruw) {
 /**
  * @param {{
  *   poort: number, host?: string, kern: KernVoorServer, uiMap: string, srcMap: string,
- *   opVirtueel?: (dev: 'apc40'|'lpd8', bytes: number[]) => void, origins?: string[],
+ *   opVirtueel?: (dev: 'apc40'|'lpd8'|'maschine-mk2', bytes: number[]) => void, origins?: string[],
  *   maxAchterstand?: number, pingMs?: number, token?: string|null, halloMs?: number, maxKlanten?: number,
  * }} o `token`: vereist voor elke verbinding van buiten de eigen machine (zie boven); null = geen controle.
  *   Een `host` die niet loopback is zonder token wordt geweigerd (fout met code 'GEEN_TOKEN'), nog vóór het luisteren.

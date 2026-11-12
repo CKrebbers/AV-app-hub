@@ -7,12 +7,13 @@
     "medisynth": {
       "start": { "commando": "npm run dev -- --port {poort} --strictPort" },
       "url": "http://localhost:{poort}/?hub={hub}",
-      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van medisynth"
+      "tik": "één keer in het beeld (waar \"touch\" staat)",
+      "opmerking": "MediSynth is met opzet traag: draai, laat los en luister 10 seconden. Waterschaal en de APC-faders reageren meteen"
     },
     "waterschaal": {
       "start": { "commando": "python3 -m http.server {poort} --bind 127.0.0.1" },
       "url": "http://localhost:{poort}/td/waterschaal-lokaal.html?hub={hub}",
-      "opmerking": "hub-koppeling staat op de tak claude/varve-hub-koppeling van waterschaal"
+      "tik": "één keer op de schaal zelf (een klik ernaast helpt niet)"
     },
     "uurwerk": {
       "start": { "commando": "./start.sh" },
@@ -23,7 +24,7 @@
       "start": { "commando": "npm run dev -- --port {poort} --strictPort", "omgeving": { "BROWSER": "none" } },
       "url": "http://localhost:{poort}/?hub={hub}",
       "wacht": "poort",
-      "opmerking": "de hub-koppeling van av-kern komt pas na 25 okt: nu start hij alleen en gaat hij open in Chrome (de starter wacht op de poort, niet op de hub). Klik niet op 'Verbind APC40' zolang de hub de APC heeft (huisregel 1). Na 25 okt: wacht → \"kern\" en een snapshot erbij."
+      "opmerking": "av-kern praat nog niet met de hub (de koppeling wacht als PR in av-kern op jouw OK): hij gaat alleen open. Klik daar NIET op 'Verbind APC40': dan zet av-kern de APC in een andere modus en doet de APC voor de hub niet meer wat hij moet (trek de APC dan even los en weer vast). Na het mergen: wacht → \"kern\" en een snapshot erbij."
     }
   },
   "snapshot": {

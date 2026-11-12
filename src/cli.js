@@ -295,6 +295,9 @@ const opdrachten = {
     console.log(hub.opslag ? `Geheugen: ${hub.opslag.pad}` : 'Geheugen uit: snapshots en waarden gaan bij stoppen verloren; valt de hub om, dan weet hij bij de volgende start niets meer en stoppen de apps van de set mee.');
     // In één keer geschreven: wie op "varve-hub draait" wacht (tests, scripts), ziet de netwerkregels er meteen bij.
     const klaarRegels = [`varve-hub draait. Cockpit: ${lan ? lokaal : hub.adres}   Apps: ${(lan ? lokaal : hub.adres).replace('http', 'ws')}/app   Ctrl-C stopt.`];
+    // Eerste avond (nagespeeld): een kale `npm start` liet de APC "werken" (het invoerlog), maar er klonk niets. Zeg dat
+    // de hub zelf geen geluid maakt, en hoe je een hele avond start.
+    if (!set) klaarRegels.push(`De hub maakt zelf geen geluid: dat doen de apps. Een hele avond: npm start -- meditatie (docs/SETS.md) · oefenen: ${lokaal}/oefen`);
     /** @type {{ stop: () => void } | null} */
     let mdns = null;
     if (lan && token) {
@@ -375,7 +378,8 @@ const opdrachten = {
   },
 
   async doctor() {
-    const { tekst, data } = await doctor({ config, laadMidi: laadRtMidi });
+    // Een opdracht (druk op Track Select) moet meteen te zien zijn, niet pas in de uitslag: via stderr (--json blijft schoon).
+    const { tekst, data } = await doctor({ config, laadMidi: laadRtMidi, vraag: (t) => process.stderr.write(`${t}\n`) });
     console.log(args.includes('--json') ? JSON.stringify(data, null, 2) : tekst);
   },
 

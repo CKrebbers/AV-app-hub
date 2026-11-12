@@ -47,10 +47,11 @@ Klaar als (op jouw Mac):
 ## Golf 2 — breken ✓
 6 zoekers (MIDI-chaos, netwerkchaos, levensduur, lease-chaos, protocol-feiten, volledigheid) → 23 bevindingen door een scepticus bevestigd (6 belangrijk, 17 klein, 0 blokkerend) → per gebied opgelost, elk met een test die de fout eerst liet zien. Belangrijkste: slots komen vrij, twee tabs van dezelfde app verdringen elkaar niet meer, LPD8-pickup volgt snapshots en app-wijzigingen, lease-LEDs strikt gefilterd en begrensd, Sediment-waarden op log-schaal in de cockpit, nette foutmelding als poort 7700 bezet is. Beslissingen: `PROTOCOL.md` §11.
 
-## Golf 3 — koppelingen in de apps ✓ (wacht op Clay's OK per repo)
+## Golf 3 — koppelingen in de apps ✓ (gemerged door Clay op 19 okt)
 Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag verandert er niets.
-- formula-lab (poort 5174), waterschaal (`td/waterschaal-lokaal.html`), medisynth (poort 5175), flux (`flux-<monitor>`): tak `claude/varve-hub-koppeling` in elk repo, met een PR.
+- formula-lab (poort 5174, PR #1), waterschaal (`td/waterschaal-lokaal.html`, PR #1), medisynth (poort 5175, PR #4), flux (`flux-<monitor>`, PR #2): sinds 19 okt op hun hoofdtak (`main`, bij flux `master`): `git switch main && git pull`. De oude tak `claude/varve-hub-koppeling` niet meer gebruiken.
 - Varve DJ: lease-modus; de koppeling staat op youtube-mixer `main` (patches 0001+0002, PR #6, 5 okt: `git pull`). De patches in `koppelingen/varve-dj/` zijn geschiedenis; de repetitie past ze alleen nog toe op een main van vóór 5 okt.
+- av-kern: nog niet op main; de koppeling wacht als PR in av-kern op jouw OK (`koppelingen/av-kern/LEESMIJ.md`). Tot dan gaat av-kern in de meditatie-set alleen open, zonder hub.
 
 ## Golf 4 — een avond spelen ✓ (gebouwd en getest zonder hardware)
 6 onderdelen, elk bouwer + 2 reviewers + verwerker; samengevoegd en opnieuw getest (648 tests, plus de echte repetitie).
@@ -59,7 +60,8 @@ Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag
 - [x] **Geheugen** — snapshots en `truth:"hub"`-waarden over een herstart (`~/.varve-hub/staat.json`); slew_s voor alles behalve de APC (PROTOCOL §12)
 - [x] **Altijd aan + netwerk (F5)** — `--lan` met token en mDNS, `installeer` (launchd/systemd), `token` (`docs/NETWERK.md`, PROTOCOL §13)
 - [x] **Generale repetitie** — `npm run repetitie`: de hub met de échte koppelingen in headless Chromium, één avond lang (`docs/REPETITIE.md`); in CI met nep-apps
-- [x] **av-kern** — lease-koppeling als patch in `koppelingen/av-kern/`, toepassen na 25 okt (incl. ◄/►-fix: right = 96, left = 97)
+  - Nov (eindcontrole): de repetitie viel 3 van de 4 keer om vlak na de start (`AssertionError … assert(!this.paused)` in Node 22): het script liet het antwoord van Waterschaal (python3 http.server) ongelezen liggen. Nu breekt het die body af (`tools/repetitie-proces.mjs`, ook in de HTTP- en TD-driver van de hub); daarna 2 van de 2 keer groen (204/204).
+- [x] **av-kern** — lease-koppeling, eerst als patch in `koppelingen/av-kern/` (de ◄/►-fix, right = 96, left = 97, staat sinds 5 okt op av-kern main); na 25 okt als PR in av-kern, die op jouw OK wacht
 
 Klaar als (op jouw Mac):
 - [ ] `npm start -- meditatie` start de apps, Chrome-tabs gaan open, beginstand en focus staan; Ctrl-C of het venster sluiten laat geen processen achter
@@ -71,7 +73,7 @@ Klaar als (op jouw Mac):
 Gevonden door de repetitie — opgelost in golf 5 (PROTOCOL §14):
 - ~~Na een paniek doet LPD8-K1 niets meer~~ → wat een app zelf verandert tijdens of vlak na een paniek (`paniek.naloop_s`, standaard 5) verplaatst de LPD8-pickup niet meer.
 - ~~Een LPD8-macro op een keuze stuurt bij elke tik een `zet`~~ → een gelijke keuze/schakelaar gaat niet nog eens (179 → 0).
-- Waterschaal `tempo`: app-kant op de PR-tak (tempo continu, CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app). Helemaal dicht zodra die PR gemerged is.
+- ~~Waterschaal `tempo`~~ → dicht: app-kant (tempo continu) sinds 19 okt op waterschaal main (CKrebbers/waterschaal#1), hub-kant in golf 5 (de globale adem volgt de adem-app).
 
 ## Oefenruimte ✓
 http://localhost:7700/oefen (ook via "oefenen" in de cockpit): 14 lessen (les 14, glijden zien, kwam erbij in golf 7) met twee oefen-apps, Zon en Zee, die het gewone app-protocol spreken. Elke les controleert wat er echt in de hub gebeurt. De juiste knop licht op de virtuele APC/LPD8 op, en een gesimuleerde leerling haalt in CI alle lessen tegen de echte hub (`test/oefen.test.js`, `test/oefen-ui.test.js`).
@@ -88,7 +90,7 @@ Klaar als (op jouw Mac):
 - [x] **Onderzoek volgende koppelingen** — `docs/VOLGENDE-KOPPELINGEN.md` (varve-radio, uurwerk, av-scene-kit, Sediment, td-lab, anbernic-cam, musicgen-video-glitch; volgorde in §9)
 - [x] **Beveiliging** — grenzen tegen overvallen zonder token, cockpit alleen same-origin, geen framen, bestandsrechten (PROTOCOL §13, `docs/NETWERK.md`)
 - [x] **Oefenruimte** — review verwerkt (herladen, twee tabs, tempo/adem zichtbaar, lang drukken ruimer)
-- [ ] Waterschaal: tempo continu op de PR-tak (wacht op Clay's OK om te mergen)
+- [x] Waterschaal: tempo continu (op main sinds 19 okt, PR #1)
 
 Klaar als (op jouw Mac):
 - [ ] `npm run check -- meditatie` geeft alleen ✓ en !
@@ -98,15 +100,15 @@ Klaar als (op jouw Mac):
 Open vragen voor Clay (uit golf 5):
 - De paniek-naloop geldt ook voor Stop All van de app met focus — goed zo?
 - ~~Paniek per app voor TD, Sediment en uurwerk~~ → gebouwd in golf 6 (zie hieronder); wat paniek per app betekent, mag je nog bijstellen.
-- varve-radio: het "lek" is geen MIDI maar het overnemen van de zender via Supabase-broadcast; een klein herstel staat klaar in §2.3 (eigen deploy, jouw OK nodig).
+- ~~varve-radio: het "lek"~~ (geen MIDI, maar het overnemen van de zender via Supabase-broadcast) → het herstel uit §2.3 is op 15 okt gemerged (varve-radio PR #1); de deploy en de meting doe jij nog.
 
 ## Golf 6 — de driver-apps en de volgende koppelingen ✓ (gebouwd en getest zonder hardware)
 5 onderdelen (bouwer + 2 reviewers + verwerker); de hub-delen samengevoegd en opnieuw getest.
 - [x] **Paniek voor de driver-apps** — uurwerk volume 0 (`pas_toe +master 0.00`, terug met de trigger `master_terug`), Sediment CC 123 (alle noten uit), Scene Kit noot 42 → master dicht (TD-patch in `koppelingen/av-scene-kit/`, wacht op REGIE; daarna `node tools/genereer-manifesten.mjs`)
 - [x] **uurwerk leest terug** — verandert er iets in de uurwerk-tab, dan volgt de hub (cockpit, pickup); `teruglezen` in `config.json`
 - [x] **td-lab als driver** — `src/drivers/td.js` over de exec-bridge van td-lab, standaard uit (`apps.td-lab.autostart`); zie `docs/TDLAB.md`
-- [ ] **varve-radio: zender-lek dicht** — op de tak `claude/zender-lek` (PR in varve-radio), wacht op jouw OK, deploy en meting
-- [ ] **Varve Eye als app op de Mac** — op de tak `claude/varve-hub-koppeling` (PR in anbernic-cam), wacht op jouw OK
+- [x] **varve-radio: zender-lek dicht** — gemerged op 15 okt (varve-radio PR #1); deploy en meting nog door Clay
+- [x] **Varve Eye als app op de Mac** — gemerged op 19 okt (anbernic-cam PR #1); nog niet op de Mac geprobeerd
 
 Klaar als (op jouw Mac):
 - [ ] LPD8-P1 vasthouden: uurwerk wordt stil, Sediment stopt alle noten, (na de TD-patch) de TD-master gaat dicht
@@ -143,7 +145,7 @@ De hub opent ook het keyboard (E-MU Xboard49) en de Maschine MK2 en geeft ze doo
 - [x] **Maschine MK2 via HID** — node-hid, optioneel (zonder start de hub gewoon); virtuele MIDI-indeling in `docs/MASCHINE.md` (pads 36–51 met velocity en gedunde aftertouch, knoppen op kanaal 1, draaiknoppen en masterwiel relatief); lampjes in APC-kleuren, schermen; "bezet" en "geen invoer" met wat te doen, elke ronde opnieuw proberen
 - [x] **`doctor`** — beide apparaten, de NI-programma's die draaien, of er invoer van de Maschine komt (Invoermonitoring)
 - [x] **Proef `speelapparaten`** — 21 stappen, doorloopbaar door de gesimuleerde gebruiker; golden test op het logboek (`test/fixtures/synthetisch-speelapparaten.jsonl`)
-- [ ] **Varve DJ** — de nep-poorten "Xboard49 (hub)" en "Maschine MK2 (hub)" in `HubMidi` en `speelt` in het manifest: nog niet gebouwd, wacht op jouw OK (`koppelingen/varve-dj/LEESMIJ.md`)
+- [x] **Varve DJ** — de nep-poorten "Xboard49 (hub)" en "Maschine MK2 (hub)" in `HubMidi` en `speelt` in het manifest: staan sinds 7 okt op youtube-mixer main (PR #5, `koppelingen/varve-dj/LEESMIJ.md`); nog niet met echte hardware bespeeld
 
 Klaar als (op jouw Mac):
 - [ ] `npm install` haalt node-hid binnen; `node src/cli.js doctor` toont onder "Speelapparaten" de Xboard49 en de Maschine (17cc:1140), en "invoer komt binnen"
@@ -225,7 +227,7 @@ Klaar als (op de pc, door Clay):
 - [ ] `node src/cli.js proef kp3plus`: wat de proef zegt in `config.json` → `apparaten.kp3plus.cc` (en `kanaal`); push het logboek
 - [ ] `node src/cli.js proef efx500`: tempo klopt met het display (±0,5), push het logboek
 - [ ] `npm start`, een app met `xy` (of de alfabet-rollen) in focus: het XY-vlak beweegt twee parameters en veert terug;
-  muziek op de EFX: de cockpit toont het tempo onder Globaal, muziek weg: na 2 s het tap-tempo
+  muziek op de EFX: de cockpit toont het tempo onder Globaal, muziek weg: na 2 s blijft het laatste tempo staan (of het tempo dat je tijdens de muziek tapte)
 - [ ] udev-regel voor de Maschine (eigen script in `~/Documents/systeem/scripts/`, zelf met sudo): `doctor` → `✔ invoer komt binnen`
 
 Te meten (staat nu als gok in `config.json`, nooit in een golden test): de CC's van X, Y en aanraken (12/13/92 uit
@@ -236,11 +238,25 @@ stuurt en of zijn klok doortikt zonder muziek; of de Maschine MK2 op Linux zonde
 - [x] `doctor` vond APC en LPD8, maar de APC antwoordde niet op de identiteitsvraag en het spelen "deed totaal niet wat het moest": het beeld van een APC die in de fabrieksmodus (0x40) blijft
 - [x] **Handdruk zoals Ableton Live** (Live-script `_APC.py`): identiteitsvraag ook op kanaal 0, intro ook met het apparaat-id uit het antwoord; geen antwoord op de intro → één duidelijke regel in het hubvenster (PROTOCOL §16, `test/apc-handdruk.test.js`)
 - [x] **`doctor` toont de handdruk stap voor stap** (omni/kanaal 0, intro 0x7f/eigen id) met wat te doen (`test/doctor-apc.test.js`)
-- [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt
+- [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt (`docs/HARDWARE-AVOND.md`, "Eerst dit (5 minuten)")
+
+## De eerste avond nagespeeld (nov, zonder hardware)
+Met de virtuele APC en LPD8 en de echte apps op hun main: drie dingen die elk alleen al "ik hoor niets / het doet niets" geven, los van de APC-handdruk.
+- [x] **Geen geluid zonder tik** — Chrome laat een tab pas geluid maken na een tik erin. De set zegt nu aan het eind waar je tikt (`tik` in de set, `docs/SETS.md`), de cockpit zegt onder Apps "geen geluid? tik één keer in elke app-tab" (`test/sets-starter.test.js`, `test/ui.test.js`)
+- [x] **Uurwerk dat er niet is** — meldt zich niet meer aan (geen spook op slot 1); na 20 s zonder antwoord één regel in het hubvenster met `"autostart": false` als uitweg (`test/drivers.test.js`); de cockpit zegt in het rood als de app met focus weg is; een kale `npm start` zegt dat de hub zelf geen geluid maakt
+- [x] **Pickup aan de rand, LPD8 en traagheid** — draaiboek blok 4 en 7: faders eerst helemaal omlaag, LPD8-knoppen één keer langs, MediSynth is met opzet traag, terug na een paniek; spiekbrief: "op 0? eerst helemaal omlaag"
+- [x] **av-kern in de set** — de opmerking waarschuwt voor "Verbind APC40" (andere APC-modus) en zegt hoe je herstelt
+
+Klaar als (op jouw Mac):
+- [ ] `npm start -- meditatie`, één tik in MediSynth en één op de schaal van Waterschaal: je hoort beide, en de APC-faders en LPD8-knoppen doen iets hoorbaars
 
 ## Volgende
-- Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
-- av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
+- **Eerst dit (5 minuten):** bovenaan `docs/HARDWARE-AVOND.md`: `git pull`, `npm install`, `node src/cli.js doctor` (zie je de handdruk van de APC?), `npm start` en kijken of `APC: modus gezet` verschijnt. Stuur de uitvoer van doctor terug.
+- Daarna hardware-avond 1: de rest van `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), en pushen. De koppelingen in de apps staan al op hun main (golf 3); alleen av-kern niet.
+- PR's in deze repo die op jouw OK wachten: #23 (grammatica, Maschine als hoofdbediening) en #24 (KP3+, EFX-500, Linux; bevat #23), en de afronding daarbovenop.
+- av-kern: de PR in av-kern mergen; daarna `sets/meditatie.json` op `wacht: "kern"` met een snapshot (zeg het, dan doet Claude dat).
+- varve-radio: de deploy en de meting van het herstel (PR #1, gemerged op 15 okt).
+- Varve Eye (anbernic-cam PR #1, gemerged op 19 okt) een keer op de Mac proberen.
 
 ## Bekende risico's (gevonden door de duurtest, golf 7 — opgelost in golf 8)
 De duurtest oefent ze nu zelf, zonder omwegen, met een invariant per punt (`docs/DUURTEST.md`, "Gevonden en opgelost (golf 8)"); `test/duurtest.test.js` kijkt of de korte avond ze raakt.

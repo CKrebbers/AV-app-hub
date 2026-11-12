@@ -17,6 +17,7 @@ Eén commando, vlak voor een optreden, dat alles naloopt. Per punt één regel:
 | ✓ | goed | |
 | ! | let op, maar speelbaar | met `→` wat je kunt doen als er tijd is |
 | ✗ | eerst oplossen | met `→` wat te doen |
+| ○ | ter kennis: telt niet mee (de KP3+ of EFX-500 is niet aangesloten; zonder speel je gewoon) | met `→` wat te doen als hij er wel is |
 
 Exitcode **0** als er niets ✗ is (alleen ✓ en !), **1** als er minstens één ✗ is, **2** bij een ongeldige
 `--poort`. `check` verandert niets: het
@@ -50,7 +51,7 @@ Set
   ✓ medisynth: node_modules aanwezig
   ✓ medisynth: poort 5175 vrij
   ✗ medisynth: geen hub-koppeling in ~/Projects/medisynth (src/hub.js ontbreekt)
-      → de app meldt zich niet bij de hub tot de koppeling erin zit (zie koppelingen/ of de PR): de tak claude/varve-hub-koppeling van medisynth (de PR)
+      → de app meldt zich niet bij de hub tot de koppeling erin zit (zie koppelingen/ of de PR): medisynth main sinds 19 okt (PR #4): git switch main && git pull
   …
 
 1 × ✗, 1 × ! — los eerst de ✗ op en draai check opnieuw.
@@ -60,7 +61,8 @@ Set
 
 **De hub** — `GET /api/beeld` op de poort uit `config.json` (`poorten.http`, of `--poort N`), op 127.0.0.1; staat
 in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met het token).
-- Draait hij: zijn de APC40 en de LPD8 verbonden (`apparaten` in het beeld)? Niet verbonden = ✗. Het aantal
+- Draait hij: zijn de APC40 en de LPD8 verbonden (`apparaten` in het beeld)? Niet verbonden = ✗. Bevestigde de APC
+  de modus-instructie niet, dan ! met wat te doen (druk op Track Select 1: komt die binnen, dan staat hij goed). Het aantal
   verbonden apps telt alleen apps die zich zelf aanmelden; drivers (MIDI, HTTP, TD) staan er apart achter.
 - Draait hij niet (niemand op de poort): ! met de startregel (met de set als die bestaat, en `--lan` als je check met
   `--lan` draaide), en dan zoals `doctor`: staan de APC40 en de LPD8 als MIDI-poort in de lijst (naam uit
@@ -116,16 +118,16 @@ voor anderen = ! (`chmod 600` en voor de zekerheid een nieuw token met `node src
 
   | App | Wat er moet zijn | Waar hij vandaan komt |
   |---|---|---|
-  | formula-lab | `src/sync/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
-  | medisynth | `src/hub.js` | tak `claude/varve-hub-koppeling` (PR) |
-  | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | tak `claude/varve-hub-koppeling` (PR) |
+  | formula-lab | `src/sync/hub.js` | `main` sinds 19 okt (PR #1) |
+  | medisynth | `src/hub.js` | `main` sinds 19 okt (PR #4) |
+  | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | `main` sinds 19 okt (PR #1) |
   | varve-dj (youtube-mixer) | `src/control/hub.js` | `main` van youtube-mixer (sinds 5 okt, PR #6): `git pull`; de patches in `koppelingen/varve-dj/` zijn alleen nog geschiedenis |
-  | av-kern | `src/ui/hub.ts` | `koppelingen/av-kern/` (patch, na 25 okt) |
+  | av-kern | `src/ui/hub.ts` | nog niet op main: de PR in av-kern wacht op jouw OK (`koppelingen/av-kern/LEESMIJ.md`) |
   | av-scene-kit | `td/td_build_hub.py` | docs/TOUCHDESIGNER.md |
   | flux | niet nagegaan | |
 
   Ontbreekt hij: "de app meldt zich niet bij de hub tot de koppeling erin zit". Dat is ✗ als de set op de hub wacht
-  (standaard), en ! als de set alleen op de poort wacht (av-kern tot 25 okt). Uurwerk, TD-lab en Sediment hebben
+  (standaard), en ! als de set alleen op de poort wacht (av-kern, zolang zijn PR niet gemerged is). Uurwerk, TD-lab en Sediment hebben
   geen eigen koppeling nodig (de hub praat via een driver met ze).
 - Een app die al verbonden is met de draaiende hub: één ✓, verder niets (de starter laat hem met rust). Dezelfde
   regel als de starter: de app-id moet exact kloppen (alleen bij `per_monitor`, zoals flux, telt `flux-<monitor>`),

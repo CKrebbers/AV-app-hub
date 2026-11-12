@@ -20,7 +20,7 @@
 | td-lab (TouchDesigner) | **driver** `td` in de hub (`src/drivers/td.js`) over de bestaande exec-bridge van td-lab: `POST /exec` met Python-tekst, antwoord altijd HTTP 200 met JSON `{ok, stdout, result, error}` (`ok:false` = de Python faalde). Statisch manifest `apps/td-lab.json`. Staat standaard uit: `config.json` → `apps.td-lab.autostart: true` (docs/TDLAB.md) | `http://127.0.0.1:<poort>/exec`, poort = `config.json` → `apps.td-lab.poort`, anders `bekende_apps.td-lab.tcp` (9981) |
 | OSC | **bestaat niet.** De hub heeft geen OSC-transport en geen luisteraar; `poorten.osc` (7701) gebruikt alleen `varve-hub doctor` om te kijken of de poort vrij is. Een OSC-koppeling vraagt eerst een nieuw transport. | — |
 
-Driver-soorten (`driver.soort` in `apps/<app>.json`, `src/drivers/index.js`): `midi`, `http`, `td`. Een driver meldt zich bij de kern als een gewone app (`hallo` + `manifest`, hartslag zolang de app gezond is, `truth:"hub"`).
+Driver-soorten (`driver.soort` in `apps/<app>.json`, `src/drivers/index.js`): `midi`, `http`, `td`. Een driver meldt zich bij de kern als een gewone app (`hallo` + `manifest`, hartslag zolang de app gezond is, `truth:"hub"`). De `http`- en `td`-driver melden zich pas aan na hun eerste geslaagde gezondheidscheck: zonder brug (of met `tabs: 0`, of zonder COMP) staat de app niet in het beeld en zegt de set-starter niet "klaar". Antwoordt een `http`-app sinds de start `NOOIT_GEZIEN_MS` (20 s) niet, dan zegt de driver dat één keer in het hubvenster (`<naam> doet nog niet mee (…)`, met `"autostart": false` als uitweg voor wie de app niet heeft). De `midi`-driver meldt zich meteen aan (een virtuele poort is er altijd).
 
 ## 3. Berichten app ↔ hub (`/app`)
 
@@ -37,8 +37,8 @@ Elk bericht is een object met `t` (type). Volgorde bij verbinden: hub stuurt `we
 | app → hub | `{t:"led", dev?, bytes:[[…],…]}` | alleen lease: LED-berichten. Zonder `dev` (of `"apc40"`) voor de APC; `dev:"maschine-mk2"` voor de Maschine (§17); `"xboard49"` wordt bewaard maar nergens getoond (het keyboard ontvangt niets); een onbekend apparaat: genegeerd |
 | app → hub | `{t:"scherm", dev:"maschine-mk2", nr, data}` | alleen lease, met `maschine-mk2` in `speelt`: scherm `nr` (0 = links, 1 = rechts), `data` = base64 van precies 2048 bytes (§17) |
 | app → hub | `{t:"globaal", waarden}` | alleen met `levert` in het manifest: de app levert iets aan de globale laag, nu de sectie van het nummer (`sectie.energie` 0..1, `sectie.label` tekst, `sectie.nieuw: true`; §18) |
-| hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"` |
-| hub → app | `{t:"trig", id, aan}` | trigger in (`aan:true`) en uit (`aan:false`) |
+| hub → app | `{t:"zet", id, v, bron?}` | zet parameter `id` op `v` (0..1). `bron`: `"apc40"`, `"lpd8"`, `"snapshot"`, `"replay"`, `"cockpit"`, `"maschine-mk2"` (§19), `"kp3plus"` (§21) |
+| hub → app | `{t:"trig", id, aan, v?}` | trigger in (`aan:true`) en uit (`aan:false`); `v` = velocity 0..1, alleen bij `aan:true` van een Maschine-pad (§19) |
 | hub → app | `{t:"scene", i}` | scène `i` (0-based) uit `manifest.scenes` |
 | hub → app | `{t:"focus", aan}` | de app kreeg of verloor de APC-focus |
 | hub → app | `{t:"globaal", waarden}` | globale macro's, klokken en de sectie (§6, §18), alleen gewijzigde sleutels; bij elke `hallo` eerst alles |
@@ -149,7 +149,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 | hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], bronnen:{sectie}, nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `bronnen` = per globale groep de app die hem nu levert, of `null` (§18). `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
 | hub → cockpit | `{t:"leds", dev:"apc40", staat:{<control-id>: LedStaat}}` — alleen gewijzigde |
 | hub → cockpit | `{t:"invoer", g}` — elke controller-gebeurtenis (voor de live-weergave) |
-| cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam |
+| cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8"\|"maschine-mk2", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam (`maschine-mk2`: de virtuele MIDI van de Maschine, docs/MASCHINE.md; de cockpit tekent geen Maschine, `herhaal` gebruikt hem) |
 | cockpit → hub | `{t:"focus", app}` · `{t:"zet", app, id, v}` · `{t:"snapshot", nr, actie:"laad"\|"bewaar"}` |
 
 `LedStaat` is die van `src/devices/apc40mk2.js` (`{kleur, anim}`, `{aan}`, `{knipper}`, `{stand}`, `{waarde}`).
@@ -192,7 +192,7 @@ Vragen die de bouwers opwierpen, en hoe ze beslist zijn. Dit is net zo bindend a
 - Een keuze met meer dan 5 opties: pad stapt door de opties.
 
 **Cockpit (§8)**
-- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam }, lpd8: { verbonden, naam, model } }`, plus de speelapparaten en `spelers`, §17).
+- `beeld` bevat ook: per app `slot`, `lease`, `pagina`, `paginas`; verder `snapshots`, `opname`, `opnameInfo`, `slews` en `nu` (§8), `pickup` (`{ <control-id>: { id, doel, gevangen, fysiek } }` voor spookfaders) en `apparaten` (`{ apc40: { verbonden, naam, handdruk, hint }, lpd8: { verbonden, naam, model } }`, plus de speelapparaten en `spelers`, §17). `handdruk` = de stand van de APC-handdruk (§16): `"bezig"`, `"ok"`, `"geen-antwoord"` (dan staat in `hint` wat te doen), of `null` als de APC niet verbonden is.
 - Bij verbinden krijgt een cockpit `beeld` én een volledig `leds`. Ongeldige cockpitberichten → `{ t:"fout", reden }`.
 - Een cockpit-`zet` op een trigger: `v:1` = `trig aan:true`, `v:0` = `trig aan:false`.
 - Valt een cockpit weg (sluiten, fout of geen pong) terwijl hij virtueel iets ingedrukt houdt, dan laat de hub die toetsen los; zo ook elke trigger die hij met `zet` (`v > 0`) indrukte en niet losliet (golf 8): `zet v:0` → `trig aan:false`. Niet zolang iemand anders hem nog vasthoudt: een andere cockpit (die laat hem los, of de hub als ook die wegvalt) of de hardware (LPD8 P1 op `paniek`, Stop All op de paniek-trigger van die app, een APC-pad; de kern laat hem los bij het loslaten daarvan). Een nette `v:0` van een cockpit laat hem wel direct los, ook als een ander hem nog vasthoudt (de kern telt de bronnen van een cockpit-trigger niet: een bekende grens, docs/DUURTEST.md golf 8 punt 1); daarna houdt niemand hem meer vast en volgt bij wegvallen geen tweede `aan:false`. Is de id na een nieuw manifest geen trigger meer (een waarde, of weg) of is de app vergeten, dan stuurt de hub niets (een `zet` zou een waarde op 0 zetten); is de app op dat moment weg, dan valt het loslaten weg, zoals bij de APC (kwam hij al terug, dan hoort hij het).
@@ -283,7 +283,7 @@ Uit een avond van uren in een paar minuten. Ze begrenzen wat de hub onthoudt ove
   - **De poort zegt dat hij niet meer leeft** (`levend()` false, de nep-poort na een replug) **of sturen gooit**: de eerste keer (en bij een poort die niet meer leeft elke keer, met de pauzes hieronder) sluit de hub de poort meteen, meldt `weg`, opent hem opnieuw en initialiseert het apparaat, ook als de kabel al terug is vóór de volgende ronde.
   - **Blijft sturen daarna mislukken**, dan blijft de poort open (de ingang werkt misschien nog: knoppen en pads blijven aankomen, geen `weg`, de LPD8-waarden en een lopende paniek blijven staan) en initialiseert de hub het apparaat alleen opnieuw, met pauzes van 0,25 s die steeds verdubbelen tot 30 s (`HERSTEL`). Lukte sturen weer 10 s, of was het apparaat echt uit de lijst, dan begint het weer bij meteen opnieuw openen.
 - **Eén logregel per storing, niet per bericht of per poging**, via de log van `src/hub.js`: `APC: sturen mislukt — kabel los? de hub probeert opnieuw` (voorbij zodra er weer iets verstuurd is) en `APC: openen mislukt (<reden>) — de hub probeert opnieuw` (voorbij zodra de poort weer open is); voor de LPD8 met `LPD8:`. De twee soorten staan los van elkaar: de ene onderdrukt de andere niet. Een hikje in de poortlijst terwijl de poort open is, is geen storing en geeft geen regel.
-- **De APC-handdruk (na de eerste echte test op de Mac: de APC antwoordde niet op de omni-identiteitsvraag).** Het protocol (v1.2) zegt apparaat-id 0x7F en kanaal 0x7F (omni); Ableton Live doet het anders (Live-script `_APC.py`): identiteitsvraag op kanaal 0, en de intro met het apparaat-id uit het antwoord (byte 14). Bij elke `init()` doet de hub beide: intro met 0x7F en de ringtypes, dan de identiteitsvraag op kanaal 0 én omni; noemt de APC een eigen apparaat-id en kwam er nog geen intro-antwoord (0x61), dan de intro nog eens met dat id en alles opnieuw tekenen. Geen intro-antwoord binnen `HANDDRUK_MS` (1,5 s): de sessie meldt `handdruk` `{ ok:false, identiteit, apparaatId, introAntwoord }` en de hub logt één regel (`APC: geen antwoord op de modus-instructie …`); met antwoord `{ ok:true, … }` en `APC: modus gezet`. Zonder antwoord staat de APC waarschijnlijk in de fabrieksmodus (0x40): Track Select stuurt niets, schakelaars blijven aan, de device-knoppen zijn per track gebankt en de lampjes volgen de hub niet. `node src/cli.js doctor` toont per vorm wat de APC beantwoordt (docs/HARDWARE-AVOND.md, blok 7).
+- **De APC-handdruk (na de eerste echte test op de Mac: de APC antwoordde niet op de omni-identiteitsvraag).** Het protocol (v1.2) zegt apparaat-id 0x7F en kanaal 0x7F (omni); Ableton Live doet het anders (Live-script `_APC.py`): identiteitsvraag op kanaal 0, en de intro met het apparaat-id uit het antwoord (byte 14). Bij elke `init()` doet de hub beide: intro met 0x7F en de ringtypes, dan de identiteitsvraag op kanaal 0 én omni; noemt de APC een eigen apparaat-id en kwam er nog geen intro-antwoord (0x61), dan de intro nog eens met dat id en alles opnieuw tekenen. Geen intro-antwoord binnen `HANDDRUK_MS` (1,5 s): de sessie meldt `handdruk` `{ ok:false, identiteit, apparaatId, introAntwoord, trackSelect }` en de hub logt één regel (`APC: geen bevestiging op de modus-instructie — druk op Track Select 1 …`); met antwoord `{ ok:true, … }` en `APC: modus gezet`. **Track Select is het bewijs** (bronnenonderzoek nov 2026): het intro-antwoord (0x61) staat alleen in Akai's protocol en geen gevestigde implementatie leest het (Live, Bitwig, DrivenByMoss, QLC+); in de fabrieksmodus (0x40) stuurt Track Select niets, in 0x41/0x42 noot 51 (protocol v1.2 p.10). Komt Track Select 1–8 (noot 51, kanaal 0–7) of Master (noot 80) binnen, dan meldt de sessie `{ ok:true, trackSelect:true }`, ook na een eerdere `ok:false`. De kern van de handdruk blijft zoals hij is: elke stap heeft minstens twee onafhankelijke bronnen (7F: Bitwig, DrivenByMoss, QLC+, een Cubase-script; het eigen id: Live). Zonder bevestiging en zonder Track Select staat de APC waarschijnlijk in de fabrieksmodus: schakelaars blijven aan, de device-knoppen zijn per track gebankt en de lampjes volgen de hub niet. **Zichtbaar:** de stand staat in `beeld.apparaten.apc40.handdruk` (§9); de cockpit zet bij `geen-antwoord` de APC-chip op rood met één regel ernaast (`APC: geen bevestiging … druk op Track Select 1 …`), en `npm run check` geeft dan bij een draaiende hub een `!` met dezelfde hint (geen ✗: met Track Select kan het toch goed staan). `node src/cli.js doctor` toont per vorm wat de APC beantwoordt (omni direct en na 0,5 s, kanaal 0, het product: 0x29 mkII of 0x73 de originele APC40), telt alle berichten die binnenkomen, luistert zonder bevestiging tot 8 s naar Track Select en een fader (en gaat door zodra Track Select binnenkomt; alleen een fader is dan `✗` met "niet ingedrukt, of de fabrieksmodus"), en noemt Ableton Live, Bitwig of een draaiende hub die zelf een intro sturen (docs/HARDWARE-AVOND.md, blok 7). Geen hint meer over een stroomadapter (de mkII is USB-gevoed, met een aan/uit-knop) of een firmware-updater (geen bron gevonden).
 - **Sessie-API (§9):** `ApcSessie`/`Lpd8Sessie` melden `fout` als `(e, soort)` met `soort` `'sturen'` of `'openen'`; in het logboek een `melding` met `wat:"fout"`, `soort` en `fout` (de tekst van de fout).
 
 ## 17. Speelapparaten: Xboard49 en Maschine MK2 (golf 9)
@@ -331,7 +331,8 @@ De hub probeert het bij elke hotplug-ronde opnieuw.
 "maschine-mk2")` laat los wat er vastgehouden werd. De routering zelf staat in `src/core/spelers.js` (puur).
 
 **Opname en logboek:** de avondmap (`docs/OPNAME.md`) neemt `xboard49` en `maschine-mk2` op (bij de Maschine de virtuele
-MIDI, al uitgedund); `herhaal` speelt ze niet af (ze gaan alleen naar lease-apps, die niet in de eindstand staan).
+MIDI, al uitgedund). `herhaal` speelt de Maschine af (sinds §19 zet hij ook waarden van gewone apps; via de cockpit als
+`{t:"virtueel", dev:"maschine-mk2"}`), de Xboard49 niet (die gaat alleen naar lease-apps, die niet in de eindstand staan).
 In een proeflogboek: elk knoppenrapport van de Maschine ruw (`maschine-mk2`), padrapporten alleen als ze iets deden of
 tijdens de rustopname, en de virtuele MIDI als `maschine-mk2-midi` (golden test, `test/herspeel.js`).
 
@@ -453,18 +454,30 @@ zonder grammatica, een lease-app die de Maschine speelt, geen focus), dan geldt 
 voor de laatst gefocuste lease-app die hem in `speelt` heeft. Bestaande apps veranderen dus niet: Varve DJ speelt de
 pads door terwijl av-kern of formula-lab de focus heeft. De Xboard49 blijft altijd een speelapparaat.
 
+**Altijd een weg terug: de kiezer.** Heeft de app met focus geen grammatica (of is hij weg, of is er geen focus) en
+speelt er ook geen lease-app op de Maschine, dan is de Maschine **kiezer**: groep A–H kiest nog steeds de focus en
+brandt zoals hieronder, pads en SHIFT zijn uit, en het linkerscherm zegt `<app>: niets op de Maschine`, het rechter
+`GROEP A-H = ANDERE APP`. Pads en draaiknoppen doen dan niets. Zo kom je met de Maschine altijd terug bij een app met
+grammatica, ook als de hub start met de focus op een app zonder. `beeld.maschine` blijft `null` (hij bedient niets).
+Een slot waarvan de app weg is (lampje uit) krijgt geen focus.
+
 | Maschine | Doet | Op de draad naar de app |
 |---|---|---|
 | draaiknop 1–8 | de alfabet-parameter op die plek; relatief: `tellen_vol` (1000, één omwenteling) tellen = van 0 naar 1; **SHIFT** ingedrukt = `fijn` (10) keer fijner. Een keuze of schakelaar stapt per `tellen_stap` (125) tellen. Een lege plek doet niets | `{t:"zet", id, v, bron:"maschine-mk2"}` |
 | pad 1–8 | het moment op die plek (een pad zonder moment doet niets) | `{t:"trig", id, aan:true, v}` met **`v` = velocity 0..1**; loslaten `{t:"trig", id, aan:false}` |
-| aftertouch op pad 1–8 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
-| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, zonder druk); schakelaar: `zet` 0/1 bij elke druk |
-| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit | `{t:"focus"}` zoals altijd |
+| aftertouch op pad 1–16 | alleen als de trigger `druk` heeft: de druk 0..1 (±30×/s) | `{t:"zet", id:<druk>, v, bron:"maschine-mk2"}`; bij loslaten `v:0` |
+| pad 9–16 | vrij per app: `maps/<app>.json` → `"maschine-mk2:pad9"` … `"maschine-mk2:pad16"`: `{ "id": … }` (een trigger of schakelaar) | trigger: zoals pad 1–8 (met `v`, en de druk als de trigger `druk` heeft); schakelaar: `zet` 0/1 bij elke druk |
+| groep A–H | focus op app-slot 1–8 (zoals Bank + Track Select). Wie een slot kiest met een app die de Maschine speelt, geeft hem de Maschine; terug gaat dan via de APC of de cockpit. Een slot met een app die weg is, doet niets | `{t:"focus"}` zoals altijd |
 | masterwiel en de andere knoppen | (nog) niets | — |
 
 - **Velocity en aftertouch "als de app dat wil".** `v` in `trig` is een extra veld (alleen bij `aan:true` van een
   Maschine-pad); een app die het niet kent, negeert het (grondregel 5). Aftertouch kost een parameter: een `waarde`
   die de app noemt in `druk` op de trigger. Zo blijft alles op de draad 0..1 en `zet`/`trig`, zonder nieuw berichttype.
+- **LPD8-macro en pickup (§10, §11):** een LPD8-knop zet elke app met die rol (ook een alfabet-rol, `macroVan`) op de
+  knopstand, maar zijn pickup volgt alleen de **eerste** app met die rol. Draai je met de Maschine (of de APC, de
+  cockpit) aan dezelfde parameter van een andere app, dan blijft de LPD8-knop gevangen, en zet zijn eerstvolgende tik
+  die parameter in één sprong terug naar de knopstand. Voor de eerste app met de rol wacht de knop wel (§14). Zo is het
+  ook voor `macro.*` op main; met de grammatica komt het vaker voor (vijf alfabet-plekken hangen aan K2–K6).
 - **Direct, zoals de APC (§12):** een draaiknop van de Maschine is een hand op een knop: geen `slew_s`, en een lopende
   slew breekt af. Geen pickup nodig: relatief springt nooit. De APC-ring en -pickup van dezelfde plek gaan mee.
 - **Niets blijft hangen (§11, §17):** het loslaten (en de druk naar 0) gaat naar de app en trigger van het
@@ -495,21 +508,27 @@ USB-MIDI-interface; de hub opent alleen de ingang, mét de klok (RtMidi negeert 
 interface-ingang). De EFX telt 40–250 BPM uit de audio-ingang of met TAP en stuurt 24 tikken (F8) per tel.
 
 **Van tikken naar tempo** (`src/core/klokbron.js`, puur, de tijd komt van de Klok van de hub):
-- De laatste `venster` intervallen (standaard 96 = vier tellen). De mediaan haalt uitschieters weg (een late tik van USB
-  of ALSA: alles verder dan 25 % ervan telt niet mee); door de rest gaat een rechte lijn (kleinste kwadraten), zodat de
-  jitter van één tik er niet zwaar in telt.
+- De laatste `venster` intervallen (standaard 96 = vier tellen). Daaruit de tiktijden zelf, en door die tiktijden een
+  rechte lijn (kleinste kwadraten: tiknummer → tijd). Een late tik is dan één punt naast de lijn: het interval ervoor
+  te lang en het volgende te kort heffen elkaar op. Een punt dat meer dan 25 % van een interval naast de lijn ligt (een
+  hapering van USB of ALSA) telt niet mee; de lijn gaat dan opnieuw zonder. Twee tikken op dezelfde ms tellen allebei
+  (een lus die in stappen aflevert). Zo blijft het tempo bij 2 ms jitter (sigma) op 174 BPM binnen ±0,2 BPM
+  (golf afronden; met een keten van gefilterde intervallen sprong het tot 25× per seconde tussen 166 en 184).
 - Pas na één tel (24 intervallen) is er een tempo; daarvóór blijft de vorige bron.
 - Het tempo gaat op 0,1 afgerond naar `globaal.bpm`, en alleen als het meer dan `stabiel_bpm` (0,2) afwijkt van wat er
   staat, of als een kleinere afwijking een hele tel dezelfde blijft (anders bleef het na een tempowissel net naast het
   echte hangen). Zo springt `bpm` niet heen en weer tussen 119,9 en 120,1.
 - Een gat van meer dan `weg_ms` (2 s) tussen twee tikken: opnieuw meten.
 
-**De klok valt weg** (meer dan `weg_ms` geen tik, of de interface is losgetrokken): als er ooit getapt is, wordt tap de
-bron (met het laatste tap-tempo); anders blijft het laatste EFX-tempo staan (bron `"laatste"`), want een sprong naar
-120 midden in een nummer is erger. Komt de klok terug, dan is de EFX pas weer de bron na een nieuwe meting van een hele
+**De klok valt weg** (meer dan `weg_ms` geen tik, of de interface is losgetrokken): als er getapt is terwijl de EFX
+tikte, wordt tap de bron (met dat tap-tempo); anders blijft het laatste EFX-tempo staan (bron `"laatste"`), want een
+sprong naar 120 midden in een nummer is erger. Een tap van vóór de EFX de bron werd, telt dan niet meer (die wordt
+gewist zodra de EFX de bron wordt): een tap van een uur geleden is net zo'n sprong. Liep de klok (`klok.loopt` 1),
+dan gaat `klok.loopt` naar 0. Komt de klok terug, dan is de EFX pas weer de bron na een nieuwe meting van een hele
 tel (niet met zijn oude tempo).
 
-**Tap terwijl de EFX tikt:** de EFX wint; het tap-tempo wordt onthouden voor als de klok wegvalt.
+**Tap terwijl de EFX tikt:** de EFX wint; het tap-tempo wordt onthouden voor als de klok wegvalt (je kunt dus tijdens
+de muziek alvast een reservetempo tappen).
 
 **Start/Stop** (FA/FB/FC, als de EFX ze stuurt: te meten): `globaal["klok.loopt"]` 1 (start, verder) of 0 (stop),
 alleen bij verandering. Knoppen die MIDI sturen: alleen in het logboek (te meten, `node src/cli.js proef efx500`).
@@ -537,9 +556,19 @@ parameter-alfabet, §19). Heeft de app er geen van, dan doet die as niets.
 
 **Gedrag:**
 - Aanraken (of bewegen zonder aanraak-CC) kiest de app met focus en onthoudt van elke as de waarde van dat moment.
+  Een aanraking begint zonder X en Y: pas als er een X of Y binnenkomt, verandert er iets (nooit eerst een sprong
+  naar waar de vorige aanraking eindigde). X en Y die hooguit 50 ms vóór het aanraken kwamen, horen er wel bij.
+- **Wanneer is het gebaar voorbij?** Kwam de aanraak-CC al eens binnen, dan alleen bij loslaten; een X of Y buiten
+  een aanraking (een KP3+ die na het loslaten nog één waarde stuurt) begint dan geen nieuw gebaar. Kwam hij nooit
+  (`cc.aanraak` is `null`, of de KP3+ stuurt een ander nummer dan in `config.json`), dan telt bewegen als aanraken en
+  is het gebaar voorbij na `apparaten.kp3plus.los_ms` (400) zonder beweging: dan veert het terug en volgt het
+  daarna weer de focus. Houd je je vinger zo lang stil, dan veert het dus al terug; beweeg je weer, dan gaat het
+  verder. (Zonder dit bleef het vlak bij een verkeerd CC-nummer de hele avond bij één app.)
 - Bewegen zet alleen de as die bewoog: `zet` met `bron: "kp3plus"`, direct (geen `slew_s`: het is een hand, zoals een
   APC-fader); pickup en LEDs van de APC gaan mee.
-- **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. **Hold**
+- **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. Zette iets anders
+  (cockpit, snapshot, APC, LPD8, Maschine) die parameter tijdens het aanraken, dan veert hij terug naar díe waarde.
+  Wat de app zelf meldt telt daarvoor niet (dat kan een echo van het gebaar zijn). **Hold**
   (`apparaten.kp3plus.hold: true`, of de Hold-knop van de KP3+ als die een CC heeft): blijven staan.
 - Wisselt de focus tijdens het aanraken, dan blijft het gebaar (en het terugveren) bij de app waar het begon, zoals een
   ingedrukte toets (§11). Valt de KP3+ weg tijdens het aanraken: terugveren.

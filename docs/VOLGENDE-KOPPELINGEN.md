@@ -13,10 +13,10 @@ staan, anders "overgeslagen").*
 
 ---
 
-> **Stand na golf 6:** paniek voor uurwerk, Sediment en Scene Kit (TD-kant als patch, `koppelingen/av-scene-kit/`),
+> **Stand na golf 6 (bijgewerkt 12 nov):** paniek voor uurwerk, Sediment en Scene Kit (TD-kant als patch, `koppelingen/av-scene-kit/`),
 > uurwerk teruglezen en de td-lab-driver (`src/drivers/td.js`, `docs/TDLAB.md`) zijn gebouwd. Het varve-radio-herstel
-> (§2.3) en Varve Eye als app (§7.3 fase A) staan op een tak in hun eigen repo, met een PR die op Clay wacht. Waar
-> hieronder "voorstel" staat, is dat de stand van golf 5.
+> (§2.3) is op 15 okt gemerged (varve-radio PR #1; deploy en meting nog door Clay), Varve Eye als app (§7.3 fase A) op
+> 19 okt (anbernic-cam PR #1; nog niet op de Mac geprobeerd). Waar hieronder "voorstel" staat, is dat de stand van golf 5.
 
 ## 0. In het kort
 
@@ -45,14 +45,14 @@ kleinste herstel: §2.3.
 | **manifest-app** via WS `/app` | app kan een WebSocket openen en zijn waarden melden | `hallo` + `manifest` + `staat`, `zet`/`trig` uitvoeren | PROTOCOL §3–§4, `src/transports/server.js` |
 | **driver** in de hub | app kan zich niet aanmelden (TD, Logic, HTTP-API) | niets; de hub spreekt de taal van de app | PROTOCOL §2, `src/drivers/`, `apps/<app>.json` |
 | **lease** | app heeft al een complete APC-stack | ruwe MIDI ontvangen, LED-bytes terug | PROTOCOL §5 (Varve DJ, av-kern) |
-| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:132` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
+| **OSC/MIDI** | — | — | MIDI = de driver van nu. **OSC bestaat niet in de hub**: 7701 komt alleen voor in `src/doctor.js:112` (poortcheck); er is geen luisteraar. Een OSC-koppeling vraagt dus eerst een nieuw transport. `PROTOCOL.md:21` zegt dat sinds golf 6 ook (§6.5). |
 
 Nieuwe driver-soorten komen bij `src/drivers/index.js:28` (`DRIVER_SOORTEN`) en `:35-44` (`maakDriver`), plus
 een eigen bestand naast `midi.js`/`http.js` en de validatie in `valideerStatisch`.
 
 **Paniek in het algemeen.** De kern stuurt `trig paniek` alleen naar apps die een trigger met id `paniek` in hun
-manifest hebben (`src/core/kern.js:935-940`; Stop All: `src/core/kern.js:844`). Bij dit onderzoek had geen enkele
-driver-app die (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:230`, `src/drivers/http.js:206`).
+manifest hebben (`src/core/kern.js:941-946`; Stop All: `src/core/kern.js:850`). Bij dit onderzoek had geen enkele
+driver-app die (`apps/*.json`), en beide drivers negeren `globaal` (`src/drivers/midi.js:230`, `src/drivers/http.js:231`).
 **LPD8-P1 deed toen dus niets voor TD, Sediment en uurwerk.** Daarom staat paniek bij elk project hieronder. *Sinds
 golf 6 hebben uurwerk, Sediment en td-lab een trigger `paniek` in hun statische manifest; Scene Kit volgt na de
 TD-patch in `koppelingen/av-scene-kit/` (PROTOCOL §14).*
@@ -230,7 +230,7 @@ Browser-app (pure Web Audio, geen build, geen dependencies) op **:8765** (`pytho
 | `bevries` {aan} | `server.js:30`, `brug.js:128` (`aan !== false`) | ja |
 | `bewaar` {bron:"varve-hub"} | `server.js:19`, `brug.js:84-89` (zonder naam = automatische naam) | ja |
 | `uur` start/stop/meer/minder | `server.js:28`, `brug.js:116-126` (start zonder minuten = 60) | ja |
-| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:236` | ja |
+| gezondheid `GET /` en "tabs: 0" = niet gezond | `server.js:98` ↔ `src/drivers/http.js:262` | ja |
 
 **Bevindingen:**
 1. **`truth:"hub"` klopt niet met wat de tab zelf doet.** De tab verandert de macro's zelf: `uur.js:121-122`
@@ -374,7 +374,7 @@ Precies `apps/uurwerk.json` plus twee triggers (`master_terug`, `paniek`); geen 
 }
 ```
 Wat **paniek** hier betekent: het hoofdvolume van uurwerk naar 0 (de slingers lopen door, de tuinman ook). Pas
-bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:198`). Terug met
+bij het indrukken (de HTTP-driver stuurt werkwoorden alleen bij `aan`, `src/drivers/http.js:223`). Terug met
 `master_terug` of door in de tab het volume te draaien. De laag krijgt auteur `varve-hub`. Liep de engine nog niet,
 dan start paniek hem (stil, want master 0; `brug.js:51`).
 
@@ -517,7 +517,7 @@ dan zijn de Controller Assignments niet meer nodig. Nu niet: Sediment is nog noo
 gegenereerd** (`_bron`: `tools/genereer-manifesten.mjs` ← `Params.h`) en de generator verbiedt CC 123 bewust
 (`VERBODEN_CC`, `tools/genereer-manifesten.mjs:122`). Een paniek die je met de hand toevoegt, verdwijnt bij de volgende
 generatie en laat drie dingen falen: `node tools/genereer-manifesten.mjs --toets`, de test "actueel t.o.v. de bronnen"
-(`test/drivers.test.js:753-758`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:389-397`: precies
+(`test/drivers.test.js:810-815`) en de test "alle 22 parameters op eigen CC" (`test/drivers.test.js:389-397`: precies
 22 CC's, geen in `VERBODEN_CC`). Dus:
 - `sedimentManifest()` maakt de paniek-trigger zelf, buiten `SEDIMENT_CC`, als uitzondering naast `VERBODEN_CC` met
   de reden erbij: CC 123 is een kanaalmodus-bericht, hier alleen als bedoelde paniek, nooit als parameter.
@@ -547,7 +547,7 @@ houdt een geladen plug-in vast; bouwen alleen met Logic dicht.
 
 ### 5.6 Werk en risico's
 Paniek **S-M**: geen manifest-regel maar een generator-wijziging (`sedimentManifest()` + uitzondering op
-`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:389-397`, `:753-758`); idem voor av-scene-kit
+`VERBODEN_CC`) en twee tests aanpassen (`test/drivers.test.js:389-397`, `:810-815`); idem voor av-scene-kit
 (`sceneKitManifest()`, §4.4). Logic-setup ±15 min (Clay). Risico's: Logic luistert standaard naar alle ingangen (staat in
 `docs/LOGIC.md`, stap 2); de doorvoer naar TD via TO_TD (§4.2 punt 3) staat er nog **niet** in.
 
@@ -597,11 +597,11 @@ in de hub (§1); td-lab deed nergens mee.
 
 **Ontwerp `src/drivers/td.js`** (naast `http.js`, zelfde levensloop):
 - `driver = { soort:"td", url:"http://127.0.0.1:9981", comp:"/genesis", gezond_s:2, max_hz:10, pars:{ id: {par, bereik?} | {puls} }, paniek?: { <id>: 0..1 } }`.
-  **Poort uit `config.json`** (huisregel 6), zoals `src/drivers/http.js:75-77` al doet: `apps.td-lab.poort` wint; de
+  **Poort uit `config.json`** (huisregel 6), zoals `src/drivers/http.js:80-82` al doet: `apps.td-lab.poort` wint; de
   `url` in het manifest is alleen de terugval. (Bij voorkeur zet de hub-config de poort dan ook in `apps.td-lab`, naast
   `bekende_apps.td-lab.tcp`, `config.json:77`.)
 - **Per tik één POST `/exec`** met alle gewijzigde parameters (`c=op('/genesis')\nc.par.Speed=0.7\n…`), laatste
-  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:168-192`, maar per batch i.p.v. per param):
+  waarde wint (de coalescing van `HttpDriver.#zet`, `src/drivers/http.js:193-217`, maar per batch i.p.v. per param):
   TD's hoofddraad krijgt hooguit 10 verzoeken per seconde. Waarde = `bereik[0] + v·(bereik[1]-bereik[0])`;
   schakelaar → `True/False`; puls → `c.par.Reseed.pulse()`. **Niet half toepassen:** de batch begint met
   `c=op('/genesis')` en `if c is None: raise RuntimeError('geen comp')`, en elke toewijzing staat in een eigen
@@ -609,7 +609,7 @@ in de hub (§1); td-lab deed nergens mee.
   hernoemde parameter niet de rest van de batch tegenhouden, en telt de batch toch als mislukt.
 - **Antwoord lezen, niet alleen de status:** `/exec` geeft **altijd HTTP 200**, ook als de Python faalde — dan staat
   er `ok:false` in de JSON (`td-lab/bridge/td_bridge.py:124` `out['ok'] = False`, `:146` `statusCode = 200`). Een
-  driver die zoals `src/drivers/http.js:151` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
+  driver die zoals `src/drivers/http.js:176` alleen naar `r.ok` kijkt, ziet een mislukte batch als geslaagd: geen
   `gemist`, geen replay. Dus: de body altijd als JSON lezen; `ok:false` of een niet-JSON-antwoord = mislukt →
   `gemist = true` → bij de volgende geslaagde gezondheidscheck opnieuw aanmelden (replay, `truth:"hub"`).
 - **Gezondheid**: POST `/exec` met `(lambda c: c.id if c else None)(op('/genesis'))` (TD-time-out zoals
@@ -728,8 +728,8 @@ dat het lukte**. Wifi werkt wel op `WiFi-XY2`; SSH nooit (`anbernic-cam/docs/TOD
 ### 7.3 Beste koppelvorm: eerst **app** op de Mac, later **bron**
 **Fase A — manifest-app via WS `/app` (op de Mac).** Varve Eye Art draait al op de Mac met de camera in de Mac:
 `ws://127.0.0.1:7700/app`, geen token, geen usb0-vraag. Waarde: met de APC effecten en werkplekken bespelen terwijl je
-filmt (scene-kit-avond). De WS-client bestaat al in stdlib-Python: `flux-screensaver` op tak
-`claude/varve-hub-koppeling`, `flux-screensaver:817-1085` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`) —
+filmt (scene-kit-avond). De WS-client bestaat al in stdlib-Python: in `flux-screensaver` (sinds 19 okt op `master`)
+`varve_album/hub.py:35-324` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`; toen op de tak nog `flux-screensaver:817-1085`) —
 overnemen als `varve-eye/knulli/varve-eye/hub.py`, achter `--hub ws://…` (standaard uit). Geen nieuwe dependencies.
 De lus leest hub-berichten uit een wachtrij (draad zoals `Bron`, `:1755-1850`), zodat de 60-per-seconde-lus nooit
 op het netwerk wacht.
@@ -861,13 +861,14 @@ eerst de omgeving te repareren; de muzikale waarde van "macro's → prompt" is o
 
 ## 9. Voorgestelde volgorde
 
-*Stand na golf 6 (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 staan op
-een tak met een PR in dat repo en wachten op Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
+*Stand 12 nov (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 zijn gemerged
+in hun eigen repo (varve-radio PR #1 op 15 okt, anbernic-cam PR #1 op 19 okt); de deploy en meting van 1 en het proberen
+van 5 op de Mac doet Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
 
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|
 | 1 | **varve-radio: lek dichten** (§2.3) | live voor iedereen, los van de hub, kleinste herstel, geen DDL | Claude bouwt + suite, Clay deployt en meet | varve-radio |
-| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:389-397`/`:753-758`; TD-tak in av-scene-kit | hub + av-scene-kit |
+| 2 | **Paniek voor de driver-apps**: uurwerk (alleen manifest, §3.4), sediment (CC 123, §5.4), av-scene-kit (pad 42, §4.4) | LPD8-P1 doet nu niets voor TD/Sediment/uurwerk; veiligheid gaat voor nieuwe apps | hub: `apps/uurwerk.json`; **generator** (`sedimentManifest()` met CC 123 als uitzondering op `VERBODEN_CC`, `sceneKitManifest()` met pad 42) + de tests `test/drivers.test.js:389-397`/`:810-815`; TD-tak in av-scene-kit | hub + av-scene-kit |
 | 3 | **uurwerk teruglezen** (§3.3), met tolerantie; lagen samenvoegen alleen als Clay het wil | de hub en de tab lopen nu uit elkaar; de lagenvloed raakt Clay's eigen geschiedenis (en vraagt uurwerk-code) | hub; uurwerk voor de lagen | `src/drivers/http.js`; `uurwerk/taal.js` |
 | 4 | **td-lab driver** (§6.3) + `PROTOCOL.md` §2 en `config.json` → `apps.td-lab` bijwerken | nul code in td-lab, een heel nieuw instrument erbij; wel eerst de 9981-vraag | hub | `src/drivers/td.js`, `PROTOCOL.md`, `config.json` |
 | 5 | **Varve Eye als app** op de Mac (§7.3 fase A) | stdlib-client bestaat al (flux); geen netwerkvragen | Claude in anbernic-cam, Clay proeft | anbernic-cam |

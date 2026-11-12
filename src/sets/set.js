@@ -26,7 +26,7 @@ const GEEN_SET = new Set(['paden.json', 'paden.voorbeeld.json']);
  * @typedef {{ commando: string, map?: string, omgeving?: Record<string, string> }} StartSpec
  * @typedef {{
  *   start?: StartSpec|null, url?: string|null, wacht?: 'kern'|'poort'|'geen', poort?: number,
- *   time_out_s?: number, opmerking?: string, handmatig?: string,
+ *   time_out_s?: number, opmerking?: string, handmatig?: string, tik?: string,
  * }} SetApp
  * @typedef {{
  *   naam: string, beschrijving?: string, time_out_s?: number,
@@ -115,7 +115,7 @@ export function valideerSet(ruw, config) {
     // "geen" is meteen klaar: een URL die pas open kan als de poort open is, zou dan nooit opengaan.
     if (a.wacht === 'geen' && typeof a.url === 'string' && poort !== undefined) f.push(`${waar}.wacht is "geen", maar de URL wacht op poort ${poort} — gebruik "poort"`);
     if (a.time_out_s !== undefined && !(typeof a.time_out_s === 'number' && a.time_out_s > 0)) f.push(`${waar}.time_out_s moet een getal > 0 zijn`);
-    for (const k of ['opmerking', 'handmatig']) if (a[k] !== undefined && typeof a[k] !== 'string') f.push(`${waar}.${k} moet tekst zijn`);
+    for (const k of ['opmerking', 'handmatig', 'tik']) if (a[k] !== undefined && typeof a[k] !== 'string') f.push(`${waar}.${k} moet tekst zijn`);
     sjabloon(`${waar}.handmatig`, a.handmatig);
     sjabloon(`${waar}.opmerking`, a.opmerking);
   }

@@ -172,7 +172,11 @@ export async function wachtOpUrl(url, { ms = 30000, proces } = {}) {
   for (;;) {
     if (proces?.fout()) throw new Error(`${naam}starten mislukt: ${proces.fout()?.message}${staart(proces)}`);
     if (proces && isWeg(proces)) throw new Error(`${naam}het proces stopte (${proces.p.signalCode ?? `code ${proces.p.exitCode}`}) voordat ${url} antwoordde${staart(proces)}`);
-    try { const r = await fetch(url, { signal: AbortSignal.timeout(2000) }); if (r.status < 500) return; } catch { /* nog niet */ }
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(2000) });
+      await gooiBodyWeg(r);
+      if (r.status < 500) return;
+    } catch { /* nog niet */ }
     if (Date.now() >= eind) break;
     await wacht(200);
   }
@@ -181,7 +185,17 @@ export async function wachtOpUrl(url, { ms = 30000, proces } = {}) {
 
 /** Is er al iets op deze poort? @param {number} poort */
 export async function poortBezet(poort) {
-  try { await fetch(`http://127.0.0.1:${poort}/`, { signal: AbortSignal.timeout(500) }); return true; } catch (e) { return /** @type {any} */ (e)?.name === 'TimeoutError'; }
+  try { await gooiBodyWeg(await fetch(`http://127.0.0.1:${poort}/`, { signal: AbortSignal.timeout(500) })); return true; } catch (e) { return /** @type {any} */ (e)?.name === 'TimeoutError'; }
+}
+
+/**
+ * Lees de body van een antwoord niet, maar breek hem af. Zonder dit blijft de body half gelezen staan; sluit de server
+ * daarna de verbinding (python3 http.server doet dat na elk antwoord, ook als hij stopt), dan laat Node 22 (undici)
+ * een onafgehandelde AssertionError vallen ("assert(!this.paused)") en stopt de hele repetitie.
+ * @param {Response} r
+ */
+export async function gooiBodyWeg(r) {
+  try { await r.body?.cancel(); } catch { /* al dicht */ }
 }
 
 /** Melding bij een bezette poort. @param {string} app @param {number} poort */

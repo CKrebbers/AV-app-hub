@@ -10,7 +10,7 @@ import { klem01 } from '../src/protocol/berichten.js';
 import { maakApc } from './apc.js';
 import { maakLpd8, KNOP_NAMEN } from './lpd8.js';
 import { Verbinding, cockpitUrl } from './verbinding.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan, plekTekst, dkNamen, maschineVan } from './opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan, plekTekst, dkNamen, maschineVan, handdrukVan } from './opmaak.js';
 
 const LOG_MAX = 50;
 const LANG_DRUKKEN_MS = 700;
@@ -211,6 +211,14 @@ function tekenApparaten(apparaten) {
     el.classList.toggle('aan', aan);
     el.title = `${dev === 'apc40' ? 'APC40 mkII' : 'LPD8'}: ${aan ? 'aangesloten' : 'niet aangesloten'}`;
   }
+  // De APC-handdruk (PROTOCOL §16): één regel met wat te doen als de APC de modus niet bevestigde.
+  const h = handdrukVan(apparaten.apc40);
+  const chip = $('dev-apc40'), m = $('apc-melding');
+  chip.classList.toggle('let-op', h.stand === 'geen-antwoord');
+  if (h.stand) chip.title += ` · modus: ${h.stand === 'ok' ? 'gezet' : h.stand === 'bezig' ? 'wordt gezet…' : 'geen bevestiging'}`;
+  m.hidden = h.stand !== 'geen-antwoord';
+  const tekst = h.stand === 'geen-antwoord' ? `APC: ${h.hint ?? 'geen bevestiging op de modus-instructie'}` : '';
+  if (m.textContent !== tekst) m.textContent = tekst;
 }
 
 /** @type {Map<string, HTMLLIElement>} */
@@ -256,6 +264,8 @@ function tekenApps(apps, focus) {
   });
   for (const [app, li] of appRijen) if (!gezien.has(app)) { li.remove(); appRijen.delete(app); }
   $('apps-leeg').hidden = gezien.size > 0;
+  // Chrome laat een tab pas geluid maken na een tik erin; de hub kan dat niet zien (eerste avond, nagespeeld).
+  $('apps-tik').hidden = !apps.some((a) => a && a.status === 'actief');
 }
 
 // ── parameters van de focus-app ─────────────────────────────────────────────
@@ -279,6 +289,11 @@ const loslaters = new Set();
 function tekenParams(app, slews = new Map()) {
   const doos = $('params');
   $('focus-titel').textContent = app ? `Focus · ${app.naam || app.app}` : 'Focus';
+  // De app met focus is weg (bv. uurwerk dat niet op deze computer staat): de knoppen lijken te werken, maar er
+  // gebeurt niets. Zeg dat, en hoe je een andere kiest.
+  const weg = $('focus-weg');
+  weg.hidden = app?.status !== 'weg';
+  if (!weg.hidden) weg.textContent = `${app.naam || app.app} is er niet — wat je nu bedient, gaat nergens heen. Kies met BANK + Track Select een app die "actief" is.`;
   doos.style.setProperty('--app', app ? appKleur(app) : 'var(--accent)');
   const sleutel = paramSleutel(app?.app ?? null, app?.params);
   if (sleutel !== huidigeParams) {

@@ -33,3 +33,15 @@ Niet in de lopende fase. Pas oppakken als een speelavond laat zien dat het nodig
 - De proef speelapparaten op Linux: zonder de vraag naar macOS-Invoermonitoring, met de udev-check (nu Mac-gericht).
 - Een niet-gevolgd `config.lokaal.json` dat over `config.json` heen gaat (geheugen en avondmap buiten `~` op de pc), in plaats van een kopie met `VARVE_HUB_CONFIG`.
 - Browsertests vinden zelf `/usr/bin/google-chrome-stable` of `chromium` als `PW_CHROMIUM` leeg is (zoals `check`), zodat ze op Linux niet stil overgeslagen worden.
+
+## Uit de nagespeelde eerste avond (nov) — bewust niet gedaan
+- **Pickup aan de rand:** staat de app op 0 (of 1) en weet de hub niet waar de fader fysiek staat, vang dan bij de eerste beweging vanaf die rand (kleine wijziging in `src/core/pickup.js`). Nu moet je eerst helemaal omlaag; dat staat in het draaiboek en op de spiekbrief. Vraagt een keuze: hoe groot mag de sprong dan zijn?
+- **LPD8-knoppen zonder app in de set** in de cockpit grijs maken of er "geen app" onder zetten (in meditatie K5 en K8).
+- **Tik-hint in de cockpit alleen vlak na de start van een set** (nu staat hij er zolang er een app actief is), of weg zodra een app meldt dat zijn geluid aan staat (een nieuw veld in het protocol).
+- **"glijdt 6–8 s"** achter de MediSynth-regels op de spiekbrief.
+- **av-kern uit de meditatie-set** (of `start: null` met `handmatig`) tot zijn PR gemerged is, zodat er geen tab met een APC-knop vanzelf opengaat. Nu: een waarschuwing in de set en het draaiboek.
+
+## Uit de reviews van #23/#24 — bewust (nog) niet gedaan
+- **Maschine-schermen minder vaak tekenen:** de kern tekent de hele Maschine bij elke beeldwijziging (±0,25 ms per zet, tijdens een slew steeds schermstukken). Beter één keer per klok-tik; eerst op de Mac meten hoe lang HID-schrijven duurt.
+- **Duurtest met KP3+ en EFX-500:** een nep-interface met twee ingangen (klok met tempowissels en gaten, KP3-vegen, uittrekken tijdens aanraken) en `kern.tempo.efx` en `kern.kp3.vast` bij de gemeten structuren.
+- **De grammatica door de hele hub met de nep-Maschine over HID** (`test/hub-speelapparaten.test.js`: draaiknop → zet, pad → trig met v, Varve DJ krijgt niets, schermrapport op de draad). De kern-tests en een losse ketenproef dekken het nu.

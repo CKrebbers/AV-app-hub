@@ -447,9 +447,11 @@ describe('HTTP-driver (uurwerk)', () => {
     return { klok, kern, fetch, d, v: d.verbinding };
   };
 
-  it('meldt zich aan en POST zet naar /verb volgens driver.verbs', async () => {
+  it('meldt zich aan na de eerste geslaagde check, en POST zet naar /verb volgens driver.verbs', async () => {
     const { kern, fetch, v } = opzet();
-    expect(kern.soorten().slice(0, 2)).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten()).toEqual([]);     // nog niet: eerst kijken of de brug er is
+    await rust();
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
     kern.stuur(v, { t: 'zet', id: 'onrust', v: 0.4 });
     kern.stuur(v, { t: 'zet', id: 'licht', v: 0 });
     kern.stuur(v, { t: 'zet', id: 'bevries', v: 1 });
@@ -512,22 +514,69 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(fetch.oproepen.filter((o) => o.methode === 'GET').every((o) => o.url === 'http://127.0.0.1:8766/')).toBe(true);
   });
 
-  it('brug draait maar zonder browsertab ("tabs: 0") telt als onbereikbaar', async () => {
-    const { kern } = opzet({ tabs: 0 });
+  it('brug draait maar zonder browsertab ("tabs: 0") telt als onbereikbaar: hij meldt zich niet eens aan', async () => {
+    const { klok, kern } = opzet({ tabs: 0 });
     await rust();
-    expect(kern.soorten()).toEqual(['hallo', 'manifest']);
+    klok.loop(10000); await rust();
+    expect(kern.soorten()).toEqual([]);
+  });
+
+  it('geen brug (niets op de poort): nooit aangemeld, dus nooit "actief" in het beeld of bij de set-starter', async () => {
+    const { klok, kern } = opzet({ gooit: true });
+    for (let i = 0; i < 5; i++) { klok.loop(2000); await rust(); }
+    expect(kern.soorten()).toEqual([]);
+    expect(kern.verbindingen.map((v) => v.app)).toEqual([null]);
+  });
+
+  it('antwoordt uurwerk 20 s lang nooit: één regel in het hubvenster met wat te doen (autostart false); daarna niet nog eens', async () => {
+    // Eerste avond (nagespeeld): uurwerk stond niet op de Mac, het venster zei alleen "teruglezen aan", en Track
+    // Select 1 bleef leeg zonder dat iets zei waarom.
+    const klok = new NepKlok(), kern = new NepKern(), fetch = nepFetch(), log = /** @type {string[]} */ ([]);
+    Object.assign(fetch, { gooit: true });
+    const d = maakDriver(leesApp('uurwerk.json'), { klok, fetch, log: (...a) => log.push(a.join(' ')) });
+    d.start(kern);
+    const melding = () => log.filter((r) => r.includes('doet nog niet mee'));
+    for (let i = 0; i < 8; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toEqual([]);                       // een set die uurwerk zelf start, krijgt de tijd
+    for (let i = 0; i < 4; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toEqual(['driver uurwerk Uurwerk doet nog niet mee (geen antwoord op http://127.0.0.1:8766): hij heeft geen plek op Track Select tot hij antwoordt. Staat Uurwerk niet op deze computer, zet dan in config.json bij apps.uurwerk "autostart": false.']);
+    for (let i = 0; i < 20; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toHaveLength(1);
+    d.stop();
+  });
+
+  it('brug zonder tab: de regel zegt dat er geen tab open is; wie ooit antwoordde, krijgt hem niet', async () => {
+    const klok = new NepKlok(), kern = new NepKern(), log = /** @type {string[]} */ ([]);
+    const zonderTab = nepFetch(); Object.assign(zonderTab, { tabs: 0 });
+    const a = maakDriver(leesApp('uurwerk.json'), { klok, fetch: zonderTab, log: (...x) => log.push(x.join(' ')) });
+    a.start(kern);
+    for (let i = 0; i < 12; i++) { klok.loop(2000); await rust(); }
+    expect(log.filter((r) => r.includes('doet nog niet mee'))).toEqual([expect.stringContaining('de brug op http://127.0.0.1:8766 draait, maar er is geen Uurwerk-tab open')]);
+    a.stop();
+    const log2 = /** @type {string[]} */ ([]);
+    const wisselend = nepFetch();
+    const b = maakDriver(leesApp('uurwerk.json'), { klok, fetch: wisselend, log: (...x) => log2.push(x.join(' ')) });
+    b.start(new NepKern());
+    await rust();
+    Object.assign(wisselend, { gooit: true });            // eerst gezien, dan weg: een gewone storing (stil/weg)
+    for (let i = 0; i < 15; i++) { klok.loop(2000); await rust(); }
+    expect(log2.filter((r) => r.includes('doet nog niet mee'))).toEqual([]);
+    b.stop();
   });
 
   it('terug na storing: opnieuw aanmelden, zodat de kern alles opnieuw afspeelt (truth:"hub")', async () => {
-    const { klok, kern, fetch, v } = opzet({ gezond: false });
+    const { klok, kern, fetch, v } = opzet();
+    await rust();
+    fetch.gezond = false;
+    klok.loop(2000); await rust();
     kern.stuur(v, { t: 'zet', id: 'licht', v: 1 });
     await rust();
-    expect(kern.soorten()).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
     fetch.gezond = true;
     klok.loop(2000); await rust();
-    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb', 'hallo', 'manifest', 'hb']);
     klok.loop(200); await rust();
-    expect(fetch.verbs().map((b) => b.args.waarde)).toEqual([1, 1]); // eerste poging + replay
+    expect(fetch.verbs().map((b) => b.args.waarde)).toEqual([1]); // onbereikbaar: niet gestuurd; alleen de replay
   });
 
   it('mislukte verb terwijl de check nog groen was → bij de volgende geslaagde check replay', async () => {
@@ -551,7 +600,7 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(() => kern.stuur(d.verbinding, { t: 'trig', id: 'bewaar', aan: true })).not.toThrow();
     await rust();
     klok.loop(4000); await rust();
-    expect(kern.soorten()).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten()).toEqual([]);
   });
 
   it('een hangende check wordt na 0,8 s afgebroken en blokkeert de volgende niet', async () => {
@@ -566,10 +615,10 @@ describe('HTTP-driver (uurwerk)', () => {
     const d = maakDriver(leesApp('uurwerk.json'), { klok, fetch });
     d.start(kern);
     klok.loop(1500); await rust();
-    expect(kern.soorten()).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten()).toEqual([]);
     klok.loop(500); await rust();
     expect(n).toBe(2);
-    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
   });
 
   it('een hangende check die het afbreken negeert, blokkeert de volgende checks niet', async () => {
@@ -585,7 +634,7 @@ describe('HTTP-driver (uurwerk)', () => {
     d.start(kern);
     klok.loop(2000); await rust();
     expect(n).toBe(2);
-    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
     expect(d.driver.checkBezig).toBe(false);
   });
 
@@ -618,8 +667,10 @@ describe('HTTP-driver (uurwerk)', () => {
   it('onbereikbaar: geen waarde-POSTs (geen stapel), bij herstel speelt de kern ze opnieuw af; een trigger gaat toch', async () => {
     // Een trigger speelt de kern bij herstel niet opnieuw af: zonder deze uitzondering viel een paniek (of een
     // ander werkwoord) stil weg als de laatste check net over CHECK_TIMEOUT_MS liep (golf 6).
-    const { klok, kern, fetch, v } = opzet({ gezond: false });
+    const { klok, kern, fetch, v } = opzet();
     await rust();
+    fetch.gezond = false;
+    klok.loop(2000); await rust();
     kern.stuur(v, { t: 'zet', id: 'samenhang', v: 0.4 });
     kern.stuur(v, { t: 'trig', id: 'bewaar', aan: true });
     await rust();
@@ -650,6 +701,7 @@ describe('HTTP-driver (uurwerk)', () => {
 
   it('stop(): timers weg, verbreek, daarna niets meer', async () => {
     const { klok, kern, fetch, d, v } = opzet();
+    await rust();
     kern.stuur(v, { t: 'zet', id: 'dicht', v: 0.1 });
     kern.stuur(v, { t: 'zet', id: 'dicht', v: 0.2 }); // wacht op coalescing
     d.stop();
@@ -677,6 +729,7 @@ describe('maakDriver / startDrivers', () => {
   it('startDrivers start ze allemaal; MIDI alleen met virtuele poorten', async () => {
     const klok = new NepKlok(), kern = new NepKern(), systeem = new NepSysteem(), fetch = nepFetch();
     const r = startDrivers({ kern, klok, systeem, fetch, uitstel_ms: 0 });
+    await rust(); // uurwerk (HTTP) meldt zich pas aan na zijn eerste geslaagde check
     expect(r.drivers).toHaveLength(3);
     expect([...systeem.apparaten.keys()].sort()).toEqual(['VARVE-HUB Logic', 'VARVE-HUB TD']);
     r.stop();
@@ -690,7 +743,7 @@ describe('maakDriver / startDrivers', () => {
 });
 
 describe('startDrivers: volgorde en moment', () => {
-  it('wacht eerst (echte apps krijgen de eerste slots), dan in de volgorde van config.apps; autostart:false slaat over', () => {
+  it('wacht eerst (echte apps krijgen de eerste slots), dan in de volgorde van config.apps; autostart:false slaat over', async () => {
     const klok = new NepKlok(), kern = new NepKern(), systeem = new NepSysteem(), fetch = nepFetch();
     const config = { apps: { uurwerk: {}, sediment: {}, 'av-scene-kit': { autostart: false } } };
     const r = startDrivers({ kern, klok, systeem, fetch, config, uitstel_ms: 3000 });
@@ -698,7 +751,11 @@ describe('startDrivers: volgorde en moment', () => {
     klok.loop(2999);
     expect(kern.verbindingen).toHaveLength(0);
     klok.loop(1);
-    expect(kern.ontvangen.filter(([, b]) => b.t === 'hallo').map(([app]) => app)).toEqual(['uurwerk', 'sediment']);
+    expect(kern.verbindingen).toHaveLength(2);
+    // sediment (MIDI) meldt zich meteen aan; uurwerk (HTTP) pas na zijn eerste geslaagde check (geen 'actief' zonder brug)
+    expect(kern.ontvangen.filter(([, b]) => b.t === 'hallo').map(([app]) => app)).toEqual(['sediment']);
+    await rust();
+    expect(kern.ontvangen.filter(([, b]) => b.t === 'hallo').map(([app]) => app)).toEqual(['sediment', 'uurwerk']);
     r.stop();
   });
   it('stop() vóór het starten: er start niets meer', () => {

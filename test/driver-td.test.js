@@ -368,7 +368,7 @@ describe('TD-driver tegen een nep-bridge', () => {
   it('meldt zich als app bij de kern, op de poort uit config.json; gezonde check → hartslag', async () => {
     const b = await nepBridge();
     const { kern, td, log } = opzet({ poort: b.poort });
-    expect(kern.soorten()).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten()).toEqual([]);     // pas na de eerste gezonde check: anders stond td-lab 'actief' zonder TD
     await checkKlaar(td);
     expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
     expect(b.verzoeken[0]).toMatchObject({ url: '/exec', methode: 'POST', body: tdCheck('/genesis') });
@@ -495,11 +495,13 @@ describe('TD-driver tegen een nep-bridge', () => {
     expect(td.verstuurd).toEqual([]); // wat de driver probeerde (de nep-klok kan een verzoek afbreken voor het aankomt)
     expect(b.batchVerzoeken()).toHaveLength(0);
     expect(log.filter((l) => /\/genesis bestaat niet/.test(l))).toHaveLength(1);
-    // gebouwd: hartslag, en wat gemist werd komt alsnog (replay)
+    expect(kern.tel('hallo')).toBe(0);      // zonder COMP meldt de driver zich niet aan
+    // gebouwd: hartslag, en bij de eerste aanmelding speelt de hub af wat hij weet (truth:"hub")
+    kern.waarden['td-lab'] = { speed: 0.5 };
     b.comp = { id: 7, pars: GENESIS() };
     await volgendeCheck(klok, td);
     expect(kern.tel('hb')).toBe(1);
-    expect(kern.tel('hallo')).toBe(2);
+    expect(kern.tel('hallo')).toBe(1);
     klok.loop(0);
     await wachtOp(() => b.comp?.pars.Speed === 0.7);
   });
@@ -540,9 +542,18 @@ describe('TD-driver tegen een nep-bridge', () => {
     klok.loop(2000);
     await wachtOp(() => b.checks() === 2);
     await checkKlaar(td);
+    // pas na de eerste gezonde check aangemeld
+    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hb']);
     // na een mislukte check altijd opnieuw aanmelden (TD kan intussen herstart zijn), met dezelfde inst
-    expect(kern.soorten()).toEqual(['hallo', 'manifest', 'hallo', 'manifest', 'hb']);
+    b.modus = 'hang';
+    klok.loop(2000);
+    await wachtOp(() => b.checks() === 3);
+    klok.loop(TD_CHECK_TIMEOUT_MS);
+    await checkKlaar(td);
+    b.modus = 'goed';
+    await volgendeCheck(klok, td);
     const insts = kern.ontvangen.filter(([, x]) => x.t === 'hallo').map(([, x]) => x.inst);
+    expect(insts).toHaveLength(2);
     expect(insts[1]).toBe(insts[0]);
   });
 
@@ -564,9 +575,10 @@ describe('TD-driver tegen een nep-bridge', () => {
     const b = await nepBridge();
     await new Promise((r) => b.server.close(() => r(null)));
     await new Promise((r) => b.server.listen(poort, '127.0.0.1', () => r(null)));
+    kern.waarden['td-lab'] = { speed: 0.5 }; // wat de hub weet (truth:"hub")
     await volgendeCheck(klok, td);
     expect(kern.tel('hb')).toBe(1);
-    expect(kern.tel('hallo')).toBe(2); // de batch van daarnet ging verloren → opnieuw afspelen
+    expect(kern.tel('hallo')).toBe(1); // nu pas aangemeld; de hub speelt zijn waarden af
     klok.loop(0);
     await wachtOp(() => b.comp?.pars.Speed === 0.7);
   });
@@ -702,7 +714,7 @@ describe('TD-driver tegen een nep-bridge', () => {
     expect(() => kern.stuur(d.verbinding, { t: 'trig', id: 'paniek', aan: true })).not.toThrow();
     klok.loop(0); await rust();
     klok.loop(4000); await rust();
-    expect(kern.soorten().filter((t) => t !== 'zet')).toEqual(['hallo', 'manifest']);
+    expect(kern.soorten().filter((t) => t !== 'zet')).toEqual([]);
   });
 });
 

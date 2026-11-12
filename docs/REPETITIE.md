@@ -36,10 +36,10 @@ Nodig:
 
 | app | repo (config.json → `apps.<id>.repo`) | tak | hoe hij draait |
 |---|---|---|---|
-| formula-lab | `formula-lab` | `claude/varve-hub-koppeling` | Vite-dev-server op `apps.formula-lab.poort`, vaste formule |
-| waterschaal | `waterschaal` | `claude/varve-hub-koppeling` | `python3 -m http.server` op `apps.waterschaal.poort`, `td/waterschaal-lokaal.html` |
-| medisynth | `medisynth` | `claude/varve-hub-koppeling` | Vite-dev-server op `apps.medisynth.poort`, met `?debug` en één klik (start de klank) |
-| flux | `flux-screensaver` | `claude/varve-hub-koppeling` | pseudo-terminal (`pty.spawn`), eigen lege `XDG_CONFIG_HOME` |
+| formula-lab | `formula-lab` | `main` (koppeling sinds 19 okt, PR #1) | Vite-dev-server op `apps.formula-lab.poort`, vaste formule |
+| waterschaal | `waterschaal` | `main` (sinds 19 okt, PR #1) | `python3 -m http.server` op `apps.waterschaal.poort`, `td/waterschaal-lokaal.html` |
+| medisynth | `medisynth` | `main` (sinds 19 okt, PR #4) | Vite-dev-server op `apps.medisynth.poort`, met `?debug` en één klik (start de klank) |
+| flux | `flux-screensaver` | `master` (sinds 19 okt, PR #2; alles in het pakket `varve_album`) | pseudo-terminal (`pty.spawn`), eigen lege `XDG_CONFIG_HOME` |
 | varve-dj | `youtube-mixer` | `origin/main` (de hub-koppeling staat erop sinds 5 okt; alleen een oudere main krijgt `koppelingen/varve-dj/*.patch`) | eigen server op `apps.varve-dj.poort`, tijdelijke database |
 
 De paden komen uit **`sets/paden.json`** (hetzelfde bestand dat de sets gebruiken; `sets/.gitignore` houdt het
@@ -163,8 +163,8 @@ met dezelfde rol na een herstart uiteenlopen).
 
 ## Gevonden en opgelost
 
-- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant op de tak van CKrebbers/waterschaal#1,
-  merge met Clay's OK). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
+- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant via CKrebbers/waterschaal#1,
+  sinds 19 okt op waterschaal main). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
   Nu past Waterschaal een hub-zet continu toe (de schuif staat op zijn stap, klank en adem volgen precies), meldt hij
   een klemming (buiten 4–8 /min) pas terug als de hub 300 ms niets meer stuurt (anders wint een oude melding van een
   nieuwere K7-zet), en volgt de globale adem van de hub een eigen tempowissel van de app (PROTOCOL §14).

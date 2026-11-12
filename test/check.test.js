@@ -117,6 +117,10 @@ describe('check: de hub en de controllers', () => {
     expect(punt(r, 'apc40')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/verbonden met de hub/) });
     expect(punt(r, 'lpd8')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/hub ziet de LPD8 niet/) });
     expect(midiGelezen).toBe(false);
+    // De nep-APC antwoordt niet op de intro: na HANDDRUK_MS zegt check het (let op, geen fout) met wat te doen (§16).
+    for (let i = 0; i < 300 && hub.kern.beeld().apparaten.apc40?.handdruk !== 'geen-antwoord'; i++) await new Promise((res) => setTimeout(res, 10));
+    const r2 = await check({ ...opties, fetch, poort: hub.server.poort, laadMidi: async () => ({ systeem: null }) });
+    expect(punt(r2, 'apc40')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/zonder bevestiging op de modus-instructie/), doen: expect.stringMatching(/druk op Track Select 1/) });
     expect(r.hub).toBe(true);
     expect(r.code).toBe(1);
   });
@@ -630,7 +634,7 @@ describe('check: uitvoer', () => {
       'varve-hub check — set dj', '', 'Hub', '  ✓ de hub draait', '', 'Controllers', '  ✗ LPD8 weg', '      → steek hem in',
       '  ! APC raar', '      → kijk', '', '1 × ✗, 1 × ! — los eerst de ✗ op en draai check opnieuw.',
     ].join('\n'));
-    expect(TEKEN).toEqual({ ok: '✓', let: '!', fout: '✗' });
+    expect(TEKEN).toEqual({ ok: '✓', let: '!', fout: '✗', info: '○' });
   });
 
   it('json: ok, code en per punt het teken', async () => {
@@ -651,14 +655,50 @@ describe('check: driver-apps uit de echte config (golf 6)', () => {
   });
 });
 
+describe('check op Linux: TD en Logic doen niet mee (config.json → linux.drivers_uit)', () => {
+  // Review #24: geen test raakte deze regel of de platformbewaking; zonder die bewaking zou check op de Mac TD,
+  // Sediment en Scene Kit niet meer meetellen, en geen test merkte het.
+  const kapot = (/** @type {string} */ hubMap, /** @type {string} */ naam) => {
+    const pad = join(hubMap, 'apps', naam);
+    const m = JSON.parse(readFileSync(pad, 'utf8'));
+    writeFileSync(pad, JSON.stringify({ ...m, driver: { ...m.driver, poort: '' } }));
+  };
+  const echt = (/** @type {any} */ opties) => ({ ...opties.config, linux: laadConfig().linux });
+  it('linux: een kapot apps/sediment.json of av-scene-kit.json is ! ("doet vanavond toch niet mee"), geen ✗', async () => {
+    const { opties, hubMap } = opzet();
+    kapot(hubMap, 'sediment.json'); kapot(hubMap, 'av-scene-kit.json');
+    const r = await check({ ...opties, config: echt(opties), platform: 'linux' });
+    for (const n of ['apps/sediment.json', 'apps/av-scene-kit.json']) {
+      expect(punt(r, n), n).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/doet vanavond toch niet mee/) });
+    }
+  });
+  it('darwin: dezelfde bestanden zijn ✗ (drivers_uit geldt alleen op Linux)', async () => {
+    const { opties, hubMap } = opzet();
+    kapot(hubMap, 'sediment.json'); kapot(hubMap, 'av-scene-kit.json');
+    const r = await check({ ...opties, config: echt(opties), platform: 'darwin' });
+    for (const n of ['apps/sediment.json', 'apps/av-scene-kit.json']) expect(punt(r, n), n).toMatchObject({ status: 'fout' });
+  });
+  it('linux: een eigen linux.chrome dat niet te vinden is, is ! met wat te doen (xdg-open opent dan de standaardbrowser)', async () => {
+    const { opties } = opzet();
+    const r = await check({ ...opties, config: { ...opties.config, linux: { ...opties.config.linux, chrome: '/bestaat/niet/chrome' } } });
+    expect(punt(r, 'chrome')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/linux\.chrome \("\/bestaat\/niet\/chrome"\) is niet te vinden/), doen: expect.stringMatching(/juiste pad/) });
+  });
+});
+
 describe('check: KP3+ en EFX-500 (PROTOCOL §20, §21)', () => {
   const metInterface = (/** @type {any} */ config) => ({ ...config, apparaten: { ...config.apparaten, kp3plus: { ...config.apparaten.kp3plus, poort_patroon: 'interface midi 1' }, efx500: { ...config.apparaten.efx500, poort_patroon: 'interface midi 2' } } });
-  it('hub draait niet: zichtbaar als MIDI-ingang = ✓, niet te zien = ! (nooit ✗: zonder speel je gewoon)', async () => {
+  it('hub draait niet: zichtbaar als MIDI-ingang = ✓, niet te zien = ○ (nooit ✗ of !: zonder speel je gewoon)', async () => {
     const { opties } = opzet();
     const r = await check({ ...opties, config: metInterface(opties.config), laadMidi: midiMet(['APC40 mkII', 'LPD8 mk2', 'USB MIDI Interface MIDI 1']) });
     expect(punt(r, 'kp3plus')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/KP3\+ zichtbaar als MIDI-ingang \(USB MIDI Interface MIDI 1\)/) });
-    expect(punt(r, 'efx500')).toMatchObject({ status: 'let', doen: expect.stringMatching(/apparaten\.efx500\.poort_patroon \("interface midi 2"\)/) });
+    expect(punt(r, 'efx500')).toMatchObject({ status: 'info', doen: expect.stringMatching(/apparaten\.efx500\.poort_patroon \("interface midi 2"\)/) });
     expect(r.code).toBe(0);
+    // Review #24: zonder KP3+ en EFX telt de eindregel ze niet mee (anders nooit meer "Alles in orde"); ○ met de hint.
+    const tekst = tekstVan(r);
+    expect(tekst).toMatch(/○ de EFX-500 is niet aangesloten .* — zonder speel je gewoon/);
+    const lets = r.punten.filter((p) => p.status === 'let').length;
+    expect(tekst).toMatch(lets ? new RegExp(`${lets} × !`) : /Alles in orde/);
+    expect(tekstVan({ punten: [{ groep: 'apparaten', naam: 'efx500', status: 'info', uitleg: 'de EFX-500 is niet aangesloten', doen: 'x' }], code: 0, set: null })).toMatch(/Alles in orde\. Goede avond!/);
   });
   it('zonder poort_patroon in config.json: geen punt', async () => {
     const { opties } = opzet();
@@ -681,6 +721,6 @@ describe('check: KP3+ en EFX-500 (PROTOCOL §20, §21)', () => {
     klok.loop(200);   // het beeld (hooguit 10×/s) bijwerken
     const r = await check({ ...opties, config, fetch, poort: hub.server.poort });
     expect(punt(r, 'efx500')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/EFX-500 verbonden met de hub \(USB MIDI Interface MIDI 2\), klok 126 BPM/) });
-    expect(punt(r, 'kp3plus')).toMatchObject({ status: 'let' });
+    expect(punt(r, 'kp3plus')).toMatchObject({ status: 'info' });
   });
 });

@@ -87,7 +87,7 @@ gewone van `start` (`--poort`, `--zonder-midi`, `--geen-drivers`, …). Een set 
       "start": { "commando": "npm run dev -- --port {poort} --strictPort", "omgeving": { "BROWSER": "none" } },
       "url": "http://localhost:{poort}/?hub={hub}",
       "wacht": "poort",
-      "opmerking": "hub-koppeling pas na 25 okt"
+      "opmerking": "praat nog niet met de hub: klik niet op 'Verbind APC40'"
     }
   },
   "snapshot": { "medisynth": { "ruimte": 0.6, "niveau": 0.8 } },
@@ -105,6 +105,7 @@ gewone van `start` (`--poort`, `--zonder-midi`, `--geen-drivers`, …). Een set 
 | `wacht` | `kern` (standaard): tot de app zich bij de hub meldt (en zijn poort open is, als hij er een heeft) · `poort`: alleen tot de poort open is (apps zonder hub-koppeling) · `geen`: meteen klaar (niet samen met een `url` achter een poort: die zou nooit opengaan — gebruik dan `poort`) |
 | `time_out_s` | per set of per app |
 | `opmerking` | wordt bij het starten getoond |
+| `tik` | waar je in de tab moet tikken voor geluid (Chrome laat een tab pas geluid maken na een tik, en de hub kan dat niet zien). Aan het eind van de set staat één regel: `Nog één ding vóór je iets hoort: … Tik in MediSynth één keer in het beeld …` |
 | `snapshot` | per app `{ parameter: 0..1 }` (PROTOCOL.md §1: altijd 0..1). Gaat via de cockpit-ingang van de kern, alsof je het in de cockpit zet. Triggers en onbekende ids worden gemeld en overgeslagen |
 | `focus` | de app die de APC krijgt |
 
@@ -119,18 +120,20 @@ van apps in een set zelf: paden komen uit `sets/paden.json`, poorten uit `config
 
 | App | Start | Poort | URL | Let op |
 |---|---|---|---|---|
-| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op tak `claude/varve-hub-koppeling` |
+| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op `main` sinds 19 okt (PR #4); geluid pas na een tik in het beeld; met opzet traag (`slew_s`) |
 | Formula Lab | idem | 5174 | `/?hub=` | idem; zonder vaste poort pakt vite 5173 (van av-kern) |
-| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op tak `claude/varve-hub-koppeling` |
+| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op `main` sinds 19 okt (PR #1); geluid pas na een tik op de schaal zelf |
 | Varve DJ | `node server/index.js` met `PORT={poort}` | 8777 | `/?hub=` | koppeling staat op youtube-mixer `main` (sinds 5 okt); de patches in `koppelingen/varve-dj/` zijn geschiedenis |
 | Uurwerk | `./start.sh` | 8766 (brug), 8765 (web) | — | start.sh opent zelf de browser; de hub praat via de HTTP-driver met de brug |
-| av-kern | `npm run dev -- --port {poort} --strictPort`, `BROWSER=none` | 5173 | `/?hub=` | **hub-koppeling pas na 25 okt** — zie hieronder |
+| av-kern | `npm run dev -- --port {poort} --strictPort`, `BROWSER=none` | 5173 | `/?hub=` | **hub-koppeling nog niet op main** (PR in av-kern) — zie hieronder |
 | Scene Kit (TD) | handmatig | — | — | via de virtuele MIDI-poort "VARVE-HUB TD" (docs/TOUCHDESIGNER.md) |
 
-**av-kern** zit in de meditatie-set, maar zijn hub-koppeling komt pas na 25 oktober. Tot dan start de set
-hem alleen en opent hij in Chrome; de starter wacht op zijn poort, niet op de hub, en er is geen snapshot voor
-hem. Klik niet op *Verbind APC40* zolang de hub de APC heeft (huisregel 1: de hub is de enige die een
-controller opent). Na 25 okt: `"wacht": "kern"` en een snapshot erbij.
+**av-kern** zit in de meditatie-set, maar zijn hub-koppeling staat nog niet op main: hij wacht als PR in av-kern
+op Clay's OK (`koppelingen/av-kern/LEESMIJ.md`). Tot dan start de set hem alleen en opent hij in Chrome; de starter
+wacht op zijn poort, niet op de hub, en er is geen snapshot voor hem. Klik **niet** op *Verbind APC40* zolang de hub
+de APC heeft (huisregel 1: de hub is de enige die een controller opent): av-kern zet de APC dan in zijn eigen modus
+(0x41, de hub gebruikt 0x42) en de APC doet voor de hub niet meer wat hij moet. Gebeurd? Trek de APC even los en
+weer vast. Na het mergen: `"wacht": "kern"` en een snapshot erbij.
 
 **Scene Kit (TD):** de hub kan alleen zien dat zijn virtuele MIDI-poort er is, niet of TouchDesigner luistert;
 "klaar" betekent dus "de poort is er". Zonder echte MIDI (`--zonder-midi`, de cloud) is er geen poort en

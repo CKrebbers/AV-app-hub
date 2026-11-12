@@ -1,8 +1,8 @@
 // @ts-check
 // Gedeelde basis voor drivers: een driver doet zich tegenover de kern voor als een app
 // (PROTOCOL.md §2, §9). Hij is zelf de Verbinding, meldt zich aan met hallo + manifest en
-// stuurt hartslagen zolang de app bereikbaar lijkt. Wat er naar de app moet, vertaalt de
-// concrete driver (midi.js, http.js).
+// stuurt hartslagen zolang de app bereikbaar lijkt (http en td: pas aanmelden na de eerste geslaagde check).
+// Wat er naar de app moet, vertaalt de concrete driver (midi.js, http.js).
 import { nieuweInst } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').Manifest} Manifest @typedef {import('../protocol/types.js').NaarApp} NaarApp */
@@ -39,6 +39,19 @@ export function bewaarBegrensd(lijst, x, max = VERSTUURD_MAX) {
   if (lijst.length > max) lijst.splice(0, lijst.length - max);
 }
 
+/**
+ * Een antwoord waarvan de driver de body niet leest: breek de body af. Blijft hij half gelezen liggen en sluit de app
+ * daarna de verbinding, dan laat Node 22 (undici) een onafgehandelde AssertionError vallen ("assert(!this.paused)") en
+ * valt de hub om (gezien bij de repetitie, met python3 http.server). Nep-antwoorden in tests hebben geen body: niets.
+ * @param {unknown} r
+ */
+export function laatBodyLos(r) {
+  try {
+    const c = /** @type {any} */ (r)?.body?.cancel?.();
+    if (c && typeof c.catch === 'function') c.catch(() => {});
+  } catch { /* al gelezen of dicht */ }
+}
+
 export class DriverBasis {
   /**
    * @param {{ manifest: Record<string, any>, klok: Klok, log?: (...a: unknown[]) => void }} o
@@ -63,11 +76,15 @@ export class DriverBasis {
     this.kern.ontvang(this.verbinding, { t: 'manifest', manifest: this.manifest });
   }
 
-  /** @param {KernVoorDriver} kern */
-  koppel(kern) {
+  /**
+   * @param {KernVoorDriver} kern
+   * @param {{ aanmelden?: boolean }} [o] aanmelden false: alleen verbinden; de driver meldt zich pas aan als de app echt
+   *   bereikbaar is (HTTP en TD: na de eerste geslaagde check). Tot dan staat de app niet in het beeld.
+   */
+  koppel(kern, { aanmelden = true } = {}) {
     this.kern = kern;
     kern.verbind(this.verbinding);
-    this.aanmelden();
+    if (aanmelden) this.aanmelden();
   }
 
   hartslag() { this.kern?.ontvang(this.verbinding, { t: 'hb' }); }

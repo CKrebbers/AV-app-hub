@@ -7,7 +7,7 @@ import { maakOntleder, standaardProfiel } from '../src/devices/lpd8.js';
 import { INDELING, BREEDTE, HOOGTE } from '../ui/indeling.js';
 import { drukBytes, losBytes, ccBytes, relBytes, lpdDruk, lpdLos, lpdKnop, animDuur } from '../ui/midi.js';
 import { weergave, LED_KLEUR } from '../ui/led.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, mapNaamVan, looptijdTekst, opnameVan, slewsVan, sectieVan } from '../ui/opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, mapNaamVan, looptijdTekst, opnameVan, slewsVan, sectieVan, handdrukVan } from '../ui/opmaak.js';
 import { Verbinding, WACHTTIJDEN, VERBIND_TIJD, cockpitUrl } from '../ui/verbinding.js';
 import { startNepServer, bestandVoor } from './ui-nepserver.js';
 
@@ -138,6 +138,11 @@ describe('opmaak', () => {
     expect(focusVan(null)).toBe(null);
     expect([true, { verbonden: true }, 'verbonden'].map(isVerbonden)).toEqual([true, true, true]);
     expect([false, null, {}, 'weg'].map(isVerbonden)).toEqual([false, false, false, false]);
+    // De APC-handdruk (PROTOCOL §16): alleen als hij verbonden is; een oudere hub zonder het veld: null.
+    expect(handdrukVan({ verbonden: true, handdruk: 'geen-antwoord', hint: 'druk op Track Select 1' })).toEqual({ stand: 'geen-antwoord', hint: 'druk op Track Select 1' });
+    expect(handdrukVan({ verbonden: false, handdruk: 'ok' }).stand).toBe(null);
+    expect(handdrukVan(true)).toEqual({ stand: null, hint: null });
+    expect(handdrukVan({ verbonden: true, handdruk: 'raar' }).stand).toBe(null);
     expect(ademPeriode(0.5)).toBe(10);
     expect(ademPeriode(undefined)).toBe(10);
     expect(ademSchaal(0)).toBeCloseTo(0.5);
@@ -440,6 +445,40 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(await page.locator('#dev-apc40').evaluate((e) => e.classList.contains('aan'))).toBe(true);
     expect(await page.locator('#dev-lpd8').evaluate((e) => e.classList.contains('aan'))).toBe(false);
     expect(await page.locator('.macro[data-rol="macro.intensiteit"] span').textContent()).toBe('75%');
+  });
+
+  it('geen geluid? onder Apps de tik-hint zodra er een app actief is; de focus-app weg: één rode regel met wat te doen', async () => {
+    // Eerste avond (nagespeeld): de cockpit stond groen op "actief" terwijl geen tab geluid maakte (Chrome wil eerst een
+    // tik), en de focus stond op een uurwerk dat er niet was, terwijl de knoppen leken te werken.
+    expect(await page.locator('#apps-tik').isHidden()).toBe(true);
+    server.stuur(tweeApps);
+    await expect.poll(() => page.locator('#apps-tik').isVisible()).toBe(true);
+    expect(await page.locator('#apps-tik').textContent()).toMatch(/^geen geluid\? tik één keer in elke app-tab/);
+    expect(await page.locator('#focus-weg').isHidden()).toBe(true);
+    const weg = structuredClone(tweeApps);
+    weg.apps[0].status = 'weg';
+    weg.apps[1].status = 'weg';
+    server.stuur(weg);
+    await expect.poll(() => page.locator('#focus-weg').isVisible()).toBe(true);
+    expect(await page.locator('#focus-weg').textContent()).toBe('Formula Lab is er niet — wat je nu bedient, gaat nergens heen. Kies met BANK + Track Select een app die "actief" is.');
+    expect(await page.locator('#apps-tik').isHidden()).toBe(true); // niets actief: dan helpt tikken ook niet
+    server.stuur(tweeApps);
+    await expect.poll(() => page.locator('#focus-weg').isHidden()).toBe(true);
+  });
+
+  it('de APC bevestigt de modus niet: één regel bij de APC met wat te doen; daarna (ok) weg', async () => {
+    const melding = page.locator('#apc-melding');
+    server.stuur({ ...tweeApps, apparaten: { apc40: { verbonden: true, handdruk: 'bezig' }, lpd8: false } });
+    await expect.poll(() => page.locator('#dev-apc40').getAttribute('title')).toMatch(/modus: wordt gezet/);
+    expect(await melding.isHidden()).toBe(true);
+    server.stuur({ ...tweeApps, apparaten: { apc40: { verbonden: true, handdruk: 'geen-antwoord', hint: 'geen bevestiging op de modus-instructie — druk op Track Select 1' }, lpd8: false } });
+    await expect.poll(() => melding.isVisible()).toBe(true);
+    expect(await melding.textContent()).toBe('APC: geen bevestiging op de modus-instructie — druk op Track Select 1');
+    expect(await page.locator('#dev-apc40').evaluate((e) => e.classList.contains('let-op'))).toBe(true);
+    server.stuur({ ...tweeApps, apparaten: { apc40: { verbonden: true, handdruk: 'ok' }, lpd8: false } });
+    await expect.poll(() => melding.isHidden()).toBe(true);
+    expect(await page.locator('#dev-apc40').evaluate((e) => e.classList.contains('let-op'))).toBe(false);
+    expect(await page.locator('#dev-apc40').getAttribute('title')).toMatch(/modus: gezet/);
   });
 
   it('globaal: de sectie (label · energie, bron in de tooltip); een flits bij elke nieuwe sectie, niet bij het eerste beeld (§18)', async () => {

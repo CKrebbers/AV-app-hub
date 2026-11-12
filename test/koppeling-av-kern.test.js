@@ -41,7 +41,7 @@ describe('koppelingen/av-kern: de bestanden', () => {
       expect(t, f).toMatch(/Co-Authored-By: Claude/);
     }
     const leesmij = readFileSync(join(MAP, 'LEESMIJ.md'), 'utf8');
-    expect(leesmij).toMatch(/25 okt/);
+    expect(leesmij).toMatch(/PR in av-kern/); // na 25 okt: de koppeling wacht als PR in av-kern, niet meer als patch
     expect(leesmij).toMatch(/git apply --check/);
   });
   it('de ◄/►-patch raakt alleen apc40.ts en zijn test, niet de bevroren kern (midi.ts, bus.ts)', () => {

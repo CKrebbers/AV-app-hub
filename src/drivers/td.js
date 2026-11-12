@@ -33,7 +33,7 @@
 //            paniek?: { paramId: 0..1 } }
 // De poort staat alleen in config.json (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp.
 // Geen (geldige) poort → de driver start niet en zegt waarom.
-import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
+import { DriverBasis, scheidStatisch, bewaarBegrensd, laatBodyLos } from './basis.js';
 import { klem01, nieuweInst } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
@@ -238,7 +238,7 @@ export class TdDriver extends DriverBasis {
         p = this.fetch(`${this.url}/exec`, { method: 'POST', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: code, ...(ac ? { signal: ac.signal } : {}) });
       } catch (e) { einde({ ok: false, fout: foutTekst(e), transport: true }); return; }
       Promise.resolve(p).then(async (r) => {
-        if (!r || r.ok === false) return einde({ ok: false, fout: `HTTP ${r?.status ?? '?'}`, transport: true });
+        if (!r || r.ok === false) { laatBodyLos(r); return einde({ ok: false, fout: `HTTP ${r?.status ?? '?'}`, transport: true }); }
         let tekst = '';
         try { tekst = typeof r.text === 'function' ? await r.text() : ''; } catch { return einde({ ok: false, fout: 'antwoord onleesbaar', transport: true }); }
         /** @type {any} */
@@ -393,8 +393,9 @@ export class TdDriver extends DriverBasis {
     this.#meld('gezond');
     const herbouwd = vorig !== null && id !== vorig;
     if (herbouwd) this.log('driver', this.manifest.app, `${this.comp} is herbouwd: de hub speelt alles opnieuw af`);
-    if (herbouwd || was === false || this.gemist) {
-      // Terug na een storing of een rebuild: opnieuw aanmelden, zodat de kern (truth:"hub") alles opnieuw afspeelt.
+    if (herbouwd || was !== true || this.gemist) {
+      // De eerste gezonde check (pas dan staat de app er), terug na een storing of een rebuild: (opnieuw) aanmelden,
+      // zodat de kern (truth:"hub") alles opnieuw afspeelt.
       // Ook bij dezelfde id na een storing: TD kan intussen herstart zijn (de .toe opnieuw geopend). Een nieuwe inst
       // alleen na een rebuild; anders ziet de kern een hapering en stuurt hij de waarden zonder slew vanaf de standaard.
       this.gemist = false;
@@ -441,7 +442,7 @@ export class TdDriver extends DriverBasis {
     this.gestopt = false;
     this.ronde++;
     this.missers = 0;
-    this.koppel(kern);
+    this.koppel(kern, { aanmelden: false }); // aanmelden pas na de eerste gezonde check (controleer)
     this.#rondeCheck();
   }
 

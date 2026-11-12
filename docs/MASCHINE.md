@@ -130,6 +130,13 @@ Heeft de app met focus de Maschine niet in `speelt` maar volgt hij de grammatica
 pads in zijn kaart), dan gaat de Maschine niet als MIDI naar een lease-app maar bedient de hub die app zelf: de 8
 draaiknoppen zijn het parameter-alfabet (SHIFT = fijn), pads 1–8 de momenten (velocity en aftertouch als 0..1), pads
 9–16 vrij per app (`maps/<app>.json`, `"maschine-mk2:pad9"` …), groep A–H de focus op app-slot 1–8. De schermen tonen
-per knop het woord, de naam en de waarde. Zie PROTOCOL §19 voor het hele contract; instellingen in `config.json` →
+per knop het woord, de naam en de waarde.
+
+Kies je met groep A–H een app die niets op de Maschine heeft (bijvoorbeeld formula-lab zonder alfabet), dan zijn de
+pads uit en staat er op het scherm `<app>: niets op de Maschine` en `GROEP A-H = ANDERE APP`. De groepknoppen werken
+dan gewoon door: druk op het lampje van een andere app en je bent terug. Alleen als een app de Maschine zelf speelt
+(Varve DJ), is hij van die app; terug gaat dan via Bank + Track Select op de APC of via de cockpit.
+
+Zie PROTOCOL §19 voor het hele contract; instellingen in `config.json` →
 `apparaten.maschine-mk2.grammatica`. Op Clay's toestel nog te voelen: is één omwenteling van 0 naar 1 goed, en is
 SHIFT tien keer fijner genoeg?

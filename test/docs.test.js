@@ -103,3 +103,81 @@ describe('opdrachten in de docs bestaan', () => {
     expect(rijen).toEqual(LESSEN.map((_, i) => i + 1));
   });
 });
+
+describe('de koppelingen staan op main sinds 19 okt (geen oude tak meer)', () => {
+  // formula-lab #1, waterschaal #1, medisynth #4 en flux-screensaver #2 zijn op 19 okt gemerged. Wie de oude tak
+  // claude/varve-hub-koppeling uitcheckt, mist alles wat daarna op main kwam (licentie, LEESMIJ).
+  const OUDE_TAK = /claude\/varve-hub-koppeling/;
+  const docs = ['README.md', 'STATUS.md', 'docs/HARDWARE-AVOND.md', 'docs/CHECK.md', 'docs/SETS.md', 'docs/REPETITIE.md', 'koppelingen/varve-dj/LEESMIJ.md'];
+  it.each(docs)('%s stuurt niemand naar de oude tak (hooguit als waarschuwing)', (pad) => {
+    for (const regel of lees(pad).split('\n')) {
+      if (!OUDE_TAK.test(regel)) continue;
+      expect(regel, `${pad}: ${regel}`).toMatch(/oude tak|niet meer gebruiken|toen op/);
+    }
+  });
+  it('git checkout claude/varve-hub-koppeling staat nergens in het draaiboek', () => {
+    expect(lees('docs/HARDWARE-AVOND.md')).not.toMatch(/checkout claude\/varve-hub-koppeling/);
+    expect(lees('docs/HARDWARE-AVOND.md')).toMatch(/git switch main && git pull/);
+  });
+  it('check en de sets noemen main, niet de tak', async () => {
+    const { KOPPELINGEN } = await import('../src/check/koppelingen.js');
+    for (const [app, k] of Object.entries(KOPPELINGEN)) if (k) expect(k.waar, app).not.toMatch(OUDE_TAK);
+    for (const set of readdirSync(new URL('../sets/', import.meta.url)).filter((f) => f.endsWith('.json'))) {
+      expect(lees(`sets/${set}`), set).not.toMatch(OUDE_TAK);
+    }
+  });
+});
+
+describe('av-kern: 25 okt is voorbij, de tekst noemt de echte stand (PR in av-kern)', () => {
+  // De publicatie van 25 okt is geweest; de koppeling staat niet op av-kern main maar wacht als PR. Een tekst die nog
+  // "pas na 25 okt" belooft, laat Clay wachten op iets dat al had moeten komen.
+  const BELOFTE = /(pas|komt|toepassen|Na) na 25 okt|komt na 25 oktober|patch, (pas )?na 25 okt/;
+  const docs = ['README.md', 'STATUS.md', 'docs/HARDWARE-AVOND.md', 'docs/CHECK.md', 'docs/SETS.md', 'koppelingen/av-kern/LEESMIJ.md'];
+  it.each(docs)('%s belooft niets meer voor "na 25 okt"', (pad) => {
+    expect(lees(pad)).not.toMatch(BELOFTE);
+  });
+  it('check en de meditatie-set noemen de PR in av-kern', async () => {
+    const { KOPPELINGEN } = await import('../src/check/koppelingen.js');
+    expect(KOPPELINGEN['av-kern']?.waar).toMatch(/PR in av-kern/);
+    expect(KOPPELINGEN['av-kern']?.waar).not.toMatch(/25 okt/);
+    expect(lees('sets/meditatie.json')).not.toMatch(/25 okt/);
+  });
+});
+
+describe('HARDWARE-AVOND: "Eerst dit (5 minuten)" na de eerste test op de Mac', () => {
+  const doc = lees('docs/HARDWARE-AVOND.md');
+  const blok = doc.slice(doc.indexOf('## Eerst dit (5 minuten)'), doc.indexOf('## 1. Voorbereiden'));
+  it('staat bovenaan, vóór blok 1, met de stappen in volgorde', () => {
+    expect(doc.indexOf('## Eerst dit (5 minuten)')).toBeGreaterThan(0);
+    expect(doc.indexOf('## Eerst dit (5 minuten)')).toBeLessThan(doc.indexOf('## 1. Voorbereiden'));
+    const plek = ['git pull', 'git checkout package.json', 'npm install', 'node src/cli.js doctor', 'npm start', 'APC: modus gezet'].map((t) => blok.indexOf(t));
+    expect(plek.every((i) => i >= 0), String(plek)).toBe(true);
+    expect([...plek].sort((x, y) => x - y)).toEqual(plek);
+  });
+  it('de regels die het blok noemt, bestaan echt in doctor en de hub', () => {
+    const doctor = lees('src/doctor.js'), hub = lees('src/hub.js');
+    for (const t of ['identiteit (kanaal 0, zoals Ableton Live)', 'modus-instructie (intro, ', '✔ antwoord', 'apc40 gaat in de hub-modus', 'apc40: Track Select komt binnen', '(APC40 mkII)']) {
+      expect(blok.replace(/\s+/g, ' '), t).toContain(t);
+      expect(doctor, t).toContain(t);
+    }
+    expect(hub).toContain('APC: modus gezet');
+    expect(hub).toContain('geen bevestiging op de modus-instructie');
+  });
+  // Eindcontrole (nov): het blok verwachtte doctor-regels die alleen na #23, #24 en de afronding op main staan; de
+  // luistertijd stond er als 3 s; en dat de rode APC-regel na elke start terug kan komen, stond nergens.
+  it('zegt eerst te mergen (#23, #24, de afronding; gewone merge), met een regel van doctor als controle', () => {
+    const plat = blok.replace(/\n> ?/g, ' ').replace(/\s+/g, ' '); // ook binnen het citaatblok (regels met "> ")
+    expect(plat).toMatch(/#23 .*#24 .*afronding/);
+    expect(plat).toMatch(/niet "Squash and merge"/);
+    expect(plat.indexOf('Eerst mergen')).toBeLessThan(plat.indexOf('git pull'));
+    expect(plat).toContain('identiteit (omni, 0,5 s later)');
+    expect(lees('src/doctor.js')).toContain('identiteit (omni, 0,5 s later)');
+  });
+  it('de luistertijd van doctor klopt met src/doctor.js, en de rode APC-regel na een nieuwe start staat erin', () => {
+    const plat = blok.replace(/\s+/g, ' ');
+    const ms = Number(/apcLuisterMs = (\d+)/.exec(lees('src/doctor.js'))?.[1]);
+    expect(plat).toContain(`doctor wacht tot ${ms / 1000} seconden en gaat door zodra Track Select binnenkomt`);
+    expect(doc).not.toMatch(/3 seconden\)|je hebt 3 seconden/);
+    expect(plat).toMatch(/kan na \*\*elke\*\* start van de hub terugkomen.*één keer Track Select 1 haalt hem weer weg/);
+  });
+});

@@ -6,8 +6,64 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 
 **Hoe lang:** ±2 uur in totaal. Je kunt na elk blok stoppen; het belangrijkste is blok 2 (de proef) en blok 6 (pushen).
 
+## Eerst dit (5 minuten)
+
+Na je eerste test in oktober is de manier veranderd waarop de hub de APC aanzet (de "handdruk", nu zoals Ableton Live het
+doet). Kijk eerst of dat werkt. Daarna pas de rest van dit draaiboek.
+
+> **Eerst mergen.** Dit draaiboek hoort bij de versie waarin drie pull requests op `main` staan, in deze volgorde:
+> #23 (grammatica), #24 (KP3+ en EFX-500) en daarna de afronding. Kies op GitHub telkens de gewone merge ("Create a
+> merge commit"), niet "Squash and merge": anders botsen ze. Zie je bij stap 5 geen regel `identiteit (omni, 0,5 s
+> later)`, dan staan ze er nog niet op en klopt dit draaiboek niet met wat je ziet; vraag Claude dan eerst om hulp.
+
+1. Open Terminal en ga naar de map AV-app-hub.
+2. Haal de nieuwe versie op:
+   ```bash
+   git pull
+   ```
+   Klaagt git over `package.json` ("Your local changes … would be overwritten")? Zet dat bestand terug en probeer opnieuw:
+   ```bash
+   git checkout package.json
+   git pull
+   ```
+3. Installeer wat erbij kwam:
+   ```bash
+   npm install
+   ```
+4. Sluit Ableton Live (en Bitwig) en Chrome-tabs met Varve DJ of av-kern. Steek de APC40 en de LPD8 in. Zet de APC aan
+   met de knop achterop.
+5. Kijk wat de hub ziet:
+   ```bash
+   node src/cli.js doctor
+   ```
+   Bij de APC staan nu een paar regels onder elkaar, één per vorm van de handdruk:
+   - `identiteit (omni, …)` en `identiteit (kanaal 0, zoals Ableton Live)`: staat er bij minstens één een rij getallen
+     (geen "geen antwoord"), dan antwoordt de APC. Bij `product` hoort `0x29 (APC40 mkII)` te staan.
+   - `modus-instructie (intro, …)`: `✔ antwoord` is goed. Staat er overal `✗ geen antwoord`, dan vraagt doctor je
+     **Track Select 1 in te drukken en fader 1 te bewegen**. Doe dat meteen: doctor wacht tot 8 seconden en gaat door
+     zodra Track Select binnenkomt.
+   - De laatste regel bij de APC zegt hoe het afliep. Goed is `✔ apc40 gaat in de hub-modus` of `✔ apc40: Track Select
+     komt binnen`. Staat er een ✗, lees dan wat erachter staat, en kijk in blok 7 ("De APC doet niet wat hij moet").
+6. Start de hub:
+   ```bash
+   npm start
+   ```
+   Kijk in het Terminal-venster. Je wilt binnen een paar seconden **`APC: modus gezet`** zien. Staat er
+   `APC: geen bevestiging op de modus-instructie`? Druk dan op Track Select 1: komt daarna `APC: modus gezet`, dan is
+   het goed. Ctrl-C stopt de hub. Die rode APC-regel kan na **elke** start van de hub terugkomen, en ook als de USB even
+   hapert (de hub zet de APC dan opnieuw aan). Dat is niet erg: één keer Track Select 1 haalt hem weer weg.
+7. Stuur Claude de hele uitvoer van doctor, en zeg of `APC: modus gezet` verscheen. Kopiëren mag gewoon uit het
+   Terminal-venster.
+
+Staat er `APC: modus gezet`? Ga dan door met blok 1 (blok 1 doet `git pull` en `npm install` nog eens; dat kan geen
+kwaad). Staat het er niet, ook niet na Track Select 1? Stuur dan alleen de uitvoer en wacht op Claude: de rest van de
+avond heeft een APC nodig die in de hub-modus staat.
+
+---
+
 | Blok | Wat | ±Tijd |
 |---|---|---|
+| 0 | Eerst dit: de APC-handdruk (hierboven) | 5 min |
 | 1 | Voorbereiden | 15 min |
 | 2 | De F0-proef: elke knop, elk lampje, vijf open vragen | 35–45 min |
 | 3 | Oefenruimte met de echte controllers | 20–30 min |
@@ -38,13 +94,17 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
     `node src/cli.js installeer` deed. Die zet je voor vanavond uit met `node src/cli.js installeer --weg`, en ná de
     avond weer aan met `node src/cli.js installeer`. (Start je toch per ongeluk een tweede hub, dan noemt de melding
     "poort 7700 is bezet" ook de opdracht die de dienst alleen tijdelijk stopt.)
-- [ ] **Voor blok 4 (de set):** de hub-koppeling van MediSynth en Waterschaal staat nog op een eigen tak (de PR's
-  wachten op jouw OK). Zet die twee repo's daarop, anders worden ze in de set "niet klaar":
+- [ ] **Voor blok 4 (de set):** de hub-koppeling van Formula Lab, MediSynth, Waterschaal en flux staat sinds 19 oktober
+  op hun hoofdtak (je hebt de PR's toen gemerged; bij flux heet die `master`). Haal in elk van die repo's de nieuwste main op, anders worden ze in
+  de set "niet klaar":
   ```bash
-  cd <map van medisynth>  && git fetch && git checkout claude/varve-hub-koppeling
-  cd <map van waterschaal> && git fetch && git checkout claude/varve-hub-koppeling
+  cd <map van formula-lab>      && git switch main && git pull
+  cd <map van medisynth>        && git switch main && git pull
+  cd <map van waterschaal>      && git switch main && git pull
+  cd <map van flux-screensaver> && git switch master && git pull
   ```
-  (Of keur eerst die twee PR's goed en zet ze op main.)
+  (Stond een van die repo's nog op de oude tak `claude/varve-hub-koppeling`: dit zet hem terug; die tak mist alles wat
+  er daarna op main kwam, zoals de licentie.)
 - [ ] **Sluit de APC40 en de LPD8 aan** via USB, het liefst rechtstreeks op de Mac.
 - [ ] **Kijk of de hub ze ziet:**
   ```bash
@@ -191,18 +251,38 @@ npm start -- meditatie
 ```
 
 De hub start MediSynth, Waterschaal, Uurwerk en av-kern, opent ze in Chrome met `?hub=` erachter, zet de beginwaarden
-en geeft Waterschaal de focus. MediSynth en Waterschaal praten alleen met de hub als ze op de tak
-`claude/varve-hub-koppeling` staan (blok 1).
+en geeft Waterschaal de focus. MediSynth en Waterschaal praten met de hub zodra ze op een `main` van na 19 oktober
+staan (blok 1).
 
-> **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling komt na 25 oktober). Klik in av-kern
-> **niet** op "Verbind APC40": dan opent av-kern de APC zelf en vechten de lampjes.
- De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
+> **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling wacht als PR in av-kern op jouw OK). Klik
+> in av-kern **niet** op "Verbind APC40": dan zet av-kern de APC in een andere modus en doet de APC voor de hub niet
+> meer wat hij moet. Gebeurd? Trek de APC even los en weer vast (blok 7, "De lampjes van de APC vechten").
+
+De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
 een virtuele APC en LPD8 die meelopen met de echte.
 
+> **Staat Uurwerk niet op deze computer?** Dan doet hij niet mee: hij staat niet bij de apps in de cockpit en heeft geen
+> plek op Track Select, en na ±20 s zegt het
+> hubvenster `Uurwerk doet nog niet mee …`. Wil je dat niet zien, zet dan in `config.json` bij `apps.uurwerk`
+> `"autostart": false`. (Zonder map voor uurwerk in `sets/paden.json` zegt de set dat ook, en speelt de rest gewoon.)
+
+- [ ] **Eerst: tik in elke app-tab.** Chrome laat een tab pas geluid maken na een tik erin, en de hub kan dat niet zien:
+  de set zegt "klaar" en de cockpit "actief", maar je hoort niets. Tik in **MediSynth** één keer in het beeld (waar
+  "touch" staat) en in **Waterschaal** één keer op de schaal zelf (een klik ernaast helpt niet). Het hubvenster zegt
+  dit ook, aan het eind van de set.
+- [ ] **Faders eerst omlaag.** Schuif bij het begin alle faders eerst helemaal omlaag en dan rustig omhoog. Staat de
+  waarde van de app op 0 (in Waterschaal Wrijfdruk, en Volume na een paniek), dan pakt een fader die je snel omhoog
+  duwt hem niet op: even helemaal naar beneden en opnieuw.
+- [ ] **LPD8-knoppen één keer langs.** Draai elke LPD8-knop eerst helemaal naar links en dan rustig naar rechts: waar
+  hij de stand van de app passeert, pakt hij op, en vanaf dan doet hij iets. In meditatie doen K5 en K8 niets (geen app
+  heeft die rol). K1 is het volume van MediSynth én Waterschaal: draai hem niet in één keer helemaal open.
+- [ ] **MediSynth is met opzet traag:** draai, laat los, en luister 10 seconden. Waterschaal en de APC-faders reageren
+  meteen.
 - [ ] Wisselen van app: BANK vast + Track Select. Kloppen de kleuren in de bovenste rij (zolang BANK vast is) met de apps?
 - [ ] Faders en knoppen op de app met focus; kijk in de cockpit mee.
 - [ ] LPD8-knoppen K1–K8 werken op alle apps tegelijk (K2 helderheid, K3 ruimte, …).
-- [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek.
+- [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek. **Na een paniek terug:** draai K1 een tikje; dan gaan Waterschaal
+  en MediSynth weer naar de stand van K1. Op de APC: fader 3 (Volume van Waterschaal) eerst helemaal omlaag, dan omhoog.
 - [ ] **APC kort los** (na stap 20 van de proef, nu met de hub): trek de APC-kabel eruit en steek hem zo snel als je
   kunt weer in, en wacht dan rustig 1–2 s. Binnen ±2 s is het LED-beeld terug, staat de APC in de cockpit weer op
   verbonden, en in het hubvenster staat hooguit één regel `APC: sturen mislukt — kabel los? de hub probeert opnieuw`.
@@ -211,7 +291,7 @@ een virtuele APC en LPD8 die meelopen met de echte.
 - [ ] **LPD8 kort los**: hetzelfde met de LPD8-kabel; daarna staat de LPD8 in de cockpit weer op verbonden en doen P1
   en K1 weer wat ze moeten (hooguit één regel `LPD8: sturen mislukt — …`).
 - [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon. Na 60 s "niet klaar" voor MediSynth of
-  Waterschaal: staat die repo op `claude/varve-hub-koppeling` (blok 1)?
+  Waterschaal: is de tab open, en heb je in die repo `git switch main && git pull` gedaan (blok 1)?
 
 Ctrl-C stopt alles wat de set zelf startte, en dan de hub.
 
@@ -266,7 +346,8 @@ Claude er een kijkt, zet hem dan in een eigen submap, bv. `proef/avonden/<datum-
 
 **De lampjes van de APC vechten** (flikkeren, verkeerde kleuren, dingen gaan aan die de hub niet aanzette).
 *Oorzaak:* een ander programma schrijft ook naar de APC; macOS mengt dat. Meestal een Chrome-tab met Varve DJ of av-kern
-*zonder* `?hub=`, av-kern waarin op "Verbind APC40" is geklikt (av-kern heeft nog geen hub-koppeling, zie blok 4),
+*zonder* `?hub=`, av-kern waarin op "Verbind APC40" is geklikt (dan zet av-kern de APC in zijn eigen modus en doet de
+APC voor de hub niet meer wat hij moet; av-kern heeft nog geen hub-koppeling, zie blok 4),
 Ableton, een APC-bedieningsoppervlak in Logic, of twee hubs tegelijk (bv. de proef terwijl de hub als dienst draait).
 *Oplossing:* sluit die (blok 1; `node src/cli.js doctor` laat zien of er al een hub draait: "poort 7700 BEZET"; Chrome-tabs,
 Ableton en Logic moet je zelf nalopen), en trek daarna de APC
@@ -275,13 +356,20 @@ hub stuurt hem opnieuw en tekent alles opnieuw).
 
 **De APC doet niet wat hij moet** (BANK + Track Select wisselt niet van app, knoppen blijven aan staan, de lampjes doen
 iets anders dan de cockpit, de draaiknoppen doen per track iets anders). *Oorzaak:* de APC staat nog in zijn
-**fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster staat dan
-`APC: geen antwoord op de modus-instructie …`. *Kijk:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de
-APC staat nu per vorm of hij antwoordt: de identiteitsvraag zoals het protocol (omni) en zoals Ableton Live (kanaal 0),
-en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`, dan zet de hub hem
-voortaan zelf zo (sinds de handdruk zoals Live) — start de hub opnieuw. Staat er overal `✗`, dan komt er geen SysEx bij de
-APC aan: stroomadapter in en aan, een andere USB-kabel of -poort (direct op de Mac), Ableton Live helemaal dicht, en de
-firmware bijwerken met Akai's "APC40 mkII firmware updater". *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**
+**fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster en in de cockpit
+(bij APC40) staat dan `geen bevestiging op de modus-instructie — druk op Track Select 1 …`. Druk dan eerst op Track
+Select 1: komt die binnen, dan staat de modus wél goed (niet elke APC stuurt een bevestiging) en verdwijnt de melding.
+Komt de melding later terug (na een nieuwe start van de hub, of als de USB even haperde)? Dan zette de hub de APC opnieuw
+aan en wacht hij weer op zijn bevestiging: druk nog eens op Track Select 1.
+*Kijk anders:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de APC staat per vorm of hij antwoordt: de
+identiteitsvraag zoals het protocol (omni, direct en een halve seconde later) en zoals Ableton Live (kanaal 0), het
+product (`0x29` = mkII), en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`,
+dan zet de hub hem zelf zo — start de hub opnieuw. Zo niet, dan vraagt doctor je **Track Select 1 in te drukken en fader 1
+te bewegen** (tot 8 seconden) en zegt hij wat er binnenkwam: Track Select (goed), alleen de fader (Track Select niet
+ingedrukt, of de fabrieksmodus: draai doctor nog eens en druk dan echt op Track Select 1), of niets
+(er komt helemaal niets van de APC binnen). Dan: de aan/uit-knop achterop aan (de mkII krijgt stroom via USB, er is geen
+adapter), de kabel rechtstreeks in de Mac of een andere kabel of poort, en Ableton Live, Bitwig en Chrome-tabs met
+Varve DJ zonder `?hub=` helemaal dicht (doctor noemt Live en Bitwig als ze draaien). *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**
 (snoize.com, gratis), zet "Spy on output to destinations" aan, en vergelijk wat de hub bij `npm start` naar de APC stuurt
 met wat **Ableton Live** stuurt als je de APC daar als bedieningsoppervlak kiest (eerst de hub dicht). Exporteer beide
 vensters (File → Save) en zet ze in `proef/midimonitor/`.
@@ -322,7 +410,14 @@ of een ander programma gebruikt 7700. De melding zegt welk commando de dienst st
   (`docs/NETWERK.md`).
 
 **Een fader doet niets.** Waarschijnlijk geen fout: dat is pickup. De clip-stop-lamp van die strip knippert tot de fader
-langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg de fader erlangs.
+langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg de fader erlangs. Staat de waarde van de
+app op 0 (Wrijfdruk van Waterschaal, en Volume na een paniek), dan kom je er van onder niet langs: schuif de fader eerst
+helemaal omlaag en dan rustig omhoog.
+
+**Ik hoor niets, maar alles staat op "klaar" en "actief".** Chrome laat een tab pas geluid maken na een tik erin: tik in
+MediSynth één keer in het beeld en in Waterschaal op de schaal zelf (blok 4). Staat in de cockpit boven de parameters
+een rode regel "… is er niet"? Dan heeft een app de focus die er niet is: kies met BANK + Track Select een app die
+"actief" is.
 
 **Na USB eruit/erin blijven de lampjes uit.** Wacht ±2 seconden (de hub kijkt elke 2 s). Blijft het uit: noteer het
 (`n …` in de proef), stop met Ctrl-C en start opnieuw. Het logboek laat zien wat er misging.
@@ -388,7 +483,7 @@ dan draait de oude hub nog half: `lsof -i :7700` laat zien welk proces; stop dat
 ## 8. Xboard49 en Maschine MK2: de proef speelapparaten (±25–30 min)
 
 Het keyboard (E-MU Xboard49) en de Maschine MK2 doen mee als **speelapparaten** (PROTOCOL §17): de hub opent ze en geeft
-ze door aan de lease-app die speelt (Varve DJ, zodra die de koppeling heeft: `koppelingen/varve-dj/LEESMIJ.md`). Deze
+ze door aan de lease-app die speelt (Varve DJ: die kant staat sinds 7 okt op youtube-mixer main, `koppelingen/varve-dj/LEESMIJ.md`). Deze
 proef meet wat alleen jouw toestellen kunnen zeggen. Hij staat los van de F0-proef: doe hem wanneer het uitkomt.
 
 **Voorbereiden**
@@ -459,7 +554,7 @@ aanraken = CC 92) komt uit bronnen, niet van jouw KP3+; deze proeven meten het. 
 
 - [ ] De interface via USB in de pc; de **MIDI OUT** van de KP3+ en van de EFX-500 met een DIN-kabel naar een **MIDI IN**
   van de interface.
-- [ ] `node src/cli.js doctor`: onder "KP3+ en EFX-500" staat of de hub ze vindt. Staat er "niet gevonden", kijk dan bij
+- [ ] `node src/cli.js doctor`: onder "KP3+ en EFX-500" staat of de hub ze vindt. Staat er "○ … niet aangesloten" terwijl hij er wel is, kijk dan bij
   "ingangen" hoe de interface heet en zet een stukje van die naam in `config.json` → `apparaten.kp3plus.poort_patroon`
   en `apparaten.efx500.poort_patroon` (bv. `"MIDI 1"` en `"MIDI 2"`, of de naam van de interface als hij er per poort
   maar één heeft). Van de EFX telt doctor ook even de klok: zet er muziek op.
@@ -504,7 +599,7 @@ node src/cli.js proef efx500
 | 6 | EFX-500: sturen knoppen MIDI (of Start/Stop)? | 10 s lang op alle knoppen drukken en aan de knoppen draaien |
 | 7 | Klaar | — |
 
-De proef meet het tempo zoals de hub het toont (mediaan over de tikken, ±0,2 BPM stabiel), de jitter per tik, of de
+De proef meet het tempo zoals de hub het toont (een rechte lijn door de tikken, ±0,2 BPM stabiel), de jitter per tik, of de
 klok doortikt zonder muziek (dan blijft de EFX de bron met zijn laatste tempo) en of er knoppen of Start/Stop
 binnenkomen. Push beide logboeken (`proef/<datum-tijd>-kp3plus.jsonl` en `-efx500.jsonl`) zoals in blok 6, met
 commitboodschap `proef kp3plus en efx500`; ze worden golden tests.

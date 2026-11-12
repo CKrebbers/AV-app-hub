@@ -126,6 +126,39 @@ describe('processen starten (start / wachtOpUrl)', () => {
     await o.draai();
   });
 
+  // Eindcontrole (nov): 3 van de 4 repetities stopten meteen na de start met "onverwachte fout: AssertionError …
+  // assert(!this.paused) at Parser.finish (undici)". wachtOpUrl en poortBezet lieten de body van het antwoord liggen;
+  // Waterschaal (python3 http.server, HTTP/1.0) sluit daarna de verbinding, en dan valt Node 22 om. Zo'n server hier na:
+  // een antwoord van 70 kB met "Connection: close", daarna gaat de verbinding dicht. In een eigen node-proces, want de
+  // fout is onafgehandeld en zou anders vitest zelf raken.
+  it('een server die na het antwoord de verbinding sluit (zoals python3 http.server): geen onafgehandelde fout', { timeout: 20000 }, async () => {
+    const probeer = join(tmp, 'sluitende-server.mjs');
+    const module = new URL('../tools/repetitie-proces.mjs', import.meta.url).href;
+    writeFileSync(probeer, `import net from 'node:net';
+import { wachtOpUrl, poortBezet } from ${JSON.stringify(module)};
+process.on('uncaughtException', (e) => { console.error('ONAFGEHANDELD', e?.code, e?.message); process.exit(2); });
+const body = 'x'.repeat(70000);
+const open = new Set();
+const srv = net.createServer((s) => { open.add(s); s.on('error', () => {}); s.once('data', () => s.end('HTTP/1.0 200 OK\\r\\nContent-Type: text/html\\r\\nConnection: close\\r\\nContent-Length: ' + body.length + '\\r\\n\\r\\n' + body)); });
+await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+const poort = srv.address().port;
+const pauze = (ms) => new Promise((r) => setTimeout(r, ms));
+for (let i = 0; i < 5; i++) {
+  await wachtOpUrl('http://127.0.0.1:' + poort + '/td/waterschaal-lokaal.html', { ms: 3000 });
+  if (!(await poortBezet(poort))) { console.error('poortBezet zegt vrij'); process.exit(3); }
+  await pauze(100);
+  for (const s of open) s.destroy();
+  open.clear();
+  await pauze(100);
+}
+srv.close();
+console.log('heel');
+`);
+    const d = draai([probeer]);
+    expect(await d.einde, d.fout()).toBe(0);
+    expect(d.uit()).toContain('heel');
+  });
+
   it('totUiterlijk: een lus met een deadline en een duidelijke melding', async () => {
     await expect(totUiterlijk(() => false, 100, 'de LPD8 meldt zich niet als mk2')).rejects.toThrow('de LPD8 meldt zich niet als mk2');
   });

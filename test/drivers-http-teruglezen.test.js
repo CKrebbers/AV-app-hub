@@ -292,12 +292,12 @@ describe('teruglezen: de driver', () => {
     expect(kern.zets()).toEqual([{ id: 'samenhang', v: 0.55 }]);
   });
 
-  it('uurwerk draait niet (geen brug, of geen tab): geen enkele toon-vraag en niets in het log', async () => {
+  it('uurwerk draait niet (geen brug, of geen tab): geen enkele toon-vraag, en in het log alleen één keer "doet nog niet mee"', async () => {
     for (const brug of [{ draait: false }, { tabs: 0 }]) {
       const { klok, kern, fetch, log } = opzet({ brug });
       await loop(klok, 60000, 1000);
       expect(fetch.toon()).toEqual([]);
-      expect(zonderStart(log)).toEqual([]);
+      expect(zonderStart(log)).toEqual([expect.stringContaining('Uurwerk doet nog niet mee')]); // van de check, niet van het teruglezen
       expect(kern.zets()).toEqual([]);
     }
   });

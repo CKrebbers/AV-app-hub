@@ -63,6 +63,19 @@ const STAART = 12;
  */
 
 /**
+ * Chrome laat een tab pas geluid maken na een tik of klik in die tab, en de hub kan dat niet zien: de app heet
+ * "klaar" (verbonden), maar je hoort niets. Voor elke klare app met `tik` (waar je moet tikken) één regel aan het
+ * eind van de set; null als er geen is. Puur. @param {{ naam: string, tik?: string }[]} apps @returns {string|null}
+ */
+export function tikNodig(apps) {
+  const met = apps.filter((a) => typeof a.tik === 'string' && a.tik.trim());
+  if (!met.length) return null;
+  const waar = met.map((a) => `in ${a.naam} ${a.tik.trim()}`);
+  const lijst = waar.length === 1 ? waar[0] : `${waar.slice(0, -1).join(', ')} en ${waar[waar.length - 1]}`;
+  return `Nog één ding vóór je iets hoort: Chrome laat een tab pas geluid maken na een tik. Tik ${lijst}. Daarna doen de knoppen iets hoorbaars.`;
+}
+
+/**
  * @param {{
  *   set: SetDef, config: any, paden?: Record<string, string>, hub: KernToegang, hubPoort: number,
  *   klok: import('../core/klok.js').Klok, startProces: StartProces, openUrl: ((url: string) => Promise<void>|void)|null,
@@ -343,6 +356,8 @@ export function startSet({
     }
     const n = gangen.filter((g) => g.klaar).length;
     log(`Set "${set.naam}": ${n}/${gangen.length} klaar${n < gangen.length ? ` — niet klaar: ${gangen.filter((g) => !g.klaar).map((g) => g.id).join(', ')}` : ''}`);
+    const tikRegel = tikNodig(gangen.filter((g) => g.klaar).map((g) => ({ naam: g.naam, tik: g.spec.tik })));
+    if (tikRegel) log(tikRegel);
     return uitslag();
   }
 

@@ -294,7 +294,7 @@ describe('kern: speelapparaten — lampjes en schermen terug', () => {
     kern.focus('varve-dj');
     expect(maschine.log).toEqual([]);
   });
-  it('valt de enige speler weg: de Maschine gaat uit; een app zonder maschine-mk2 in speelt kan er niets op zetten', () => {
+  it('valt de enige speler weg: de kaart van de speler gaat uit (de Maschine wordt kiezer, §19); een app zonder maschine-mk2 in speelt kan er niets op zetten', () => {
     const { kern, maschine } = opzet();
     const dj = meldAan(kern, SPELER);
     const ms = meldAan(kern, ALLEEN_XB);
@@ -303,7 +303,11 @@ describe('kern: speelapparaten — lampjes en schermen terug', () => {
     stuurApp(kern, ms, { t: 'scherm', dev: 'maschine-mk2', nr: 0, data: base64() });
     expect(maschine.log).toEqual([]);
     kern.verbreek(dj);
-    expect(maschine.log).toEqual([['leeg']]);
+    expect(maschine.log[0]).toEqual(['leeg']);
+    // Daarna alleen de kiezer (groep A–H = focus, §19): pads uit, niets van de app.
+    expect(maschine.log.some((x) => x[0] === 'led' && x[1][0] === 0x90 && x[1][1] === 36 && x[1][2] === 5)).toBe(false);
+    const pad1 = maschine.log.filter((x) => x[0] === 'led' && (x[1][0] & 0xf0) === 0x90 && (x[1][0] & 0x0f) === 0 && x[1][1] === 36);
+    expect(pad1.at(-1)?.[1][2]).toBe(0);
   });
   it('een app die zonder manifest wegvalt, wordt vergeten, ook in de focusvolgorde', () => {
     const { kern, xb } = opzet();

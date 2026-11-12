@@ -5,6 +5,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { join } from 'node:path';
 import { Kern, MELDING, Bank, P, manifest } from './spec/hulp.js';
 import * as LPD8 from '../src/devices/lpd8.js';
+import * as MS from '../src/devices/maschine-mk2.js';
 import { Opnemer, avondmapPad, mapNaam, duurTekst, GEBAREN, SAMENVATTING } from '../src/opname/opnemer.js';
 import { leesOpname, herhaal, doelVanHub, langsteSlewMs, vertaal, naarFabriek, verslag, snapshotWachter } from '../src/opname/herhaal.js';
 import { BufferSchrijver, redenVan } from '../src/opname/schrijver.js';
@@ -600,10 +601,39 @@ describe('avondmap: losse onderdelen', () => {
     expect(vertaal('lpd8-virtueel', [0xb0, 70, 5], ont)).toEqual({ dev: 'lpd8', bytes: [0xb0, 70, 5] });
     expect(vertaal('apc40', [0xf0, 0x7e, 0, 6, 2, 0xf7], ont)).toEqual({ overslaan: 'sysex' });
     expect(vertaal('xboard49', [0x90, 60, 100], ont)).toEqual({ overslaan: 'speelapparaat' });
-    expect(vertaal('maschine-mk2', [0x90, 36, 100], ont)).toEqual({ overslaan: 'speelapparaat' });
+    expect(vertaal('maschine-mk2', [0x90, 36, 100], ont)).toEqual({ dev: 'maschine-mk2', bytes: [0x90, 36, 100] });          // §19: speelt mee
+    expect(vertaal('maschine-mk2-virtueel', [0xb0, 16, 5], ont)).toEqual({ dev: 'maschine-mk2', bytes: [0xb0, 16, 5] });
     expect(vertaal('theremin', [0x90, 36, 100], ont)).toEqual({ overslaan: 'onbekend apparaat' });
     expect(vertaal('apc40-virtueel', [0xb0, 7, 64], ont)).toEqual({ dev: 'apc40', bytes: [0xb0, 7, 64] });
     expect(naarFabriek({ el: null, kind: 'onbekend' })).toBe(null);
+  });
+
+  it('een avond waarin de Maschine een alfabet-knop draait (§19), speelt gelijk af', async () => {
+    const M = () => manifest('formula-lab', [P.waarde('zoom', { rol: 'alfabet.schaal' }), P.fader('vorm')]);
+    const h1 = new Bank();
+    h1.app(M(), { zoom: 0.2, vorm: 0.5 });
+    h1.tijd(100);
+    h1.kern.focus('formula-lab');
+    const fs = geheugenFs();
+    const { o } = neemOp(h1, fs);
+    h1.lpdDruk(4); h1.lpdLos(4); h1.tijd(100);
+    for (let k = 0; k < 6; k++) { const b = [0xb0, MS.ENCODER_CC, 50]; h1.kern.invoer(MS.ontleedMidi(b), b); h1.tijd(50); }
+    expect(h1.kern.beeld().apps[0].waarden.zoom).toBeCloseTo(0.5, 6);   // 300 tellen = +0,3
+    h1.tijd(500); h1.lpdDruk(4); h1.lpdLos(4); h1.tijd(1500);
+    await o.afgesloten;
+    const opname = leesOpname(/** @type {string} */ (fs.bestanden.get(join(MAP, mapNaam(BEGON), GEBAREN))));
+
+    const h2 = new Bank();
+    h2.app(M(), { zoom: 0.9, vorm: 0.1 });
+    h2.tijd(100);
+    h2.kern.focus('formula-lab');
+    const p = herhaal({ opname, doel: doelVanHub({ kern: h2.kern }), klok: h2.klok });
+    h2.tijd(langsteSlewMs(h2.kern.beeld().apps) + /** @type {any} */ (opname.eind).ms + 2000);
+    const r = await p;
+    expect(r.overgeslagen).toEqual({ 'opname-knop': 1 });
+    expect(r.gespeeld).toBe(7);                                            // 6 × Maschine + de los van pad 4
+    expect(r.eindstaat['formula-lab'].zoom).toBeCloseTo(0.5, 6);
+    expect(r.verschillen).toEqual([]);
   });
 
   it('leesOpname: een afgebroken laatste regel (stroom weg) wordt overgeslagen; zonder eind is er niets te vergelijken', async () => {

@@ -24,14 +24,14 @@ import { laadStatisch } from '../drivers/index.js';
 import { haal } from './systeem.js';
 import { CHROME_LINUX, vindChrome } from '../sets/systeem.js';
 
-/** @typedef {'ok'|'let'|'fout'} Status */
+/** @typedef {'ok'|'let'|'fout'|'info'} Status  info = ter kennis (○): geen fout en geen let-op, telt niet mee in de eindregel */
 /** @typedef {{ groep: string, naam: string, status: Status, uitleg: string, doen?: string }} Punt */
 /** @typedef {import('../core/klok.js').Klok} Klok */
 /**
  * @typedef {Pick<typeof nodeFs, 'existsSync'|'readFileSync'|'readdirSync'|'statSync'|'accessSync'|'statfsSync'|'realpathSync'>} Bestanden
  */
 
-export const TEKEN = Object.freeze({ ok: '✓', let: '!', fout: '✗' });
+export const TEKEN = Object.freeze({ ok: '✓', let: '!', fout: '✗', info: '○' });
 // De avondmap zelf is klein (gebaren.jsonl en samenvatting.md, meestal een paar MB). De grenzen zijn ruime marge:
 // een volle schijf breekt ook het geheugen, de logboeken en de dev-servers van de apps.
 /** Minder vrije ruimte dan dit op de schijf van de avondmap: let op. */
@@ -119,14 +119,19 @@ export async function check(o) {
 
   const apparaten = in_('apparaten');
   const namen = /** @type {const} */ ([['apc40', 'APC40'], ['lpd8', 'LPD8']]);
-  // KP3+ en EFX-500 (§20, §21): alleen als config.json ze noemt, en nooit een ✗: zonder speel je gewoon (tap, de APC).
+  // KP3+ en EFX-500 (§20, §21): alleen als config.json ze noemt, en nooit een ✗ of !: zonder speel je gewoon (tap, de APC).
+  // Niet te zien is ○ (info): anders zei check op een Mac zonder die twee nooit meer "Alles in orde".
   const midiDin = /** @type {const} */ ([['kp3plus', 'KP3+', KP3.patroon(config)], ['efx500', 'EFX-500', EFX.patroon(config)]]).filter((x) => x[2]);
-  const nietGezien = (/** @type {string} */ dev, /** @type {string} */ label) => apparaten('let', dev, `de ${label} is niet te zien (hij hangt met MIDI-DIN aan een USB-MIDI-interface)`,
+  const nietGezien = (/** @type {string} */ dev, /** @type {string} */ label) => apparaten('info', dev, `de ${label} is niet aangesloten (hij hangt met MIDI-DIN aan een USB-MIDI-interface) — zonder speel je gewoon`,
     `sluit de interface aan en de ${label} op zijn MIDI-ingang; past config.json → apparaten.${dev}.poort_patroon ("${config.apparaten?.[dev]?.poort_patroon}") op de naam van die ingang? npm run doctor toont ze`);
   if (beeld) {
     for (const [dev, label] of namen) {
       const a = beeld.apparaten?.[dev];
-      if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}`);
+      // De APC-handdruk (§16): geen bevestiging is nog geen fout (niet elke APC stuurt die; Track Select beslist).
+      if (a?.verbonden && dev === 'apc40' && a.handdruk === 'geen-antwoord') {
+        apparaten('let', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}, maar zonder bevestiging op de modus-instructie`,
+          a.hint ?? 'druk op Track Select 1: komt die in de hub binnen, dan staat hij goed; anders npm run doctor');
+      } else if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}${dev === 'apc40' && a.handdruk === 'ok' ? ', modus gezet' : dev === 'apc40' && a.handdruk === 'bezig' ? ', modus wordt nog gezet' : ''}`);
       else apparaten('fout', dev, `de hub ziet de ${label} niet`, `steek de ${label} in (USB; de hub vindt hem vanzelf binnen ${Math.round((config.hotplug_ms ?? 2000) / 1000)} s)`);
     }
     for (const [dev, label] of midiDin) {

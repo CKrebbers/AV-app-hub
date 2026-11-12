@@ -12,13 +12,17 @@
 // Vergeleken wordt op het moment waarop de opname haar eindstaat vastlegde ('eind'.ms, de opnemer wacht daar
 // tot slews en de P1-timer klaar zijn), plus een korte naloop voor de verwerking/het netwerk.
 //
+// De Maschine speelt wel mee (zijn virtuele MIDI): sinds PROTOCOL §19 zet hij ook waarden van gewone apps.
+// De Xboard49 niet: die speelt alleen voor lease-apps, en die staan niet in de eindstand.
+//
 // Een doel is alles waarmee de hub te bespelen is:
-//   { invoer(dev: 'apc40'|'lpd8', bytes), cockpit(bericht), eindstaat(): Eindstaat | Promise<Eindstaat> }
+//   { invoer(dev: 'apc40'|'lpd8'|'maschine-mk2', bytes), cockpit(bericht), eindstaat(): Eindstaat | Promise<Eindstaat> }
 // LPD8-bytes gaan altijd in de mk2-fabrieksstand naar het doel (zoals de virtuele LPD8 van de cockpit,
 // PROTOCOL.md §10): de opname leest ze eerst met het profiel van toen. Zo maakt het geen verschil welke
 // LPD8 (of welk profiel) de hub van nu heeft.
 import * as APC from '../devices/apc40mk2.js';
 import * as LPD8 from '../devices/lpd8.js';
+import * as MS from '../devices/maschine-mk2.js';
 import { LANG_MS } from '../core/kern.js';
 import { SLEW_TIK_MS } from '../core/slew.js';
 import { vergelijkEindstaat } from './staat.js';
@@ -26,7 +30,7 @@ import { vergelijkEindstaat } from './staat.js';
 /** @typedef {import('../core/klok.js').Klok} Klok @typedef {import('./staat.js').Eindstaat} Eindstaat */
 /**
  * weg: (optioneel) lost op met een fout zodra het doel wegvalt (de hub stopt of crasht) — herhaal breekt dan af.
- * @typedef {{ invoer: (dev: 'apc40'|'lpd8', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat>, weg?: Promise<Error>, langsteSlewMs?: () => number }} Doel
+ * @typedef {{ invoer: (dev: 'apc40'|'lpd8'|'maschine-mk2', bytes: number[]) => void, cockpit: (b: any) => void, eindstaat: () => Eindstaat|Promise<Eindstaat>, weg?: Promise<Error>, langsteSlewMs?: () => number }} Doel
  */
 /** @typedef {{ ms: number, dev: string, bytes: number[] } | { ms: number, profiel: any }} Stap */
 /** @typedef {{ gespeeld: number, overgeslagen: Record<string, number>, verschillen: ReturnType<typeof vergelijkEindstaat>|null, eindstaat: Eindstaat, duurMs: number, rust: boolean }} Resultaat */
@@ -81,7 +85,7 @@ export function naarFabriek(g) {
 /**
  * Eén opgenomen invoer → wat er naar het doel moet (of null = overslaan, met reden).
  * @param {string} dev @param {number[]} bytes @param {(b: number[]) => any} lpd8Ontleder ontleder van de echte LPD8 toen
- * @returns {{ dev: 'apc40'|'lpd8', bytes: number[] } | { overslaan: string }}
+ * @returns {{ dev: 'apc40'|'lpd8'|'maschine-mk2', bytes: number[] } | { overslaan: string }}
  */
 export function vertaal(dev, bytes, lpd8Ontleder) {
   if (!bytes.length || bytes[0] === 0xf0) return { overslaan: 'sysex' };
@@ -92,8 +96,11 @@ export function vertaal(dev, bytes, lpd8Ontleder) {
     const b = naarFabriek(g);
     return b ? { dev: 'lpd8', bytes: b } : { overslaan: 'onbekend' };
   }
-  // Speelapparaten (PROTOCOL §17) spelen alleen voor lease-apps; die staan niet in de eindstand: niet afspelen.
-  if (dev === 'xboard49' || dev === 'maschine-mk2') return { overslaan: 'speelapparaat' };
+  // De Maschine bedient sinds §19 ook gewone apps (het alfabet): afspelen, zoals de APC. Speelt hij voor een
+  // lease-app, dan beslist de hub dat net als toen.
+  if (dev === 'maschine-mk2' || dev === 'maschine-mk2-virtueel') return { dev: 'maschine-mk2', bytes };
+  // De Xboard49 (§17) speelt alleen voor lease-apps; die staan niet in de eindstand: niet afspelen.
+  if (dev === 'xboard49') return { overslaan: 'speelapparaat' };
   return { overslaan: 'onbekend apparaat' };
 }
 
@@ -232,14 +239,14 @@ export function herhaal({ opname, doel, klok, snelheid = 1, beginstand = true, n
 /**
  * Doel in hetzelfde proces: een draaiende hub (startHub) of een losse kern (tests).
  * Invoer gaat via de virtuele controllers van de hub (opVirtueel → kern.invoer), of rechtstreeks in kern.invoer.
- * @param {{ kern: any, opVirtueel?: (dev: 'apc40'|'lpd8', bytes: number[]) => void }} hub
+ * @param {{ kern: any, opVirtueel?: (dev: 'apc40'|'lpd8'|'maschine-mk2', bytes: number[]) => void }} hub
  * @returns {Doel}
  */
 export function doelVanHub({ kern, opVirtueel }) {
   return {
     invoer(dev, bytes) {
       if (opVirtueel) return opVirtueel(dev, bytes);
-      kern.invoer(dev === 'apc40' ? APC.ontleed(bytes) : fabriekOntleder(bytes), bytes);
+      kern.invoer(dev === 'apc40' ? APC.ontleed(bytes) : dev === 'maschine-mk2' ? MS.ontleedMidi(bytes) : fabriekOntleder(bytes), bytes);
     },
     cockpit: (b) => kern.cockpit(b),
     eindstaat: () => Object.fromEntries(kern.beeld().apps.map((/** @type {any} */ a) => [a.app, { ...a.waarden }])),
