@@ -379,3 +379,110 @@ export function testbeeld(soort) {
   }
   return b;
 }
+
+// ── schermen als tekst: de grammatica op de twee panelen (§19, puur) ─────────
+
+/**
+ * Een lettertype van 5×7 pixels (HD44780-vorm): per teken 7 rijen van 5 bits, het hoogste bit links, als 14 hex-tekens.
+ * Kleine letters worden hoofdletters, accenten vallen weg (é → E); een onbekend teken wordt '?'.
+ */
+const LETTERS = Object.freeze(/** @type {Record<string, string>} */ ({
+  A: '0e1111111f1111', B: '1e11111e11111e', C: '0e11101010110e', D: '1c12111111121c', E: '1f10101e10101f',
+  F: '1f10101e101010', G: '0e111017111f0f', H: '1111111f111111', I: '0e04040404040e', J: '0702020202120c',
+  K: '11121418141211', L: '1010101010101f', M: '111b1515111111', N: '11111915131111', O: '0e11111111110e',
+  P: '1e11111e101010', Q: '0e11111115120d', R: '1e11111e141211', S: '0f10100e01011e', T: '1f040404040404',
+  U: '1111111111110e', V: '11111111110a04', W: '1111111515150a', X: '11110a040a1111', Y: '1111110a040404',
+  Z: '1f01020408101f',
+  0: '0e11131519110e', 1: '040c040404040e', 2: '0e11010204081f', 3: '1f02040201110e', 4: '02060a121f0202',
+  5: '1f101e0101110e', 6: '0608101e11110e', 7: '1f010204080808', 8: '0e11110e11110e', 9: '0e11110f01020c',
+  ' ': '00000000000000', '.': '00000000000c0c', ',': '000000000c0408', '%': '18190204081303', '-': '0000001f000000',
+  ':': '000c0c000c0c00', '/': '00010204081000', '(': '02040808080402', ')': '08040202020408', '+': '0004041f040400',
+  '?': '0e110102040004', '!': '04040404040004', '·': '0000000c0c0000', '>': '08040201020408', '<': '02040810080402',
+  '=': '00001f001f0000', '_': '0000000000001f', '#': '0a0a1f0a1f0a0a', "'": '04040800000000', '*': '00150e1f0e1500',
+}));
+/** Breedte van een teken op het scherm (5 pixels + 1 tussenruimte), hoogte 7. */
+export const TEKEN = Object.freeze({ breed: 6, hoog: 7 });
+
+/** Tekst zoals het lettertype hem kan tekenen: hoofdletters, zonder accenten, '→' als '>', de rest '?'. @param {string} tekst */
+export function schermTekens(tekst) {
+  return [...String(tekst).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/→/g, '>').replace(/↔/g, '-')]
+    .map((t) => (t in LETTERS ? t : '?')).join('');
+}
+
+/**
+ * Tekst in een schermbuffer, linksboven op (x, y); hooguit `max` tekens (de rest valt weg).
+ * @param {Uint8Array} buf @param {number} x @param {number} y @param {string} tekst @param {number} [max]
+ */
+export function tekenTekst(buf, x, y, tekst, max = Infinity) {
+  [...schermTekens(tekst)].slice(0, max).forEach((t, i) => {
+    const hex = LETTERS[t];
+    for (let r = 0; r < TEKEN.hoog; r++) {
+      const rij = parseInt(hex.slice(r * 2, r * 2 + 2), 16);
+      for (let k = 0; k < 5; k++) if (rij & (0x10 >> k)) zetPixel(buf, x + i * TEKEN.breed + k, y + r);
+    }
+  });
+}
+
+/** Staat pixel (x, y) aan? @param {Uint8Array} buf @param {number} x @param {number} y */
+export const pixel = (buf, x, y) => x >= 0 && y >= 0 && x < SCHERM.breed && y < SCHERM.hoog && (buf[32 * y + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
+
+/**
+ * Lees `n` tekens terug op (x, y) — de omgekeerde van tekenTekst, voor tests en de cockpit. Een vak dat geen teken
+ * is, wordt '?'.
+ * @param {Uint8Array} buf @param {number} x @param {number} y @param {number} n
+ */
+export function leesTekst(buf, x, y, n) {
+  let uit = '';
+  for (let i = 0; i < n; i++) {
+    let hex = '';
+    for (let r = 0; r < TEKEN.hoog; r++) {
+      let rij = 0;
+      for (let k = 0; k < 5; k++) if (pixel(buf, x + i * TEKEN.breed + k, y + r)) rij |= 0x10 >> k;
+      hex += rij.toString(16).padStart(2, '0');
+    }
+    uit += Object.keys(LETTERS).find((t) => LETTERS[t] === hex) ?? '?';
+  }
+  return uit;
+}
+
+/** Een balk van w × h met rand, voor `v` (0..1) gevuld. @param {Uint8Array} buf @param {number} x @param {number} y @param {number} w @param {number} h @param {number} v */
+export function tekenBalk(buf, x, y, w, h, v) {
+  const vol = Math.round(Math.max(0, Math.min(1, v)) * (w - 2));
+  for (let i = 0; i < w; i++) { zetPixel(buf, x + i, y); zetPixel(buf, x + i, y + h - 1); }
+  for (let j = 0; j < h; j++) { zetPixel(buf, x, y + j); zetPixel(buf, x + w - 1, y + j); }
+  for (let j = 1; j < h - 1; j++) for (let i = 0; i < vol; i++) zetPixel(buf, x + 1 + i, y + j);
+}
+
+/**
+ * @typedef {{ woord: string, naam: string|null, tekst: string|null, v: number|null }} SchermKnop
+ *   woord: de alfabet-plek ('schaal'); naam/tekst/v: de parameter daar (naam, waarde als tekst, 0..1), of null = leeg
+ */
+
+/** Schermindeling: per draaiknop een kolom van 64 pixels breed (4 per scherm), tekens per kolom. */
+export const KOLOM = Object.freeze({ breed: 64, tekens: 10, rijWoord: 1, rijNaam: 14, rijWaarde: 27, rijBalk: 40, balkHoog: 7, rijOnder: 56 });
+
+/**
+ * De grammatica op de twee schermen (§19): per draaiknop N (1–4 links, 5–8 rechts) een kolom met het woord van de
+ * alfabet-plek, de naam van de parameter, zijn waarde en een balk. Een lege plek: alleen het woord en '-'.
+ * Onderaan links de naam van de app, rechts wat SHIFT doet. Puur: geeft twee buffers van 2048 bytes.
+ * @param {{ app: string, knoppen: (SchermKnop|null)[], onder?: string }} o
+ * @returns {[Uint8Array, Uint8Array]}
+ */
+export function grammaticaSchermen({ app, knoppen, onder = 'SHIFT = FIJN' }) {
+  const s = /** @type {[Uint8Array, Uint8Array]} */ ([leegScherm(), leegScherm()]);
+  for (let n = 0; n < 8; n++) {
+    const buf = s[n < 4 ? 0 : 1], x = (n % 4) * KOLOM.breed + 2, k = knoppen[n];
+    // Het woord van de plek (het nummer is de knop eronder); 'vervorming' en 'helderheid' passen precies (10).
+    tekenTekst(buf, x, KOLOM.rijWoord, k?.woord ?? '', KOLOM.tekens);
+    // Een streep onder het woord, en een scheiding tussen de kolommen.
+    for (let i = 0; i < KOLOM.breed - 4; i++) zetPixel(buf, x + i, KOLOM.rijWoord + 9);
+    if (n % 4) for (let y = 0; y < KOLOM.rijOnder - 2; y++) zetPixel(buf, x - 2, y);
+    if (!k || k.naam === null) { tekenTekst(buf, x, KOLOM.rijNaam, '-'); continue; }
+    tekenTekst(buf, x, KOLOM.rijNaam, k.naam, KOLOM.tekens);
+    tekenTekst(buf, x, KOLOM.rijWaarde, k.tekst ?? '', KOLOM.tekens);
+    if (k.v !== null) tekenBalk(buf, x, KOLOM.rijBalk, KOLOM.breed - 6, KOLOM.balkHoog, k.v);
+  }
+  tekenTekst(s[0], 2, KOLOM.rijOnder, app, 42);
+  tekenTekst(s[1], 2, KOLOM.rijOnder, onder, 42);
+  return s;
+}

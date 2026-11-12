@@ -6,10 +6,11 @@
 //   en open daarna de app met ?hub=ws://localhost:7799/app
 // Een app met `levert` (§18, de sectie) wordt ook daarop getoetst: globaal pas na het manifest, alleen voor groepen
 // uit levert, hooguit 10×/s, en na herverbinden de huidige sectie opnieuw zonder nieuw. Probeer: node tools/nep-app.mjs --sectie
+// Een app met momenten (§19) krijgt een trig met velocity (`v`) en zets op zijn `druk`. Probeer: node tools/nep-app.mjs --alfabet
 // Als bibliotheek: `const r = await toetsApp({ poort, start: async (url) => … })`.
 import { WebSocketServer } from 'ws';
 import { leesVanApp, isModeSysex, groepVan, SECTIE_STAPPEN } from '../src/protocol/berichten.js';
-import { valideerManifest } from '../src/protocol/manifest.js';
+import { valideerManifest, momentPlek } from '../src/protocol/manifest.js';
 
 /** @typedef {{ naam: string, ok: boolean, detail?: string }} Uitslag */
 
@@ -80,6 +81,14 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
       const s0 = sockets[0];
       if (eerste) s0.send(JSON.stringify({ t: 'zet', id: eerste.id, v: 0.25, bron: 'apc40' }));
       if (trig) { s0.send(JSON.stringify({ t: 'trig', id: trig.id, aan: true })); s0.send(JSON.stringify({ t: 'trig', id: trig.id, aan: false })); }
+      // §19: een moment van een Maschine-pad komt met velocity (`v` in trig) en, met `druk`, zets op die waarde.
+      const moment = manifest.params.find((p) => p.soort === 'trigger' && momentPlek(p.rol));
+      if (moment) {
+        s0.send(JSON.stringify({ t: 'trig', id: moment.id, aan: true, v: 0.8 }));
+        if (moment.druk) s0.send(JSON.stringify({ t: 'zet', id: moment.druk, v: 0.5, bron: 'maschine-mk2' }));
+        s0.send(JSON.stringify({ t: 'trig', id: moment.id, aan: false }));
+        if (moment.druk) s0.send(JSON.stringify({ t: 'zet', id: moment.druk, v: 0, bron: 'maschine-mk2' }));
+      }
       s0.send(JSON.stringify({ t: 'focus', aan: true }));
       s0.send(JSON.stringify({ t: 'globaal', waarden: { 'macro.ruimte': 0.5, adem: 0.1, grondtoon: 'D', 'sectie.nieuw': 1 / SECTIE_STAPPEN, 'sectie.energie': 0.8, 'sectie.label': 'drop' } }));
       s0.send(JSON.stringify({ t: 'iets-nieuws-uit-de-toekomst', x: 1 }));
@@ -92,6 +101,7 @@ export async function toetsApp({ poort, start, timeoutMs = 8000, herverbindMs = 
       await new Promise((r) => setTimeout(r, 400));
       noteer('overleeft zet/trig/focus/globaal en onbekende berichten', s0.readyState === s0.OPEN);
       if (manifest.speelt?.length) noteer(`speelt ${manifest.speelt.join(', ')}: overleeft hun MIDI`, s0.readyState === s0.OPEN);
+      if (moment) noteer('grammatica: overleeft momenten met velocity en druk (§19)', s0.readyState === s0.OPEN);
       if (manifest.lease) {
         const leds = log.filter((x) => x.b.t === 'led');
         noteer('lease: stuurt geen mode-SysEx', !leds.some((x) => x.b.bytes.some(isModeSysex)));

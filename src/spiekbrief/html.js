@@ -6,6 +6,9 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { HUB_MAP } from '../config.js';
+import { ALFABET, rolWoord } from '../protocol/manifest.js';
+import { GRAMMATICA, MOMENT_NAAM } from '../protocol/grammatica.js';
+import { ALFABET_PAGINA } from '../core/indeling.js';
 
 /** @typedef {import('./model.js').Spiekbrief} Spiekbrief @typedef {import('./model.js').AppBlad} AppBlad
  *  @typedef {import('./model.js').Vak} Vak */
@@ -87,6 +90,16 @@ const td = (v, ctrl, klas = '', o = {}) => (v
 /** Een rij van 8 (faders, track- of device-knoppen). @param {string} label @param {(Vak|null)[]} vakken @param {string} pre @param {VakOpties} o */
 const rij = (label, vakken, pre, o) => `<tr><th scope="row">${label}</th>${vakken.map((v, i) => td(v, `${pre}${i + 1}`, '', o)).join('')}<td class="rand"></td></tr>`;
 
+/** Het woord van alfabet-plek i (0..7). @param {number} i */
+const plekWoord = (i) => rolWoord(ALFABET[i]);
+/**
+ * De device-pagina met het parameter-alfabet (§19): elk vak met het woord van zijn plek erboven, ook een lege plek
+ * (die doet niets), zodat je ziet dat plek 3 in elke app beweging is.
+ * @param {string} label @param {(Vak|null)[]} vakken @param {VakOpties} o
+ */
+const alfabetRij = (label, vakken, o) => `<tr class="sb-alfabet"><th scope="row">${label}</th>${vakken.map((v, i) => td(v, `dk${i + 1}`, 'alfabet', o)
+  .replace(/(<td[^>]*>)/, `$1<small class="sb-plek">${esc(plekWoord(i))}</small> `)).join('')}<td class="rand"></td></tr>`;
+
 // ── een app ───────────────────────────────────────────────────────────────────
 
 /**
@@ -125,8 +138,9 @@ function strookTabel(a, o) {
       + `${a.stopAll ? `<td class="vol stopall" data-ctrl="stopall" data-param="${esc(a.stopAll.id)}">${esc(a.stopAll.naam)}</td>` : '<td class="rand"></td>'}</tr>`);
   }
   a.paginas.forEach((p, i) => {
-    const label = a.paginas.length > 1 ? `device <small>${i === 0 ? 'begin' : `◄/► ${i + 1}`}${p.naam ? ` ${esc(p.naam)}` : ''}</small>` : 'device';
-    rijen.push(rij(label, p.dk, 'dk', o).replace('<tr>', `<tr data-pagina="${i}">`));
+    const label = a.paginas.length > 1 ? `device <small>${i === 0 ? 'begin' : `◄/► ${i + 1}`}${p.naam ? ` ${esc(p.naam)}` : ''}</small>` : p.naam === ALFABET_PAGINA ? 'device <small>alfabet</small>' : 'device';
+    if (p.naam === ALFABET_PAGINA) rijen.push(alfabetRij(label, p.dk, o).replace('<tr class="sb-alfabet">', `<tr class="sb-alfabet" data-pagina="${i}">`));
+    else rijen.push(rij(label, p.dk, 'dk', o).replace('<tr>', `<tr data-pagina="${i}">`));
   });
   if (!rijen.length) return '';
   return `<table class="sb-apc sb-strook">
@@ -140,6 +154,9 @@ function focusRegel(a, sb) {
   if (a.slot !== null) return `<span class="sb-focus">${toets} + Track Select <b>${a.slot}</b>${a.status === 'weg' ? ' (niet verbonden)' : ''}</span>`;
   return `<span class="sb-focus">${toets} + Track Select onder zijn kleur</span>`;
 }
+
+/** De Maschine-pads van een app als korte teksten: "1 flits = Flits", "9 = Aan". @param {AppBlad} a */
+const maschineTekst = (a) => a.maschine.map((x) => `${x.pad}${x.woord && MOMENT_NAAM[x.woord] !== x.naam.toLowerCase() ? ` ${MOMENT_NAAM[x.woord]}` : ''} = ${x.naam}`);
 
 /** @param {AppBlad} a @param {Spiekbrief} sb */
 function appKaart(a, sb) {
@@ -166,6 +183,7 @@ Alleen <b>${esc(sb.hub.toetsNaam)}</b> blijft van de hub: ${esc(sb.hub.toetsNaam
     const extra = [];
     if (a.overig.length) extra.push(`ook: ${a.overig.map((v) => `<span data-ctrl="${esc(v.ctrl)}" data-param="${esc(v.id)}">${esc(v.ctrl)} = ${vakTekst(v, o)}</span>`).join(' · ')}`);
     if (a.niet.length) extra.push(`niet op de APC (cockpit): ${a.niet.map(esc).join(', ')}`);
+    if (a.maschine.length) extra.push(`<span class="sb-maschine">Maschine-pads: ${maschineTekst(a).map(esc).join(' · ')}</span>`);
     if (extra.length) lijf += `<p class="sb-opm">${extra.join('<br>')}</p>`;
   }
   return `<section class="sb-app sb-${a.soort}" data-app="${esc(a.app)}" style="--app:${kleur(a.kleur)}">
@@ -278,9 +296,12 @@ export function gewicht(a, breed = (BLAD.breed - 10) / 2) {
     .filter((x) => x !== null);
   if (strook.length) {
     const cel = (breed - 24 - 32 - 40 - 14) / 8;
-    h += 12 + strook.reduce((s, r) => s + rijHoogte(/** @type {(Vak|null)[]} */ (r).map((v) => (v ? vakPlat(v) : '')), (cel - 5) / 5.9), 0);
+    // De alfabet-pagina zet het woord van de plek voor elk vak (§19): reken dat mee.
+    const alfabet = a.paginas.find((p) => p.naam === ALFABET_PAGINA)?.dk;
+    h += 12 + strook.reduce((s, r) => s + rijHoogte(/** @type {(Vak|null)[]} */ (r).map((v, i) => `${r === alfabet ? `${plekWoord(i)} ` : ''}${v ? vakPlat(v) : ''}`), (cel - 5) / 5.9), 0);
   }
   if (a.overig.length || a.niet.length) h += tekst(`${a.overig.map((v) => `${v.ctrl} = ${vakPlat(v)}`).join(' · ')} niet op de APC (cockpit): ${a.niet.join(', ')}`) + 4;
+  if (a.maschine.length) h += tekst(`Maschine-pads: ${maschineTekst(a).join(' · ')}`) + 4;
   return h;
 }
 
@@ -404,7 +425,46 @@ export function lijstHtml(sets, { css = 'link', uiMap, fouten = [] } = {}) {
 <p>Kies een set. Je krijgt één A4 (liggend) met wat elke knop van de APC40 en de LPD8 doet, zoals de hub het nu ziet. Afdrukken met ⌘P / Ctrl-P.</p>
 ${sets.length ? `<ul class="sb-sets">${items}</ul>` : '<p class="leeg">Er staan geen sets in sets/.</p>'}
 ${sets.length > 1 ? '<p><a href="/spiekbrief?set=alle">Alle sets onder elkaar</a> (één pagina per set)</p>' : ''}
+<p><a href="/spiekbrief?set=${GRAMMATICA_SET}"><b>Grammatica</b></a>: wat elke knopgroep in elke app betekent (het parameter-alfabet, de momenten).</p>
 ${mis}
 <p class="hint">Zonder draaiende hub: <code>npm run spiekbrief -- &lt;set&gt;</code> (docs/SPIEKBRIEF.md).</p>
 </main>`, { css, uiMap });
 }
+
+// ── de grammatica (PROTOCOL §19): wat elke knopgroep overal betekent ─────────
+
+/** De naam waaronder de grammatica als "set" opgevraagd wordt (/spiekbrief?set=grammatica, npm run spiekbrief -- grammatica). */
+export const GRAMMATICA_SET = 'grammatica';
+
+/**
+ * De grammatica als pagina (één A4 liggend): de zes delen uit SYSTEEM §3, met wat de hub nu al doet en wat nog komt.
+ * Optioneel per app welke alfabet-plek wat is (uit een spiekbrief van een set).
+ * @param {{ css?: 'link'|'inline', uiMap?: string, opHub?: boolean, apps?: AppBlad[] }} [o]
+ */
+export function grammaticaHtml({ css = 'link', uiMap, opHub = css === 'link', apps = [] } = {}) {
+  const delen = GRAMMATICA.map((d) => `<section class="sb-deel" data-deel="${esc(d.id)}">
+<h2>${esc(d.titel)} <small>${esc(d.waar)}</small></h2>
+<table class="sb-lijst">${d.regels.map((r) => `<tr${r.hub ? '' : ' class="sb-komt"'}><th scope="row">${esc(r.wat)}</th><td>${esc(r.betekent)}${r.hub ? '' : ' <i>(komt nog)</i>'}</td></tr>`).join('\n')}</table>
+</section>`).join('\n');
+  const metAlfabet = apps.filter((a) => a.paginas.some((p) => p.naam === ALFABET_PAGINA));
+  const perApp = metAlfabet.length ? `<section class="sb-deel sb-per-app">
+<h2>Per app <small>welke parameter op welke plek</small></h2>
+<table class="sb-apc sb-strook"><thead><tr><th></th>${ALFABET.map((r, i) => `<th scope="col">${i + 1} ${esc(rolWoord(r))}</th>`).join('')}</tr></thead>
+<tbody>${metAlfabet.map((a) => {
+    const dk = /** @type {import('./model.js').Pagina} */ (a.paginas.find((p) => p.naam === ALFABET_PAGINA)).dk;
+    return `<tr data-app="${esc(a.app)}" style="--app:${kleur(a.kleur)}"><th scope="row">${esc(a.naam)}</th>${dk.map((v) => (v ? `<td class="vol">${esc(v.naam)}</td>` : '<td class="leeg"></td>')).join('')}</tr>`;
+  }).join('\n')}</tbody></table>
+</section>` : '';
+  return pagina('varve-hub · grammatica', `${kop('grammatica', opHub)}
+<main class="sb-blad sb-grammatica">
+<header class="sb-kop">
+<h1><span class="sb-klein">Spiekbrief</span> Grammatica</h1>
+<p class="sb-beschrijving">Eén grammatica, alle onderdelen: elk gebaar betekent overal hetzelfde. Wat er bediend wordt verandert; wat je hand doet niet.</p>
+</header>
+<div class="sb-delen">
+${delen}
+${perApp}
+</div>
+</main>`, { css, uiMap });
+}
+

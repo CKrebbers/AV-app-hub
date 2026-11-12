@@ -4,11 +4,13 @@
 //   uit:    virtueel ({dev, bytes}), focus ({app}), zet ({app, id, v}), snapshot ({nr, actie})
 
 import { ROLLEN } from '../src/protocol/manifest.js';
+import { GRAMMATICA } from '../src/protocol/grammatica.js';
+import { grammaticaSchermen, pixel, SCHERM } from '../src/devices/maschine-mk2.js';
 import { klem01 } from '../src/protocol/berichten.js';
 import { maakApc } from './apc.js';
 import { maakLpd8, KNOP_NAMEN } from './lpd8.js';
 import { Verbinding, cockpitUrl } from './verbinding.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan } from './opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan, plekTekst, dkNamen, maschineVan } from './opmaak.js';
 
 const LOG_MAX = 50;
 const LANG_DRUKKEN_MS = 700;
@@ -98,6 +100,75 @@ function tekenBeeld() {
   tekenParams(apps.find((/** @type {any} */ a) => a && a.app === app) ?? null, slewsVan(beeld, app));
   tekenGlobaal(obj(beeld.globaal));
   tekenSectie(sectieVan(beeld));
+  apc.zetNamen(dkNamen(beeld));
+  tekenMaschine(maschineVan(beeld), apps);
+}
+
+// ── de Maschine als hoofdbediening (PROTOCOL §19) ───────────────────────────
+
+/** De laatst getekende schermen (als tekst), zodat we alleen tekenen als er iets veranderde. */
+let maschineSleutel = '';
+
+/**
+ * Wat de Maschine nu doet: bedient hij de app met focus (grammatica), dan zijn twee schermen precies zoals de hub ze
+ * tekent (grammaticaSchermen, 256×64) en de pads; anders voor wie hij speelt.
+ * @param {ReturnType<typeof maschineVan>} m @param {any[]} apps
+ */
+function tekenMaschine(m, apps) {
+  const naam = (/** @type {string|null} */ id) => apps.find((a) => a && a.app === id)?.naam || id;
+  $('maschine-wie').textContent = m.bedient ? `bedient ${m.bedient.naam}` : m.speelt ? `speelt voor ${naam(m.speelt)}` : 'focus-app volgt geen grammatica';
+  $('mk2-schermen').hidden = !m.bedient;
+  $('mk2-pads').hidden = !m.bedient;
+  if (!m.bedient) { maschineSleutel = ''; return; }
+  const sleutel = JSON.stringify(m.bedient);
+  if (sleutel === maschineSleutel) return;
+  maschineSleutel = sleutel;
+  const b = m.bedient;
+  const schermen = grammaticaSchermen({ app: b.naam, knoppen: b.knoppen, onder: b.shift ? 'FIJN' : 'SHIFT = FIJN' });
+  [/** @type {HTMLCanvasElement} */ ($('mk2-l')), /** @type {HTMLCanvasElement} */ ($('mk2-r'))].forEach((c, nr) => {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    const img = ctx.createImageData(SCHERM.breed, SCHERM.hoog);
+    for (let y = 0; y < SCHERM.hoog; y++) {
+      for (let x = 0; x < SCHERM.breed; x++) {
+        const i = 4 * (y * SCHERM.breed + x), aan = pixel(schermen[nr], x, y);
+        img.data[i] = aan ? 220 : 12; img.data[i + 1] = aan ? 232 : 14; img.data[i + 2] = aan ? 255 : 20; img.data[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    c.dataset.tekst = b.knoppen.slice(nr * 4, nr * 4 + 4).map((k) => `${k.woord}:${k.naam ?? '-'}:${k.tekst ?? ''}`).join('|');
+  });
+  // De pads zoals op het toestel: 13–16 boven, 1–4 onder.
+  const ol = $('mk2-pads');
+  ol.replaceChildren(...[13, 9, 5, 1].flatMap((begin) => [0, 1, 2, 3].map((d) => {
+    const p = b.pads[begin + d - 1] ?? { pad: begin + d, woord: null, naam: null, in: false, aan: false };
+    const li = document.createElement('li');
+    li.className = `${p.naam ? 'vol' : 'leeg'}${p.in || p.aan ? ' aan' : ''}`;
+    li.dataset.pad = String(p.pad);
+    li.innerHTML = '<small></small><span></span>';
+    /** @type {HTMLElement} */ (li.querySelector('small')).textContent = `${p.pad}${p.woord ? ` ${p.woord}` : ''}`;
+    /** @type {HTMLElement} */ (li.querySelector('span')).textContent = p.naam ?? '';
+    return li;
+  })));
+}
+
+/** De grammatica (SYSTEEM §3) in woorden: eenmalig, uit src/protocol/grammatica.js. */
+function maakGrammatica() {
+  $('grammatica-lijf').replaceChildren(...GRAMMATICA.map((d) => {
+    const s = document.createElement('section');
+    s.dataset.deel = d.id;
+    const h = document.createElement('h3'); h.textContent = d.titel;
+    const w = document.createElement('small'); w.textContent = ` ${d.waar}`; h.append(w);
+    const dl = document.createElement('dl');
+    for (const r of d.regels) {
+      const dt = document.createElement('dt'); dt.textContent = r.wat;
+      const dd = document.createElement('dd'); dd.textContent = r.betekent + (r.hub ? '' : ' (komt nog)');
+      if (!r.hub) { dt.className = 'komt'; dd.className = 'komt'; }
+      dl.append(dt, dd);
+    }
+    s.append(h, dl);
+    return s;
+  }));
 }
 
 // ── opname (LPD8-pad 4) ─────────────────────────────────────────────────────
@@ -261,6 +332,9 @@ function paramRij(app, p) {
   rij.dataset.id = p.id;
   const naam = document.createElement('label');
   naam.textContent = p.naam || p.id;
+  // §19: de plek in de grammatica ("3 beweging", "pad 1 flits") als klein label voor de naam.
+  const plek = plekTekst(p);
+  if (plek) { const b = document.createElement('small'); b.className = 'plek'; b.textContent = plek; naam.prepend(b); rij.dataset.plek = plek; }
   naam.title = `${p.id}${p.rol ? ` · ${p.rol}` : ''}${p.hint ? ` · ${p.hint}` : ''}`;
   const waarde = document.createElement('output');
   rij.append(naam);
@@ -476,6 +550,7 @@ function logInvoer(g) {
 
 maakSnapshots();
 maakMacros();
+maakGrammatica();
 ademLus();
 setInterval(tekenLooptijd, 250); // REC-looptijd telt door tussen de beelden
 // Pagina weg, tabblad verborgen of venster uit beeld: niets ingedrukt laten staan in de hub.

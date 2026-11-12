@@ -2,9 +2,11 @@
 // @ts-check
 // Nep-app: een app die het protocol netjes volgt. Voor tests van de hub, voor demo's,
 // en als voorbeeld voor elke echte koppeling (PROTOCOL.md §3).
-//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app] [--speelt | --sectie]
+//   node tools/nep-app.mjs [--url ws://localhost:7700/app] [--app nep-app] [--speelt | --sectie | --alfabet]
 //   --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (PROTOCOL §17): pads lichten op, een scherm
 //   --sectie: een muziek-app die de sectie levert (PROTOCOL §18): elke 8 s een nieuwe (intro, opbouw, drop, break, outro)
+//   --alfabet: een instrument dat de grammatica volgt (PROTOCOL §19): zeven alfabet-plekken (bewust door elkaar in het
+//              manifest, plek 2 leeg), vier momenten (flits met druk) en een fader; de device-knoppen volgen het alfabet
 import WebSocket from 'ws';
 import { leesNaarApp, nieuweInst } from '../src/protocol/berichten.js';
 import { Zender } from '../src/core/zender.js';
@@ -42,6 +44,33 @@ export const sectieManifest = (app = 'nep-muziek') => ({
   v: 1, app, naam: 'Nep-muziek', kleur: '#ff7a1a', truth: 'app', hb_s: 1, lease: true, rings: 'host',
   levert: ['sectie'], scenes: [], params: [],
 });
+/**
+ * Een instrument dat de grammatica volgt (PROTOCOL §19), zoals de harmonograaf uit SYSTEEM §5: de alfabet-parameters
+ * staan bewust níet in alfabet-volgorde in het manifest en plek 2 (dichtheid) is leeg, zodat je in de cockpit ziet dat
+ * device-knop N plek N is. Plus vier momenten (pad 1, 3, 5, 7; flits met aftertouch) en een gewone fader.
+ * @param {string} app @returns {Manifest}
+ */
+export const alfabetManifest = (app = 'nep-alfabet') => ({
+  v: 1, app, naam: 'Nep-harmonograaf', kleur: '#2e5bff', truth: 'app', hb_s: 1, lease: false,
+  scenes: ['Kalm', 'Wild'],
+  params: [
+    { id: 'demping', naam: 'Demping', soort: 'waarde', standaard: 0.4, rol: 'alfabet.ruimte', slew_s: 2 },
+    { id: 'tint', naam: 'Tint', soort: 'waarde', standaard: 0.6, rol: 'alfabet.kleur' },
+    { id: 'grootte', naam: 'Grootte', soort: 'waarde', standaard: 0.5, rol: 'alfabet.schaal' },
+    { id: 'verhouding', naam: 'Verhouding', soort: 'keuze', keuzes: ['1:1', '2:1', '3:2', '4:3', '5:4'], rol: 'alfabet.variatie' },
+    { id: 'snelheid', naam: 'Snelheid', soort: 'waarde', standaard: 0.3, rol: 'alfabet.beweging' },
+    { id: 'fase', naam: 'Fase', soort: 'waarde', standaard: 0, rol: 'alfabet.vervorming' },
+    { id: 'lijndikte', naam: 'Lijndikte', soort: 'waarde', standaard: 0.2, rol: 'alfabet.helderheid' },
+    { id: 'zichtbaar', naam: 'Zichtbaar', soort: 'waarde', standaard: 1, hint: 'fader' },
+    { id: 'flits', naam: 'Flits', soort: 'trigger', rol: 'moment.flits', druk: 'flits_diep' },
+    { id: 'flits_diep', naam: 'Flits diep', soort: 'waarde', standaard: 0, hint: 'fader' },
+    { id: 'omkeren', naam: 'Omkeren', soort: 'trigger', rol: 'moment.omkeren' },
+    { id: 'zaad', naam: 'Nieuw zaad', soort: 'trigger', rol: 'moment.zaad' },
+    { id: 'wis', naam: 'Wis spoor', soort: 'trigger', rol: 'moment.wis' },
+    { id: 'paniek', naam: 'Paniek', soort: 'trigger' },
+  ],
+});
+
 /** De secties die de nep-muziek-app rondspeelt: [label, energie]. */
 export const NEP_SECTIES = /** @type {const} */ ([['intro', 0.2], ['opbouw', 0.55], ['drop', 0.9], ['break', 0.35], ['outro', 0.15]]);
 
@@ -140,9 +169,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (/** @type {string} */ n, /** @type {string} */ s) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : s; };
   // --speelt: een lease-app die de Xboard49 en de Maschine MK2 speelt (§17) in plaats van een manifest-app.
   // --sectie: een muziek-app die de sectie levert (§18), elke 8 s een nieuwe.
-  const speelt = process.argv.includes('--speelt'), sectie = process.argv.includes('--sectie');
-  const naam = arg('--app', speelt ? 'nep-speler' : sectie ? 'nep-muziek' : 'nep-app');
-  const manifest = speelt ? speelManifest(naam) : sectie ? sectieManifest(naam) : voorbeeldManifest(naam);
+  // --alfabet: een instrument dat de grammatica volgt (§19).
+  const speelt = process.argv.includes('--speelt'), sectie = process.argv.includes('--sectie'), alfabet = process.argv.includes('--alfabet');
+  const naam = arg('--app', speelt ? 'nep-speler' : sectie ? 'nep-muziek' : alfabet ? 'nep-alfabet' : 'nep-app');
+  const manifest = speelt ? speelManifest(naam) : sectie ? sectieManifest(naam) : alfabet ? alfabetManifest(naam) : voorbeeldManifest(naam);
   const app = new NepApp({ url: arg('--url', 'ws://localhost:7700/app'), manifest, sectieMs: sectie ? 8000 : undefined }).start();
   app.bij('open', () => console.log('verbonden'));
   app.bij('dicht', () => console.log('verbinding weg, opnieuw proberen…'));

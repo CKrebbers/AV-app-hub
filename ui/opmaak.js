@@ -2,6 +2,8 @@
 // Kleine pure hulpjes voor de cockpit: waarden tonen, invoer beschrijven, beeld lezen.
 // Geen DOM, zodat het in Node te toetsen is.
 
+import { alfabetPlek, momentPlek, rolWoord, ALFABET } from '../src/protocol/manifest.js';
+
 /** @typedef {import('../src/protocol/types.js').Param} Param */
 
 /**
@@ -172,3 +174,66 @@ export function sectieVan(beeld) {
     bron: id ? (typeof app?.naam === 'string' && app.naam ? app.naam : id) : null,
   };
 }
+
+// ── grammatica (PROTOCOL §19) ─────────────────────────────────────────────────
+
+/**
+ * Waar een parameter in de grammatica staat: "3 beweging" (device-knop en Maschine-knop 3), "pad 1 flits", of null.
+ * @param {Partial<Param>|null|undefined} p
+ */
+export function plekTekst(p) {
+  const a = alfabetPlek(p?.rol);
+  if (a) return `${a} ${rolWoord(/** @type {string} */ (p?.rol))}`;
+  const m = momentPlek(p?.rol);
+  if (m) return `pad ${m} ${rolWoord(/** @type {string} */ (p?.rol))}`;
+  return null;
+}
+
+/**
+ * Wat er onder de device-knoppen van de virtuele APC staat: per dk1..dk8 de naam van de parameter die er nu op zit
+ * (uit beeld.pickup van de app met focus). Op de alfabet-pagina krijgt een lege plek het woord van die plek, gedimd.
+ * @param {any} beeld
+ * @returns {Record<string, { tekst: string, titel: string, leeg: boolean }>}
+ */
+export function dkNamen(beeld) {
+  /** @type {Record<string, { tekst: string, titel: string, leeg: boolean }>} */
+  const uit = {};
+  const app = Array.isArray(beeld?.apps) ? beeld.apps.find((/** @type {any} */ a) => a && a.app === beeld.focus) : null;
+  if (!app || app.lease || !Array.isArray(app.params)) return uit;
+  const alfabet = Array.isArray(app.paginas) && app.paginas[app.pagina ?? 0] === 'alfabet';
+  const pickup = beeld.pickup && typeof beeld.pickup === 'object' ? beeld.pickup : {};
+  for (let i = 1; i <= 8; i++) {
+    const id = pickup[`dk${i}`]?.id;
+    const p = typeof id === 'string' ? app.params.find((/** @type {any} */ x) => x && x.id === id) : null;
+    const woord = alfabet ? rolWoord(ALFABET[i - 1]) : null;
+    if (p) uit[`dk${i}`] = { tekst: String(p.naam || p.id), titel: `${woord ? `${i} ${woord} · ` : ''}${p.naam || p.id}`, leeg: false };
+    else if (woord) uit[`dk${i}`] = { tekst: woord, titel: `${i} ${woord}: leeg (doet niets in deze app)`, leeg: true };
+  }
+  return uit;
+}
+
+/**
+ * beeld.maschine (§19), gecontroleerd: wat de Maschine laat zien als hij de app met focus bedient, of null. Met
+ * `speelt` de app die er nu op speelt als hij niet bedient (§17).
+ * @param {any} beeld
+ */
+export function maschineVan(beeld) {
+  const speelt = typeof beeld?.spelers?.['maschine-mk2'] === 'string' ? beeld.spelers['maschine-mk2'] : null;
+  const m = beeld?.maschine;
+  if (!m || typeof m !== 'object' || !Array.isArray(m.knoppen)) return { bedient: null, speelt };
+  const tekst = (/** @type {unknown} */ x) => (typeof x === 'string' ? x : null);
+  return {
+    speelt,
+    bedient: {
+      app: String(m.app ?? ''), naam: String(m.naam ?? m.app ?? ''), shift: m.shift === true,
+      knoppen: Array.from({ length: 8 }, (_, i) => {
+        const k = m.knoppen[i] ?? {};
+        return { woord: tekst(k.woord) ?? rolWoord(ALFABET[i]), naam: tekst(k.naam), tekst: tekst(k.tekst), v: typeof k.v === 'number' ? Math.max(0, Math.min(1, k.v)) : null };
+      }),
+      pads: (Array.isArray(m.pads) ? m.pads : []).slice(0, 16).map((/** @type {any} */ p, /** @type {number} */ i) => ({
+        pad: i + 1, woord: tekst(p?.woord), naam: tekst(p?.naam), in: p?.in === true, aan: p?.aan === true,
+      })),
+    },
+  };
+}
+

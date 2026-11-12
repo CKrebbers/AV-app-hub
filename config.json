@@ -32,7 +32,13 @@
       },
       "encoder_drempel": 12,
       "led_max": 255,
-      "per_burst": 4
+      "per_burst": 4,
+      "grammatica": {
+        "_doc": "De Maschine als hoofdbediening (PROTOCOL §19): tellen_vol = zoveel tellen van een draaiknop is van 0 naar 1 (1 omwenteling ≈ 1000); fijn = met SHIFT zoveel keer fijner; tellen_stap = zoveel tellen per stap bij een keuze of schakelaar",
+        "tellen_vol": 1000,
+        "fijn": 10,
+        "tellen_stap": 125
+      }
     }
   },
   "hubtoets": "bank",

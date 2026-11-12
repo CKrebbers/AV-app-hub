@@ -9,11 +9,12 @@ import { dirname, join, resolve } from 'node:path';
 import { HUB_MAP, laadConfig } from '../config.js';
 import { laadSet, lijstSets, SETS_MAP } from '../sets/index.js';
 import { spiekbriefVoorSet, laadBronnen } from './bronnen.js';
-import { spiekbriefHtml, lijstHtml } from './html.js';
+import { spiekbriefHtml, lijstHtml, grammaticaHtml, GRAMMATICA_SET } from './html.js';
+import { liveBladen } from './model.js';
 
-export { maakSpiekbrief, schaduwKern, uitKern, lpdPads, ROL_NAMEN } from './model.js';
+export { maakSpiekbrief, schaduwKern, uitKern, lpdPads, ROL_NAMEN, liveBladen } from './model.js';
 export { laadBronnen, spiekbriefVoorSet, hubConfig, VASTGELEGD_MAP } from './bronnen.js';
-export { spiekbriefHtml, lijstHtml, gewicht, dichtheid, verdeel, esc } from './html.js';
+export { spiekbriefHtml, lijstHtml, gewicht, dichtheid, verdeel, esc, grammaticaHtml, GRAMMATICA_SET } from './html.js';
 
 /** Waar de CLI de spiekbrief standaard neerzet (staat in .gitignore). */
 export const UITVOER_MAP = join(HUB_MAP, 'tools', 'uitvoer');
@@ -26,6 +27,7 @@ export const ALLE = 'alle';
  */
 function namenVoor(naam, setsMap = SETS_MAP) {
   const sets = lijstSets(setsMap);
+  if (naam === GRAMMATICA_SET && !sets.includes(GRAMMATICA_SET)) return [];
   if (naam === ALLE && !sets.includes(ALLE)) return sets;
   if (!sets.includes(naam)) throw Object.assign(new Error(`onbekende set "${naam}" — beschikbaar: ${sets.length ? sets.join(', ') : '(geen)'}`), { code: 'ONBEKEND' });
   return [naam];
@@ -50,6 +52,8 @@ export function spiekbriefPagina(set, { kern = null, setsMap = SETS_MAP, gemaakt
     return { code: 200, html: lijstHtml(sets, { fouten }) };
   }
   try {
+    // §19: de grammatica (geen set): wat elke knopgroep betekent, en per app die de hub kent welke plek wat is.
+    if (set === GRAMMATICA_SET && !namenVoor(set, setsMap).length) return { code: 200, html: grammaticaHtml({ css: 'link', apps: kern ? liveBladen(kern, config) : [] }) };
     const brieven = namenVoor(set, setsMap).map((naam) => spiekbriefVoorSet(naam, { config, kern, setsMap, appsMap, vastgelegdMap }));
     return { code: 200, html: spiekbriefHtml(brieven, { css: 'link', gemaakt }) };
   } catch (e) {
@@ -70,7 +74,11 @@ export function schrijfSpiekbrief(naam, { config, uit, gemaakt = null, setsMap =
   const brieven = namen.map((n) => spiekbriefVoorSet(n, { config, setsMap, appsMap, vastgelegdMap }));
   const pad = resolve(uit ?? join(UITVOER_MAP, `spiekbrief-${naam}.html`));
   mkdirSync(dirname(pad), { recursive: true });
-  writeFileSync(pad, spiekbriefHtml(brieven, { css: 'inline', gemaakt, opHub: false }));
+  // §19: "grammatica" is geen set maar de pagina met wat elke knopgroep betekent (met de apps uit alle sets).
+  const html = naam === GRAMMATICA_SET && !namen.length
+    ? grammaticaHtml({ css: 'inline', opHub: false, apps: lijstSets(setsMap).flatMap((n) => spiekbriefVoorSet(n, { config, setsMap, appsMap, vastgelegdMap }).apps).filter((a, i, l) => l.findIndex((b) => b.app === a.app) === i) })
+    : spiekbriefHtml(brieven, { css: 'inline', gemaakt, opHub: false });
+  writeFileSync(pad, html);
   return { pad, sets: namen, brieven };
 }
 

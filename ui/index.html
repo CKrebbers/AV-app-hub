@@ -42,6 +42,14 @@
         <h2 id="focus-titel">Focus</h2>
         <div id="params" class="params"></div>
       </section>
+      <section class="paneel" id="maschine-paneel">
+        <h2>Maschine <small id="maschine-wie">—</small></h2>
+        <div class="mk2-schermen" id="mk2-schermen" hidden>
+          <canvas id="mk2-l" width="256" height="64" aria-label="linkerscherm van de Maschine"></canvas>
+          <canvas id="mk2-r" width="256" height="64" aria-label="rechterscherm van de Maschine"></canvas>
+        </div>
+        <ol id="mk2-pads" class="mk2-pads" hidden></ol>
+      </section>
       <section class="paneel">
         <h2>Snapshots</h2>
         <div id="snapshots" class="snapshots"></div>
@@ -61,6 +69,13 @@
           </div>
           <dl id="macros" class="macros"></dl>
         </div>
+      </section>
+      <section class="paneel">
+        <details id="grammatica" class="grammatica">
+          <summary><h2>Grammatica</h2> <small>wat elke knopgroep overal betekent</small></summary>
+          <div id="grammatica-lijf"></div>
+          <p class="hint"><a href="/spiekbrief?set=grammatica">als spiekbrief (A4)</a></p>
+        </details>
       </section>
       <section class="paneel">
         <h2>Invoer</h2>

@@ -61,3 +61,13 @@ De opgeslagen staat (`~/.varve-hub/staat.json`) en een avondopname bewaren geen 
 
 Code: `src/spiekbrief/` (model, bronnen, HTML), `ui/spiekbrief.css` (scherm en print), de route in
 `src/transports/server.js`, de opdracht in `src/cli.js`.
+
+## Grammatica (PROTOCOL §19)
+
+- Een app die het parameter-alfabet volgt, krijgt een device-rij **alfabet** met boven elk vak het woord van de plek
+  (schaal, dichtheid, …), ook boven een lege plek: zo zie je dat plek 3 in elke app beweging is. Daaronder, als hij
+  momenten heeft, de **Maschine-pads** (pad 1 = flits, …; pads 9–16 uit `maps/<app>.json`).
+- **`/spiekbrief?set=grammatica`** (of `npm run spiekbrief -- grammatica`): één A4 met wat elke knopgroep overal
+  betekent (SYSTEEM §3: lagen, toestanden, het alfabet, gebaren, tijd, navigatie). Wat de hub nog niet doet, staat
+  er grijs bij met "komt nog". Op de hub ook een tabel per app die de hub kent: welke parameter op welke plek; uit de
+  CLI de apps uit alle sets. De tekst staat in `src/protocol/grammatica.js` (ook de cockpit leest hem).
