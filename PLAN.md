@@ -53,7 +53,7 @@ Samenwerken gaat alleen goed als jouw hardware-avonden weinig moeite kosten en C
 | B1 | LPD8 mk1 of mk2? | **Beide ondersteunen**; `doctor` detecteert het model (SysEx-ID `0x75`/`0x4C`). Geen pad-LEDs in het ontwerp. | Kost weinig, en we weten het zeker na F0. |
 | B2 | Waar komt de code? | **Eigen privé-repo `CKrebbers/AV-app-hub`** (gedaan 3 okt). De code heet intern nog `varve-hub` (CLI, package). | `3dbuildgame` past niet; de hub verdient een eigen CLAUDE.md, CI en issues. |
 | B3 | Hubtoets | **Bank (103)**, instelbaar in `config.json`. Master (80) als reserve. | Ongebruikt in Varve DJ en av-kern; heeft geen LED-functie die we missen. |
-| B4 | Eerste set | **`dj`-light eerst** (Varve DJ + formula-lab + av-scene-kit/TD), **`meditatie` na 25 okt** | av-kern heeft voorrang tot de publicatie van 25 okt; daar raken we niets aan (zie §6). |
+| B4 | Eerste set | **`dj`-light eerst** (Varve DJ + formula-lab + av-scene-kit/TD), **`meditatie` na 25 okt** | av-kern heeft voorrang tot de publicatie van 25 okt; daar raken we niets aan (zie §6). *12 nov: 25 okt is voorbij; de meditatie-set bestaat (av-kern gaat open zonder hub), de av-kern-koppeling wacht als PR in av-kern op Clay's OK.* |
 | B5 | Taal/stack | **Node 22, ESM, gewoon JS + JSDoc (`// @ts-check`), vitest, geen build.** Afhankelijkheden: `ws`, `@julusian/midi` (optioneel). | Zelfde stijl als Varve DJ en formula-lab; draait direct met `node`. |
 | B6 | Varve Radio-lek | **Apart repareren**, los van de hub, wanneer jij wilt | Niet blokkerend voor de hub, wel een echt risico. |
 

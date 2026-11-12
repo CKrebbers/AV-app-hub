@@ -13,10 +13,10 @@ staan, anders "overgeslagen").*
 
 ---
 
-> **Stand na golf 6:** paniek voor uurwerk, Sediment en Scene Kit (TD-kant als patch, `koppelingen/av-scene-kit/`),
+> **Stand na golf 6 (bijgewerkt 12 nov):** paniek voor uurwerk, Sediment en Scene Kit (TD-kant als patch, `koppelingen/av-scene-kit/`),
 > uurwerk teruglezen en de td-lab-driver (`src/drivers/td.js`, `docs/TDLAB.md`) zijn gebouwd. Het varve-radio-herstel
-> (§2.3) en Varve Eye als app (§7.3 fase A) staan op een tak in hun eigen repo, met een PR die op Clay wacht. Waar
-> hieronder "voorstel" staat, is dat de stand van golf 5.
+> (§2.3) is op 15 okt gemerged (varve-radio PR #1; deploy en meting nog door Clay), Varve Eye als app (§7.3 fase A) op
+> 19 okt (anbernic-cam PR #1; nog niet op de Mac geprobeerd). Waar hieronder "voorstel" staat, is dat de stand van golf 5.
 
 ## 0. In het kort
 
@@ -728,8 +728,8 @@ dat het lukte**. Wifi werkt wel op `WiFi-XY2`; SSH nooit (`anbernic-cam/docs/TOD
 ### 7.3 Beste koppelvorm: eerst **app** op de Mac, later **bron**
 **Fase A — manifest-app via WS `/app` (op de Mac).** Varve Eye Art draait al op de Mac met de camera in de Mac:
 `ws://127.0.0.1:7700/app`, geen token, geen usb0-vraag. Waarde: met de APC effecten en werkplekken bespelen terwijl je
-filmt (scene-kit-avond). De WS-client bestaat al in stdlib-Python: `flux-screensaver` op tak
-`claude/varve-hub-koppeling` (sinds 19 okt op `master`, in `varve_album/hub.py`), `flux-screensaver:817-1085` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`) —
+filmt (scene-kit-avond). De WS-client bestaat al in stdlib-Python: in `flux-screensaver` (sinds 19 okt op `master`)
+`varve_album/hub.py:35-324` (`hub_wachttijd`, `ws_frame`, `ws_ontleed`, `class Hub`; toen op de tak nog `flux-screensaver:817-1085`) —
 overnemen als `varve-eye/knulli/varve-eye/hub.py`, achter `--hub ws://…` (standaard uit). Geen nieuwe dependencies.
 De lus leest hub-berichten uit een wachtrij (draad zoals `Bron`, `:1755-1850`), zodat de 60-per-seconde-lus nooit
 op het netwerk wacht.
@@ -861,8 +861,9 @@ eerst de omgeving te repareren; de muzikale waarde van "macro's → prompt" is o
 
 ## 9. Voorgestelde volgorde
 
-*Stand na golf 6 (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 staan op
-een tak met een PR in dat repo en wachten op Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
+*Stand 12 nov (`STATUS.md`): 2, 3 en 4 zijn gebouwd (Scene Kit-paniek wacht nog op de TD-patch); 1 en 5 zijn gemerged
+in hun eigen repo (varve-radio PR #1 op 15 okt, anbernic-cam PR #1 op 19 okt); de deploy en meting van 1 en het proberen
+van 5 op de Mac doet Clay. De tabel hieronder is de volgorde zoals hij voorgesteld werd.*
 
 | # | Wat | Waarom eerst | Wie | Waar |
 |---|---|---|---|---|

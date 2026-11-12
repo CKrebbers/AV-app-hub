@@ -313,15 +313,15 @@ describe('starter: als het misgaat, per app een melding die zegt waar het hangt'
 });
 
 describe('starter: soorten apps', () => {
-  it('wacht "poort" (av-kern vóór 25 okt): klaar als de poort open is, zonder hub; Chrome gaat open', async () => {
-    const w = wereld({ naam: 'X', apps: { 'av-kern': { start: { commando: 'npm run dev', omgeving: { BROWSER: 'none' } }, url: 'http://localhost:{poort}/?hub={hub}', wacht: 'poort', opmerking: 'hub-koppeling pas na 25 okt' } } });
+  it('wacht "poort" (av-kern zolang zijn PR niet gemerged is): klaar als de poort open is, zonder hub; Chrome gaat open', async () => {
+    const w = wereld({ naam: 'X', apps: { 'av-kern': { start: { commando: 'npm run dev', omgeving: { BROWSER: 'none' } }, url: 'http://localhost:{poort}/?hub={hub}', wacht: 'poort', opmerking: 'hub-koppeling wacht nog als PR' } } });
     await w.tijd(0);
     expect(w.processen[0].o.omgeving).toEqual({ BROWSER: 'none' });
     w.poorten.add(AK);
     await w.tijd(300);
     expect((await w.s.klaar)[0]).toMatchObject({ app: 'av-kern', klaar: true });
     expect(w.geopend).toEqual([`http://localhost:${AK}/?hub=${HUB}`]);
-    expect(w.tekst()).toMatch(/av-kern: hub-koppeling pas na 25 okt/);
+    expect(w.tekst()).toMatch(/av-kern: hub-koppeling wacht nog als PR/);
     expect(w.tekst()).toMatch(new RegExp(`av-kern: klaar \\(poort ${AK} open\\)`));
     await w.s.stop();
   });

@@ -2,7 +2,7 @@
 
 Eén hub voor de **APC40 mkII** en de **LPD8**, zodat al je Varve-projecten (Varve DJ, av-kern, formula-lab, av-scene-kit, uurwerk, waterschaal, …) met die twee controllers te bespelen zijn — zonder dat apps om de controller vechten.
 
-**Stand: golf 6** — klaar voor de eerste avond met de echte controllers: volg `docs/HARDWARE-AVOND.md`. Golf 6: paniek voor de driver-apps, uurwerk leest terug wat je in de tab verandert, td-lab als driver (standaard uit). Eerder: kern, cockpit, server en drivers staan; koppelingen voor formula-lab, waterschaal, medisynth en flux staan sinds 19 oktober op hun main (bij flux `master`), Varve DJ sinds 5 oktober op youtube-mixer main, av-kern nog als patch (`koppelingen/av-kern/`). Nieuw: sets (een hele avond met één commando), avondmap, geheugen en het netwerk. Zie `STATUS.md`.
+**Stand (12 nov 2026)** — alles is gebouwd en getest zonder hardware; de eerste test op je Mac (okt) leverde de APC-handdruk zoals Ableton Live op. Begin met **"Eerst dit (5 minuten)"** bovenaan `docs/HARDWARE-AVOND.md`, en volg daarna de rest van dat draaiboek. Na golf 10: de grammatica met de Maschine als hoofdbediening (PR #23) en de KP3+, de EFX-500-klok en Linux (PR #24) wachten op jouw OK. De koppelingen voor formula-lab, waterschaal, medisynth en flux staan sinds 19 oktober op hun main (bij flux `master`), Varve DJ sinds 5 oktober op youtube-mixer main; die van av-kern wacht als PR in av-kern op jouw OK. Zie `STATUS.md`.
 
 ## Op de Mac
 

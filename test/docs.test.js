@@ -127,3 +127,19 @@ describe('de koppelingen staan op main sinds 19 okt (geen oude tak meer)', () =>
     }
   });
 });
+
+describe('av-kern: 25 okt is voorbij, de tekst noemt de echte stand (PR in av-kern)', () => {
+  // De publicatie van 25 okt is geweest; de koppeling staat niet op av-kern main maar wacht als PR. Een tekst die nog
+  // "pas na 25 okt" belooft, laat Clay wachten op iets dat al had moeten komen.
+  const BELOFTE = /(pas|komt|toepassen|Na) na 25 okt|komt na 25 oktober|patch, (pas )?na 25 okt/;
+  const docs = ['README.md', 'STATUS.md', 'docs/HARDWARE-AVOND.md', 'docs/CHECK.md', 'docs/SETS.md', 'koppelingen/av-kern/LEESMIJ.md'];
+  it.each(docs)('%s belooft niets meer voor "na 25 okt"', (pad) => {
+    expect(lees(pad)).not.toMatch(BELOFTE);
+  });
+  it('check en de meditatie-set noemen de PR in av-kern', async () => {
+    const { KOPPELINGEN } = await import('../src/check/koppelingen.js');
+    expect(KOPPELINGEN['av-kern']?.waar).toMatch(/PR in av-kern/);
+    expect(KOPPELINGEN['av-kern']?.waar).not.toMatch(/25 okt/);
+    expect(lees('sets/meditatie.json')).not.toMatch(/25 okt/);
+  });
+});

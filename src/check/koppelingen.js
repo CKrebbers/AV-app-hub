@@ -15,7 +15,7 @@ export const KOPPELINGEN = Object.freeze({
   // Eén HTML-bestand (regel van waterschaal): de koppeling leest ?hub= uit de URL.
   waterschaal: { bestand: 'td/waterschaal-lokaal.html', bevat: /['"]hub['"]/, waar: 'waterschaal main sinds 19 okt (PR #1): git switch main && git pull' },
   'varve-dj': { bestand: 'src/control/hub.js', waar: 'youtube-mixer main sinds 5 okt (PR #6); op een oudere kopie: git pull, zie koppelingen/varve-dj/LEESMIJ.md' },
-  'av-kern': { bestand: 'src/ui/hub.ts', waar: 'koppelingen/av-kern/LEESMIJ.md (patch, pas na 25 okt)' },
+  'av-kern': { bestand: 'src/ui/hub.ts', waar: 'de PR in av-kern wacht op jouw OK; daarna in av-kern git switch main && git pull (koppelingen/av-kern/LEESMIJ.md)' },
   'av-scene-kit': { bestand: 'td/td_build_hub.py', waar: 'docs/TOUCHDESIGNER.md' },
   // Staat een app hier niet in (flux), dan wordt de koppeling niet nagegaan.
   // De hub praat zelf met deze apps (HTTP-, OSC- of MIDI-driver): niets in hun checkout nodig.

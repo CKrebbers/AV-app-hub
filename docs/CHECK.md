@@ -121,12 +121,12 @@ voor anderen = ! (`chmod 600` en voor de zekerheid een nieuw token met `node src
   | medisynth | `src/hub.js` | `main` sinds 19 okt (PR #4) |
   | waterschaal | `'hub'` in `td/waterschaal-lokaal.html` | `main` sinds 19 okt (PR #1) |
   | varve-dj (youtube-mixer) | `src/control/hub.js` | `main` van youtube-mixer (sinds 5 okt, PR #6): `git pull`; de patches in `koppelingen/varve-dj/` zijn alleen nog geschiedenis |
-  | av-kern | `src/ui/hub.ts` | `koppelingen/av-kern/` (patch, na 25 okt) |
+  | av-kern | `src/ui/hub.ts` | nog niet op main: de PR in av-kern wacht op jouw OK (`koppelingen/av-kern/LEESMIJ.md`) |
   | av-scene-kit | `td/td_build_hub.py` | docs/TOUCHDESIGNER.md |
   | flux | niet nagegaan | |
 
   Ontbreekt hij: "de app meldt zich niet bij de hub tot de koppeling erin zit". Dat is ✗ als de set op de hub wacht
-  (standaard), en ! als de set alleen op de poort wacht (av-kern tot 25 okt). Uurwerk, TD-lab en Sediment hebben
+  (standaard), en ! als de set alleen op de poort wacht (av-kern, zolang zijn PR niet gemerged is). Uurwerk, TD-lab en Sediment hebben
   geen eigen koppeling nodig (de hub praat via een driver met ze).
 - Een app die al verbonden is met de draaiende hub: één ✓, verder niets (de starter laat hem met rust). Dezelfde
   regel als de starter: de app-id moet exact kloppen (alleen bij `per_monitor`, zoals flux, telt `flux-<monitor>`),

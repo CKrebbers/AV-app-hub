@@ -51,6 +51,7 @@ Klaar als (op jouw Mac):
 Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag verandert er niets.
 - formula-lab (poort 5174, PR #1), waterschaal (`td/waterschaal-lokaal.html`, PR #1), medisynth (poort 5175, PR #4), flux (`flux-<monitor>`, PR #2): sinds 19 okt op hun hoofdtak (`main`, bij flux `master`): `git switch main && git pull`. De oude tak `claude/varve-hub-koppeling` niet meer gebruiken.
 - Varve DJ: lease-modus; de koppeling staat op youtube-mixer `main` (patches 0001+0002, PR #6, 5 okt: `git pull`). De patches in `koppelingen/varve-dj/` zijn geschiedenis; de repetitie past ze alleen nog toe op een main van vóór 5 okt.
+- av-kern: nog niet op main; de koppeling wacht als PR in av-kern op jouw OK (`koppelingen/av-kern/LEESMIJ.md`). Tot dan gaat av-kern in de meditatie-set alleen open, zonder hub.
 
 ## Golf 4 — een avond spelen ✓ (gebouwd en getest zonder hardware)
 6 onderdelen, elk bouwer + 2 reviewers + verwerker; samengevoegd en opnieuw getest (648 tests, plus de echte repetitie).
@@ -59,7 +60,7 @@ Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag
 - [x] **Geheugen** — snapshots en `truth:"hub"`-waarden over een herstart (`~/.varve-hub/staat.json`); slew_s voor alles behalve de APC (PROTOCOL §12)
 - [x] **Altijd aan + netwerk (F5)** — `--lan` met token en mDNS, `installeer` (launchd/systemd), `token` (`docs/NETWERK.md`, PROTOCOL §13)
 - [x] **Generale repetitie** — `npm run repetitie`: de hub met de échte koppelingen in headless Chromium, één avond lang (`docs/REPETITIE.md`); in CI met nep-apps
-- [x] **av-kern** — lease-koppeling als patch in `koppelingen/av-kern/`, toepassen na 25 okt (incl. ◄/►-fix: right = 96, left = 97)
+- [x] **av-kern** — lease-koppeling, eerst als patch in `koppelingen/av-kern/` (de ◄/►-fix, right = 96, left = 97, staat sinds 5 okt op av-kern main); na 25 okt als PR in av-kern, die op jouw OK wacht
 
 Klaar als (op jouw Mac):
 - [ ] `npm start -- meditatie` start de apps, Chrome-tabs gaan open, beginstand en focus staan; Ctrl-C of het venster sluiten laat geen processen achter
@@ -98,7 +99,7 @@ Klaar als (op jouw Mac):
 Open vragen voor Clay (uit golf 5):
 - De paniek-naloop geldt ook voor Stop All van de app met focus — goed zo?
 - ~~Paniek per app voor TD, Sediment en uurwerk~~ → gebouwd in golf 6 (zie hieronder); wat paniek per app betekent, mag je nog bijstellen.
-- varve-radio: het "lek" is geen MIDI maar het overnemen van de zender via Supabase-broadcast; een klein herstel staat klaar in §2.3 (eigen deploy, jouw OK nodig).
+- ~~varve-radio: het "lek"~~ (geen MIDI, maar het overnemen van de zender via Supabase-broadcast) → het herstel uit §2.3 is op 15 okt gemerged (varve-radio PR #1); de deploy en de meting doe jij nog.
 
 ## Golf 6 — de driver-apps en de volgende koppelingen ✓ (gebouwd en getest zonder hardware)
 5 onderdelen (bouwer + 2 reviewers + verwerker); de hub-delen samengevoegd en opnieuw getest.
@@ -239,8 +240,12 @@ stuurt en of zijn klok doortikt zonder muziek; of de Maschine MK2 op Linux zonde
 - [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt
 
 ## Volgende
-- Hardware-avond 1: volg `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), daarna de koppelings-PR's mergen en een echte avond spelen
-- av-kern na 25 okt: patch toepassen, `sets/meditatie.json` op `wacht: "kern"` zetten
+- **Eerst dit (5 minuten):** bovenaan `docs/HARDWARE-AVOND.md`: `git pull`, `npm install`, `node src/cli.js doctor` (zie je de handdruk van de APC?), `npm start` en kijken of `APC: modus gezet` verschijnt. Stuur de uitvoer van doctor terug.
+- Daarna hardware-avond 1: de rest van `docs/HARDWARE-AVOND.md` (F0-proef, oefenruimte, set, opnemen), en pushen. De koppelingen in de apps staan al op hun main (golf 3); alleen av-kern niet.
+- PR's in deze repo die op jouw OK wachten: #23 (grammatica, Maschine als hoofdbediening) en #24 (KP3+, EFX-500, Linux; bevat #23), en de afronding daarbovenop.
+- av-kern: de PR in av-kern mergen; daarna `sets/meditatie.json` op `wacht: "kern"` met een snapshot (zeg het, dan doet Claude dat).
+- varve-radio: de deploy en de meting van het herstel (PR #1, gemerged op 15 okt).
+- Varve Eye (anbernic-cam PR #1, gemerged op 19 okt) een keer op de Mac proberen.
 
 ## Bekende risico's (gevonden door de duurtest, golf 7 — opgelost in golf 8)
 De duurtest oefent ze nu zelf, zonder omwegen, met een invariant per punt (`docs/DUURTEST.md`, "Gevonden en opgelost (golf 8)"); `test/duurtest.test.js` kijkt of de korte avond ze raakt.

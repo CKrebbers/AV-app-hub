@@ -113,7 +113,7 @@ export async function controleerSet({ set, config, paden, padenBekend, padenNaam
       if (erin && k.bevat) { try { erin = k.bevat.test(String(fs.readFileSync(pad, 'utf8'))); } catch { erin = false; } }
       if (erin) punt('ok', 'koppeling', `hub-koppeling zit in deze checkout (${k.bestand})`);
       else {
-        // Wacht de starter op de hub (standaard), dan wordt deze app nooit klaar: fout. Anders (av-kern vóór 25 okt): let op.
+        // Wacht de starter op de hub (standaard), dan wordt deze app nooit klaar: fout. Anders (av-kern zolang zijn PR niet gemerged is): let op.
         const status = (a.wacht ?? 'kern') === 'kern' ? 'fout' : 'let';
         punt(status, 'koppeling', `geen hub-koppeling in ${toon(repoMap)} (${k.bestand}${k.bevat && fs.existsSync(pad) ? ' zonder hub' : ' ontbreekt'})`,
           `de app meldt zich niet bij de hub tot de koppeling erin zit (zie koppelingen/ of de PR): ${k.waar}`);

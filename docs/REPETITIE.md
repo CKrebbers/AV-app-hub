@@ -163,8 +163,8 @@ met dezelfde rol na een herstart uiteenlopen).
 
 ## Gevonden en opgelost
 
-- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant op de tak van CKrebbers/waterschaal#1,
-  merge met Clay's OK). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
+- **Waterschaal: hub en app oneens over `tempo`** (opgelost in golf 5; app-kant via CKrebbers/waterschaal#1,
+  sinds 19 okt op waterschaal main). De schuif rondde een hub-zet af op 0,5 /min, dus de hub kende 0,709 en de app speelde 0,667.
   Nu past Waterschaal een hub-zet continu toe (de schuif staat op zijn stap, klank en adem volgen precies), meldt hij
   een klemming (buiten 4–8 /min) pas terug als de hub 300 ms niets meer stuurt (anders wint een oude melding van een
   nieuwere K7-zet), en volgt de globale adem van de hub een eigen tempowissel van de app (PROTOCOL §14).

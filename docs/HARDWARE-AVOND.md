@@ -198,9 +198,11 @@ De hub start MediSynth, Waterschaal, Uurwerk en av-kern, opent ze in Chrome met 
 en geeft Waterschaal de focus. MediSynth en Waterschaal praten met de hub zodra ze op een `main` van na 19 oktober
 staan (blok 1).
 
-> **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling komt na 25 oktober). Klik in av-kern
-> **niet** op "Verbind APC40": dan opent av-kern de APC zelf en vechten de lampjes.
- De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
+> **av-kern** gaat wel open, maar praat nog niet met de hub (die koppeling wacht als PR in av-kern op jouw OK). Klik
+> in av-kern **niet** op "Verbind APC40": dan zet av-kern de APC in een andere modus en doet de APC voor de hub niet
+> meer wat hij moet. Gebeurd? Trek de APC even los en weer vast (blok 7, "De lampjes van de APC vechten").
+
+De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
 een virtuele APC en LPD8 die meelopen met de echte.
 
 - [ ] Wisselen van app: BANK vast + Track Select. Kloppen de kleuren in de bovenste rij (zolang BANK vast is) met de apps?
@@ -396,7 +398,7 @@ dan draait de oude hub nog half: `lsof -i :7700` laat zien welk proces; stop dat
 ## 8. Xboard49 en Maschine MK2: de proef speelapparaten (±25–30 min)
 
 Het keyboard (E-MU Xboard49) en de Maschine MK2 doen mee als **speelapparaten** (PROTOCOL §17): de hub opent ze en geeft
-ze door aan de lease-app die speelt (Varve DJ, zodra die de koppeling heeft: `koppelingen/varve-dj/LEESMIJ.md`). Deze
+ze door aan de lease-app die speelt (Varve DJ: die kant staat sinds 7 okt op youtube-mixer main, `koppelingen/varve-dj/LEESMIJ.md`). Deze
 proef meet wat alleen jouw toestellen kunnen zeggen. Hij staat los van de F0-proef: doe hem wanneer het uitkomt.
 
 **Voorbereiden**

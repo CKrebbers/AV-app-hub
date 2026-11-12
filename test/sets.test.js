@@ -62,10 +62,12 @@ describe('de sets in sets/', () => {
       .toEqual([5175, 5174, 8080, 8777, 8766]);
   });
 
-  it('av-kern zit in de meditatie-set, wacht alleen op zijn poort en zegt dat de hub-koppeling pas na 25 okt komt', () => {
+  it('av-kern zit in de meditatie-set, wacht alleen op zijn poort, zegt dat de koppeling als PR wacht en waarschuwt voor "Verbind APC40"', () => {
     const a = laadSet('meditatie', { config }).apps['av-kern'];
     expect(a.wacht).toBe('poort');
-    expect(a.opmerking).toMatch(/25 okt/);
+    expect(a.opmerking).toMatch(/PR in av-kern/);
+    expect(a.opmerking).toMatch(/NIET op 'Verbind APC40'/);
+    expect(a.opmerking).not.toMatch(/25 okt/); // die datum is voorbij: de tekst noemt de echte stand
     expect(laadSet('meditatie', { config }).snapshot).not.toHaveProperty('av-kern');
   });
 
