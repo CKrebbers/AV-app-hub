@@ -149,7 +149,7 @@ De cockpit is een browserpagina die de hub toont en bedient. Hij is geen app (ge
 | hub → cockpit | `{t:"beeld", apps:[{app,naam,kleur,status,focus,params,waarden}], focus, globaal, apparaten:{apc40,lpd8}, opname, opnameInfo:{map,melding,fout,sinds}, slews:[{app,id,doel,eindMs}], bronnen:{sectie}, nu}` — volledig, bij verbinden en max 10×/s bij wijziging. `bronnen` = per globale groep de app die hem nu levert, of `null` (§18). `opname` = LPD8-pad 4 neemt op; `opnameInfo` = map van de lopende avond (of `null`), laatste melding van de opname (blijft staan tot er een nieuwe komt; `fout:true` = schijf vol, map niet schrijfbaar, geen avondmap; een fout van de avond verdwijnt niet achter `opname klaar`, die wordt dan samengevoegd en blijft `fout:true`, net als bij verloren regels) en `sinds` (begin; `null` als er niets loopt, ook als pad 4 aan staat zonder avondmap); `slews` = parameters die nu over `slew_s` glijden (§12), `doel` 0..1; `eindMs` en `sinds` staan op de klok van de hub, `nu` is die klok op het moment van het beeld |
 | hub → cockpit | `{t:"leds", dev:"apc40", staat:{<control-id>: LedStaat}}` — alleen gewijzigde |
 | hub → cockpit | `{t:"invoer", g}` — elke controller-gebeurtenis (voor de live-weergave) |
-| cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam |
+| cockpit → hub | `{t:"virtueel", dev:"apc40"\|"lpd8"\|"maschine-mk2", bytes}` — de virtuele controller drukt iets in, precies alsof het van USB kwam (`maschine-mk2`: de virtuele MIDI van de Maschine, docs/MASCHINE.md; de cockpit tekent geen Maschine, `herhaal` gebruikt hem) |
 | cockpit → hub | `{t:"focus", app}` · `{t:"zet", app, id, v}` · `{t:"snapshot", nr, actie:"laad"\|"bewaar"}` |
 
 `LedStaat` is die van `src/devices/apc40mk2.js` (`{kleur, anim}`, `{aan}`, `{knipper}`, `{stand}`, `{waarde}`).
@@ -331,7 +331,8 @@ De hub probeert het bij elke hotplug-ronde opnieuw.
 "maschine-mk2")` laat los wat er vastgehouden werd. De routering zelf staat in `src/core/spelers.js` (puur).
 
 **Opname en logboek:** de avondmap (`docs/OPNAME.md`) neemt `xboard49` en `maschine-mk2` op (bij de Maschine de virtuele
-MIDI, al uitgedund); `herhaal` speelt ze niet af (ze gaan alleen naar lease-apps, die niet in de eindstand staan).
+MIDI, al uitgedund). `herhaal` speelt de Maschine af (sinds §19 zet hij ook waarden van gewone apps; via de cockpit als
+`{t:"virtueel", dev:"maschine-mk2"}`), de Xboard49 niet (die gaat alleen naar lease-apps, die niet in de eindstand staan).
 In een proeflogboek: elk knoppenrapport van de Maschine ruw (`maschine-mk2`), padrapporten alleen als ze iets deden of
 tijdens de rustopname, en de virtuele MIDI als `maschine-mk2-midi` (golden test, `test/herspeel.js`).
 

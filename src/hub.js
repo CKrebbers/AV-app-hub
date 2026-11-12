@@ -12,6 +12,7 @@ import { koppelGeheugen, schrijfMsUit } from './opslag.js';
 import { HUB_MAP, laadKaarten } from './config.js';
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
+import * as MS from './devices/maschine-mk2.js';
 import { Opnemer, avondmapPad } from './opname/opnemer.js';
 import { HINT, invoerHint } from './ports/hid.js';
 
@@ -194,9 +195,10 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   // Virtuele controllers uit de cockpit: precies alsof de bytes van USB kwamen.
   // De virtuele LPD8 stuurt altijd de mk2-fabrieksstand, los van het profiel van de echte LPD8.
   const virtueleLpd8 = LPD8.maakOntleder(LPD8.standaardProfiel('mk2'));
-  /** @param {'apc40'|'lpd8'} dev @param {number[]} bytes */
+  // De virtuele Maschine is zijn virtuele MIDI (docs/MASCHINE.md); de cockpit tekent hem niet, herhaal gebruikt hem.
+  /** @param {'apc40'|'lpd8'|'maschine-mk2'} dev @param {number[]} bytes */
   const opVirtueel = (dev, bytes) => {
-    const g = dev === 'apc40' ? APC.ontleed(bytes) : virtueleLpd8(bytes);
+    const g = dev === 'apc40' ? APC.ontleed(bytes) : dev === 'maschine-mk2' ? MS.ontleedMidi(bytes) : virtueleLpd8(bytes);
     logboek?.midi('in', `${dev}-virtueel`, bytes);
     opnemer?.invoer(`${dev}-virtueel`, bytes);
     kern.invoer(g, bytes);

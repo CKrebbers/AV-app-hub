@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { startHub } from '../src/hub.js';
 import { NepSysteem } from '../src/ports/nep.js';
 import { laadConfig } from '../src/config.js';
-import { NepApp, voorbeeldManifest } from '../tools/nep-app.mjs';
+import { NepApp, voorbeeldManifest, alfabetManifest } from '../tools/nep-app.mjs';
 import { GEBAREN, SAMENVATTING } from '../src/opname/opnemer.js';
 import { echteBestanden } from '../src/opname/schrijver.js';
 import { cockpitUrl } from '../src/opname/cockpit-doel.js';
@@ -26,7 +26,7 @@ function tijdelijk() {
   return map;
 }
 
-async function opzet({ thuis, avondmap = '~/avonden', bestanden = undefined }) {
+async function opzet({ thuis, avondmap = '~/avonden', bestanden = undefined, eerste = voorbeeldManifest }) {
   const config = { ...laadConfig(), hotplug_ms: 20, avondmap };
   const systeem = new NepSysteem();
   const apc = systeem.voegToe('APC40 mkII');
@@ -36,8 +36,8 @@ async function opzet({ thuis, avondmap = '~/avonden', bestanden = undefined }) {
   const hub = await startHub({ config, systeem, poort: 0, drivers: false, opname: { thuis, git: 'test-git', bestanden }, log: (t) => meldingen.push(String(t)) });
   lopend.push(() => hub.stop());
   const url = hub.adres.replace('http', 'ws') + '/app';
-  const app = (naam) => { const a = new NepApp({ url, manifest: voorbeeldManifest(naam) }).start(); lopend.push(() => a.stop()); return a; };
-  const a1 = app('formula-lab');
+  const app = (naam, m = voorbeeldManifest) => { const a = new NepApp({ url, manifest: m(naam) }).start(); lopend.push(() => a.stop()); return a; };
+  const a1 = app('formula-lab', eerste);
   await tot(() => hub.kern.beeld().apps.length === 1);
   const a2 = app('waterschaal');
   await tot(() => hub.kern.beeld().apps.length === 2 && hub.apparaten.apc.verbonden && hub.apparaten.lpd8.model === 'mk2');
@@ -101,6 +101,31 @@ describe('avondmap in de hele hub', () => {
     expect(uit.code).toBe(0);
     expect(waarden(tweede.hub)).toEqual(verwacht);
     expect(tweede.hub.kern.beeld().opname).toBe(false);   // pad 4 wordt niet afgespeeld
+  }, 20000);
+
+  it('de Maschine draait een alfabet-knop (§19): `herhaal` via de cockpit speelt hem mee, eindstaat klopt', async () => {
+    const { hub, lpd8 } = await opzet({ thuis: tijdelijk(), eerste: alfabetManifest });
+    hub.kern.focus('formula-lab');
+    p4(lpd8);
+    await tot(() => hub.opnemer.actief);
+    const voor = waarden(hub)['formula-lab'].grootte;
+    for (let k = 0; k < 6; k++) { hub.opVirtueel('maschine-mk2', [0xb0, 16, 50]); await wacht(5); }   // draaiknop 1 = schaal
+    await tot(() => waarden(hub)['formula-lab'].grootte !== voor);
+    await wacht(100);
+    p4(lpd8);
+    const r = await tot(() => !hub.opnemer.actief) && await hub.opnemer.afgesloten;
+    const verwacht = waarden(hub);
+    expect(verwacht['formula-lab'].grootte).toBeCloseTo(voor + 0.3, 6);
+    const regels = readFileSync(join(r.map, GEBAREN), 'utf8').trim().split('\n').map((x) => JSON.parse(x));
+    expect(regels.filter((x) => Array.isArray(x) && x[2] === 'maschine-mk2-virtueel').length).toBe(6);
+
+    const tweede = await opzet({ thuis: tijdelijk(), eerste: alfabetManifest });
+    tweede.hub.kern.focus('formula-lab');
+    const uit = await cli(['herhaal', r.map, '--hub', tweede.hub.adres, '--snelheid', '4']);
+    expect(uit.fout).toBe('');
+    expect(uit.uit).toMatch(/eindstaat klopt/);
+    expect(uit.uit).not.toMatch(/overgeslagen: .*maschine|speelapparaat/);
+    expect(waarden(tweede.hub)).toEqual(verwacht);
   }, 20000);
 
   it('map niet schrijfbaar (avondmap onder een bestand): melding, hub en apps lopen door', async () => {
