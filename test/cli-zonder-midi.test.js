@@ -36,5 +36,7 @@ describe('cli start zonder echte MIDI', () => {
       expect(uit).toMatch(/sediment: geen MIDI-systeem met virtuele poorten.*"VARVE-HUB Logic"/);
     }
     expect(uit).not.toMatch(/virtuele poort "VARVE-HUB/);
+    // zonder set: één regel dat de hub zelf geen geluid maakt, en hoe je een hele avond start
+    expect(uit).toMatch(/De hub maakt zelf geen geluid: dat doen de apps\. Een hele avond: npm start -- meditatie/);
   }, 15000);
 });

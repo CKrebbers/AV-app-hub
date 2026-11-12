@@ -390,7 +390,7 @@ ${verdeel(sb.apps, d.kolommen, d.breed).map((kol) => `<div class="sb-kolom">\n${
 </div>
 </div>
 <footer class="sb-legenda">
-<b>Fader</b> pakt pas op als hij langs de stand van de app komt (tot dan knippert clip-stop van die strip) ·
+<b>Fader</b> pakt pas op als hij langs de stand van de app komt (tot dan knippert clip-stop van die strip; op 0? eerst helemaal omlaag) ·
 ${overname ? '<span class="sb-overname-uitleg"><i>direct</i> bij een fader of knop = springt meteen mee, <i>schaal</i> = loopt geleidelijk mee tot ze gelijk staan</span> ·\n' : ''}
 <b>draaiknop</b> ${sb.hub.overname ? 'neemt de stand van de app over bij een appwissel' : 'pakt op zoals een fader'} ·
 <b>pad</b>: tik = actie, <i>aan/uit</i> = schakelaar, kolom met opties = keuze (bovenaan de eerste) ·

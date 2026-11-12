@@ -33,3 +33,10 @@ Niet in de lopende fase. Pas oppakken als een speelavond laat zien dat het nodig
 - De proef speelapparaten op Linux: zonder de vraag naar macOS-Invoermonitoring, met de udev-check (nu Mac-gericht).
 - Een niet-gevolgd `config.lokaal.json` dat over `config.json` heen gaat (geheugen en avondmap buiten `~` op de pc), in plaats van een kopie met `VARVE_HUB_CONFIG`.
 - Browsertests vinden zelf `/usr/bin/google-chrome-stable` of `chromium` als `PW_CHROMIUM` leeg is (zoals `check`), zodat ze op Linux niet stil overgeslagen worden.
+
+## Uit de nagespeelde eerste avond (nov) — bewust niet gedaan
+- **Pickup aan de rand:** staat de app op 0 (of 1) en weet de hub niet waar de fader fysiek staat, vang dan bij de eerste beweging vanaf die rand (kleine wijziging in `src/core/pickup.js`). Nu moet je eerst helemaal omlaag; dat staat in het draaiboek en op de spiekbrief. Vraagt een keuze: hoe groot mag de sprong dan zijn?
+- **LPD8-knoppen zonder app in de set** in de cockpit grijs maken of er "geen app" onder zetten (in meditatie K5 en K8).
+- **Tik-hint in de cockpit alleen vlak na de start van een set** (nu staat hij er zolang er een app actief is), of weg zodra een app meldt dat zijn geluid aan staat (een nieuw veld in het protocol).
+- **"glijdt 6–8 s"** achter de MediSynth-regels op de spiekbrief.
+- **av-kern uit de meditatie-set** (of `start: null` met `handmatig`) tot zijn PR gemerged is, zodat er geen tab met een APC-knop vanzelf opengaat. Nu: een waarschuwing in de set en het draaiboek.

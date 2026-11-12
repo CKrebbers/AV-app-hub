@@ -23,6 +23,11 @@ export const AUTEUR = 'varve-hub';
 export const CHECK_TIMEOUT_MS = 800;
 /** Hoe lang een POST /verb open mag blijven (de brug wacht op de tab, tot 90 s). */
 export const POST_TIMEOUT_MS = 2000;
+/**
+ * Hoe lang een app die nog nooit antwoordde mag zwijgen voor de driver één regel in het hubvenster zet. Ruim genoeg
+ * voor een set die de app zelf start (uurwerk: start.sh en een tab), kort genoeg dat Clay het ziet vóór hij gaat spelen.
+ */
+export const NOOIT_GEZIEN_MS = 20000;
 
 /**
  * Het verb-bericht voor een waarde (0..1) of een trigger. Puur, voor driver en tests.
@@ -120,6 +125,26 @@ export class HttpDriver extends DriverBasis {
     this.tabsGemeld = false;
     /** een verse (lege) tab gaf al één replay; nog eens leeg = overnemen (iemand zette alles echt op nul) */
     this.versHersteld = false;
+    /** mislukte checks op rij zonder dat de app ooit antwoordde (sinds start), en of dat al gemeld is */
+    this.nooitGezien = 0;
+    this.nooitGemeld = false;
+    /** de app antwoordde sinds de start ooit (daarna is wegvallen een gewone storing: stil/weg, geen startmelding) */
+    this.ooitGezien = false;
+  }
+
+  /**
+   * De app antwoordde sinds de start nog nooit: na NOOIT_GEZIEN_MS één regel in het hubvenster, met wat te doen. Zonder
+   * die regel zag het venster er hetzelfde uit als met een werkend uurwerk, en bleef Track Select van die app leeg.
+   */
+  #nooitGezienMelding() {
+    if (this.nooitGemeld || this.bereikbaar === true) return;
+    this.nooitGezien++;
+    if (this.nooitGezien * this.gezondMs < NOOIT_GEZIEN_MS) return;
+    this.nooitGemeld = true;
+    const app = this.manifest.app, naam = this.manifest.naam ?? app;
+    const waarom = this.tabs === 0 ? `de brug op ${this.url} draait, maar er is geen ${naam}-tab open` : `geen antwoord op ${this.url}`;
+    this.log('driver', app, `${naam} doet nog niet mee (${waarom}): hij heeft geen plek op Track Select tot hij antwoordt. `
+      + `Staat ${naam} niet op deze computer, zet dan in config.json bij apps.${app} "autostart": false.`);
   }
 
   /**
@@ -223,6 +248,7 @@ export class HttpDriver extends DriverBasis {
       this.checkBezig = false;
       this.bereikbaar = false;
       ac?.abort();
+      if (!this.ooitGezien) this.#nooitGezienMelding();
     }, CHECK_TIMEOUT_MS);
     this.lopend = mijn;
     try {
@@ -244,7 +270,8 @@ export class HttpDriver extends DriverBasis {
     const was = this.bereikbaar;
     this.bereikbaar = ok;
     this.tabs = tabs;
-    if (!ok) return;
+    if (!ok) { if (was !== true && !this.ooitGezien) this.#nooitGezienMelding(); return; }
+    this.ooitGezien = true;
     if (was === false && this.leesFouten) {
       // de app is terug: meteen weer in het gewone ritme teruglezen, niet pas na de lopende backoff
       this.leesFouten = 0;
@@ -402,8 +429,11 @@ export class HttpDriver extends DriverBasis {
   start(kern) {
     if (!this.gestopt) return; // loopt al: geen tweede timerketen
     this.gestopt = false;
+    this.nooitGezien = 0;
+    this.nooitGemeld = false;
+    this.ooitGezien = false;
     this.koppel(kern, { aanmelden: false }); // aanmelden pas na de eerste geslaagde check (controleer)
-    if (this.lezer) this.log('driver', this.manifest.app, `teruglezen aan: elke ${this.leesMs / 1000} s (config.json teruglezen.elke_s; 0 = uit)`);
+    if (this.lezer) this.log('driver', this.manifest.app, `teruglezen aan: elke ${this.leesMs / 1000} s (config.json teruglezen.elke_s; 0 = uit), zodra ${this.manifest.naam ?? this.manifest.app} antwoordt`);
     this.controleer();
     this.#plan();
     this.#planLees();

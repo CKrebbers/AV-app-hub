@@ -7,12 +7,13 @@
     "medisynth": {
       "start": { "commando": "npm run dev -- --port {poort} --strictPort" },
       "url": "http://localhost:{poort}/?hub={hub}",
-      "opmerking": "geluid pas na een tik: tik in de MediSynth-tab één keer in het beeld (waar \"touch\" staat). MediSynth is met opzet traag: draai, laat los en luister 10 seconden"
+      "tik": "één keer in het beeld (waar \"touch\" staat)",
+      "opmerking": "MediSynth is met opzet traag: draai, laat los en luister 10 seconden. Waterschaal en de APC-faders reageren meteen"
     },
     "waterschaal": {
       "start": { "commando": "python3 -m http.server {poort} --bind 127.0.0.1" },
       "url": "http://localhost:{poort}/td/waterschaal-lokaal.html?hub={hub}",
-      "opmerking": "geluid pas na een tik: tik in de Waterschaal-tab één keer op de schaal zelf (een klik ernaast helpt niet)"
+      "tik": "één keer op de schaal zelf (een klik ernaast helpt niet)"
     },
     "uurwerk": {
       "start": { "commando": "./start.sh" },

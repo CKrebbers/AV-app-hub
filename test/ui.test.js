@@ -447,6 +447,25 @@ describe.skipIf(!heeftBrowser)('cockpit in de browser', { timeout: 20000 }, () =
     expect(await page.locator('.macro[data-rol="macro.intensiteit"] span').textContent()).toBe('75%');
   });
 
+  it('geen geluid? onder Apps de tik-hint zodra er een app actief is; de focus-app weg: één rode regel met wat te doen', async () => {
+    // Eerste avond (nagespeeld): de cockpit stond groen op "actief" terwijl geen tab geluid maakte (Chrome wil eerst een
+    // tik), en de focus stond op een uurwerk dat er niet was, terwijl de knoppen leken te werken.
+    expect(await page.locator('#apps-tik').isHidden()).toBe(true);
+    server.stuur(tweeApps);
+    await expect.poll(() => page.locator('#apps-tik').isVisible()).toBe(true);
+    expect(await page.locator('#apps-tik').textContent()).toMatch(/^geen geluid\? tik één keer in elke app-tab/);
+    expect(await page.locator('#focus-weg').isHidden()).toBe(true);
+    const weg = structuredClone(tweeApps);
+    weg.apps[0].status = 'weg';
+    weg.apps[1].status = 'weg';
+    server.stuur(weg);
+    await expect.poll(() => page.locator('#focus-weg').isVisible()).toBe(true);
+    expect(await page.locator('#focus-weg').textContent()).toBe('Formula Lab is er niet — wat je nu bedient, gaat nergens heen. Kies met BANK + Track Select een app die "actief" is.');
+    expect(await page.locator('#apps-tik').isHidden()).toBe(true); // niets actief: dan helpt tikken ook niet
+    server.stuur(tweeApps);
+    await expect.poll(() => page.locator('#focus-weg').isHidden()).toBe(true);
+  });
+
   it('de APC bevestigt de modus niet: één regel bij de APC met wat te doen; daarna (ok) weg', async () => {
     const melding = page.locator('#apc-melding');
     server.stuur({ ...tweeApps, apparaten: { apc40: { verbonden: true, handdruk: 'bezig' }, lpd8: false } });

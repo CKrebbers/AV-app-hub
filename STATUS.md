@@ -237,7 +237,17 @@ stuurt en of zijn klok doortikt zonder muziek; of de Maschine MK2 op Linux zonde
 - [x] `doctor` vond APC en LPD8, maar de APC antwoordde niet op de identiteitsvraag en het spelen "deed totaal niet wat het moest": het beeld van een APC die in de fabrieksmodus (0x40) blijft
 - [x] **Handdruk zoals Ableton Live** (Live-script `_APC.py`): identiteitsvraag ook op kanaal 0, intro ook met het apparaat-id uit het antwoord; geen antwoord op de intro → één duidelijke regel in het hubvenster (PROTOCOL §16, `test/apc-handdruk.test.js`)
 - [x] **`doctor` toont de handdruk stap voor stap** (omni/kanaal 0, intro 0x7f/eigen id) met wat te doen (`test/doctor-apc.test.js`)
-- [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt
+- [ ] Op de Mac: `git pull`, `node src/cli.js doctor` en de uitvoer terugsturen; daarna `npm start` en kijken of `APC: modus gezet` verschijnt (`docs/HARDWARE-AVOND.md`, "Eerst dit (5 minuten)")
+
+## De eerste avond nagespeeld (nov, zonder hardware)
+Met de virtuele APC en LPD8 en de echte apps op hun main: drie dingen die elk alleen al "ik hoor niets / het doet niets" geven, los van de APC-handdruk.
+- [x] **Geen geluid zonder tik** — Chrome laat een tab pas geluid maken na een tik erin. De set zegt nu aan het eind waar je tikt (`tik` in de set, `docs/SETS.md`), de cockpit zegt onder Apps "geen geluid? tik één keer in elke app-tab" (`test/sets-starter.test.js`, `test/ui.test.js`)
+- [x] **Uurwerk dat er niet is** — meldt zich niet meer aan (geen spook op slot 1); na 20 s zonder antwoord één regel in het hubvenster met `"autostart": false` als uitweg (`test/drivers.test.js`); de cockpit zegt in het rood als de app met focus weg is; een kale `npm start` zegt dat de hub zelf geen geluid maakt
+- [x] **Pickup aan de rand, LPD8 en traagheid** — draaiboek blok 4 en 7: faders eerst helemaal omlaag, LPD8-knoppen één keer langs, MediSynth is met opzet traag, terug na een paniek; spiekbrief: "op 0? eerst helemaal omlaag"
+- [x] **av-kern in de set** — de opmerking waarschuwt voor "Verbind APC40" (andere APC-modus) en zegt hoe je herstelt
+
+Klaar als (op jouw Mac):
+- [ ] `npm start -- meditatie`, één tik in MediSynth en één op de schaal van Waterschaal: je hoort beide, en de APC-faders en LPD8-knoppen doen iets hoorbaars
 
 ## Volgende
 - **Eerst dit (5 minuten):** bovenaan `docs/HARDWARE-AVOND.md`: `git pull`, `npm install`, `node src/cli.js doctor` (zie je de handdruk van de APC?), `npm start` en kijken of `APC: modus gezet` verschijnt. Stuur de uitvoer van doctor terug.

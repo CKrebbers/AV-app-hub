@@ -105,6 +105,7 @@ gewone van `start` (`--poort`, `--zonder-midi`, `--geen-drivers`, …). Een set 
 | `wacht` | `kern` (standaard): tot de app zich bij de hub meldt (en zijn poort open is, als hij er een heeft) · `poort`: alleen tot de poort open is (apps zonder hub-koppeling) · `geen`: meteen klaar (niet samen met een `url` achter een poort: die zou nooit opengaan — gebruik dan `poort`) |
 | `time_out_s` | per set of per app |
 | `opmerking` | wordt bij het starten getoond |
+| `tik` | waar je in de tab moet tikken voor geluid (Chrome laat een tab pas geluid maken na een tik, en de hub kan dat niet zien). Aan het eind van de set staat één regel: `Nog één ding vóór je iets hoort: … Tik in MediSynth één keer in het beeld …` |
 | `snapshot` | per app `{ parameter: 0..1 }` (PROTOCOL.md §1: altijd 0..1). Gaat via de cockpit-ingang van de kern, alsof je het in de cockpit zet. Triggers en onbekende ids worden gemeld en overgeslagen |
 | `focus` | de app die de APC krijgt |
 
@@ -119,9 +120,9 @@ van apps in een set zelf: paden komen uit `sets/paden.json`, poorten uit `config
 
 | App | Start | Poort | URL | Let op |
 |---|---|---|---|---|
-| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op `main` sinds 19 okt (PR #4) |
+| MediSynth | `npm run dev -- --port {poort} --strictPort` | 5175 | `/?hub=` | koppeling op `main` sinds 19 okt (PR #4); geluid pas na een tik in het beeld; met opzet traag (`slew_s`) |
 | Formula Lab | idem | 5174 | `/?hub=` | idem; zonder vaste poort pakt vite 5173 (van av-kern) |
-| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op `main` sinds 19 okt (PR #1) |
+| Waterschaal | `python3 -m http.server {poort} --bind 127.0.0.1` | 8080 | `/td/waterschaal-lokaal.html?hub=` | koppeling op `main` sinds 19 okt (PR #1); geluid pas na een tik op de schaal zelf |
 | Varve DJ | `node server/index.js` met `PORT={poort}` | 8777 | `/?hub=` | koppeling staat op youtube-mixer `main` (sinds 5 okt); de patches in `koppelingen/varve-dj/` zijn geschiedenis |
 | Uurwerk | `./start.sh` | 8766 (brug), 8765 (web) | — | start.sh opent zelf de browser; de hub praat via de HTTP-driver met de brug |
 | av-kern | `npm run dev -- --port {poort} --strictPort`, `BROWSER=none` | 5173 | `/?hub=` | **hub-koppeling nog niet op main** (PR in av-kern) — zie hieronder |

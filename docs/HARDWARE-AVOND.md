@@ -205,10 +205,28 @@ staan (blok 1).
 De cockpit staat op **http://localhost:7700**: welke apps er zijn, wat er in focus is, en
 een virtuele APC en LPD8 die meelopen met de echte.
 
+> **Staat Uurwerk niet op deze computer?** Dan doet hij niet mee: hij staat niet bij de apps in de cockpit en heeft geen
+> plek op Track Select, en na ±20 s zegt het
+> hubvenster `Uurwerk doet nog niet mee …`. Wil je dat niet zien, zet dan in `config.json` bij `apps.uurwerk`
+> `"autostart": false`. (Zonder map voor uurwerk in `sets/paden.json` zegt de set dat ook, en speelt de rest gewoon.)
+
+- [ ] **Eerst: tik in elke app-tab.** Chrome laat een tab pas geluid maken na een tik erin, en de hub kan dat niet zien:
+  de set zegt "klaar" en de cockpit "actief", maar je hoort niets. Tik in **MediSynth** één keer in het beeld (waar
+  "touch" staat) en in **Waterschaal** één keer op de schaal zelf (een klik ernaast helpt niet). Het hubvenster zegt
+  dit ook, aan het eind van de set.
+- [ ] **Faders eerst omlaag.** Schuif bij het begin alle faders eerst helemaal omlaag en dan rustig omhoog. Staat de
+  waarde van de app op 0 (in Waterschaal Wrijfdruk, en Volume na een paniek), dan pakt een fader die je snel omhoog
+  duwt hem niet op: even helemaal naar beneden en opnieuw.
+- [ ] **LPD8-knoppen één keer langs.** Draai elke LPD8-knop eerst helemaal naar links en dan rustig naar rechts: waar
+  hij de stand van de app passeert, pakt hij op, en vanaf dan doet hij iets. In meditatie doen K5 en K8 niets (geen app
+  heeft die rol). K1 is het volume van MediSynth én Waterschaal: draai hem niet in één keer helemaal open.
+- [ ] **MediSynth is met opzet traag:** draai, laat los, en luister 10 seconden. Waterschaal en de APC-faders reageren
+  meteen.
 - [ ] Wisselen van app: BANK vast + Track Select. Kloppen de kleuren in de bovenste rij (zolang BANK vast is) met de apps?
 - [ ] Faders en knoppen op de app met focus; kijk in de cockpit mee.
 - [ ] LPD8-knoppen K1–K8 werken op alle apps tegelijk (K2 helderheid, K3 ruimte, …).
-- [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek.
+- [ ] P2 tappen (tempo), P5–P8 snapshots, P1 paniek. **Na een paniek terug:** draai K1 een tikje; dan gaan Waterschaal
+  en MediSynth weer naar de stand van K1. Op de APC: fader 3 (Volume van Waterschaal) eerst helemaal omlaag, dan omhoog.
 - [ ] **APC kort los** (na stap 20 van de proef, nu met de hub): trek de APC-kabel eruit en steek hem zo snel als je
   kunt weer in, en wacht dan rustig 1–2 s. Binnen ±2 s is het LED-beeld terug, staat de APC in de cockpit weer op
   verbonden, en in het hubvenster staat hooguit één regel `APC: sturen mislukt — kabel los? de hub probeert opnieuw`.
@@ -217,7 +235,7 @@ een virtuele APC en LPD8 die meelopen met de echte.
 - [ ] **LPD8 kort los**: hetzelfde met de LPD8-kabel; daarna staat de LPD8 in de cockpit weer op verbonden en doen P1
   en K1 weer wat ze moeten (hooguit één regel `LPD8: sturen mislukt — …`).
 - [ ] Een app niet klaar? De starter zegt welke en waarom; de rest werkt gewoon. Na 60 s "niet klaar" voor MediSynth of
-  Waterschaal: staat die repo op een verse `main` (`git switch main && git pull`, blok 1)?
+  Waterschaal: is de tab open, en heb je in die repo `git switch main && git pull` gedaan (blok 1)?
 
 Ctrl-C stopt alles wat de set zelf startte, en dan de hub.
 
@@ -272,7 +290,8 @@ Claude er een kijkt, zet hem dan in een eigen submap, bv. `proef/avonden/<datum-
 
 **De lampjes van de APC vechten** (flikkeren, verkeerde kleuren, dingen gaan aan die de hub niet aanzette).
 *Oorzaak:* een ander programma schrijft ook naar de APC; macOS mengt dat. Meestal een Chrome-tab met Varve DJ of av-kern
-*zonder* `?hub=`, av-kern waarin op "Verbind APC40" is geklikt (av-kern heeft nog geen hub-koppeling, zie blok 4),
+*zonder* `?hub=`, av-kern waarin op "Verbind APC40" is geklikt (dan zet av-kern de APC in zijn eigen modus en doet de
+APC voor de hub niet meer wat hij moet; av-kern heeft nog geen hub-koppeling, zie blok 4),
 Ableton, een APC-bedieningsoppervlak in Logic, of twee hubs tegelijk (bv. de proef terwijl de hub als dienst draait).
 *Oplossing:* sluit die (blok 1; `node src/cli.js doctor` laat zien of er al een hub draait: "poort 7700 BEZET"; Chrome-tabs,
 Ableton en Logic moet je zelf nalopen), en trek daarna de APC
@@ -332,7 +351,14 @@ of een ander programma gebruikt 7700. De melding zegt welk commando de dienst st
   (`docs/NETWERK.md`).
 
 **Een fader doet niets.** Waarschijnlijk geen fout: dat is pickup. De clip-stop-lamp van die strip knippert tot de fader
-langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg de fader erlangs.
+langs de waarde van de app komt; de cockpit toont waar die waarde staat. Beweeg de fader erlangs. Staat de waarde van de
+app op 0 (Wrijfdruk van Waterschaal, en Volume na een paniek), dan kom je er van onder niet langs: schuif de fader eerst
+helemaal omlaag en dan rustig omhoog.
+
+**Ik hoor niets, maar alles staat op "klaar" en "actief".** Chrome laat een tab pas geluid maken na een tik erin: tik in
+MediSynth één keer in het beeld en in Waterschaal op de schaal zelf (blok 4). Staat in de cockpit boven de parameters
+een rode regel "… is er niet"? Dan heeft een app de focus die er niet is: kies met BANK + Track Select een app die
+"actief" is.
 
 **Na USB eruit/erin blijven de lampjes uit.** Wacht ±2 seconden (de hub kijkt elke 2 s). Blijft het uit: noteer het
 (`n …` in de proef), stop met Ctrl-C en start opnieuw. Het logboek laat zien wat er misging.

@@ -5,6 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { NepKlok } from '../src/core/klok.js';
 import { Kern } from '../src/core/kern.js';
 import { kernToegang, startSet, STOP_MS, HERVERBIND_MS, shellQuote } from '../src/sets/index.js';
+import { tikNodig } from '../src/sets/starter.js';
+import { laadSet } from '../src/sets/set.js';
 import { CONFIG, NepApp, maakOppervlak, manifest, P } from './spec/hulp.js';
 
 const HUB_POORT = 7700;
@@ -188,6 +190,38 @@ describe('starter: een set klaarzetten', () => {
     await stop;
     expect(w.processen[0].seinen).toEqual(['SIGTERM']);
     expect(w.processen[0].leeft()).toBe(false);
+  });
+});
+
+describe('starter: geen geluid zonder tik (Chrome)', () => {
+  // Eerste avond (nagespeeld): de set zei "klaar" en de cockpit "actief", maar geen tab maakte geluid voor een tik
+  // erin. De hub kan dat niet zien; dus zegt de set aan het eind waar je moet tikken.
+  it('aan het eind één regel met waar je tikt, alleen voor apps die klaar zijn en een tik nodig hebben', async () => {
+    const w = wereld({
+      naam: 'Tik',
+      apps: {
+        'formula-lab': { start: { commando: 'npm run dev' }, url: 'http://localhost:{poort}/?hub={hub}' },
+        medisynth: { start: { commando: 'npm run dev' }, url: 'http://localhost:{poort}/?hub={hub}', tik: 'één keer in het beeld' },
+      },
+    });
+    w.poorten.add(FL); w.poorten.add(MS);
+    await w.tijd(300);
+    w.verbind(flManifest, { a: 0.5, smooth: 0 });
+    w.verbind(msManifest, { ruimte: 0.5, niveau: 1 });
+    await w.tijd(1000);
+    await w.s.klaar;
+    const regels = w.log;
+    const eind = regels.findIndex((r) => /Set "Tik": 2\/2 klaar/.test(r));
+    expect(regels[eind + 1]).toBe('Nog één ding vóór je iets hoort: Chrome laat een tab pas geluid maken na een tik. Tik in MediSynth één keer in het beeld. Daarna doen de knoppen iets hoorbaars.');
+    await w.s.stop();
+  });
+  it('tikNodig: niets zonder tik; meerdere apps met "en"; de meditatie-set noemt MediSynth en Waterschaal', () => {
+    expect(tikNodig([{ naam: 'Formula Lab' }, { naam: 'X', tik: '  ' }])).toBeNull();
+    expect(tikNodig([{ naam: 'A', tik: 'op a' }, { naam: 'B', tik: 'op b' }, { naam: 'C', tik: 'op c' }])).toMatch(/Tik in A op a, in B op b en in C op c\./);
+    const m = laadSet('meditatie', { config: CONFIG });
+    expect(m.apps.medisynth.tik).toMatch(/in het beeld/);
+    expect(m.apps.waterschaal.tik).toMatch(/op de schaal zelf/);
+    expect(m.apps['av-kern'].tik).toBeUndefined(); // av-kern praat nog niet met de hub
   });
 });
 

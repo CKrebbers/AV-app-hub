@@ -264,6 +264,8 @@ function tekenApps(apps, focus) {
   });
   for (const [app, li] of appRijen) if (!gezien.has(app)) { li.remove(); appRijen.delete(app); }
   $('apps-leeg').hidden = gezien.size > 0;
+  // Chrome laat een tab pas geluid maken na een tik erin; de hub kan dat niet zien (eerste avond, nagespeeld).
+  $('apps-tik').hidden = !apps.some((a) => a && a.status === 'actief');
 }
 
 // ── parameters van de focus-app ─────────────────────────────────────────────
@@ -287,6 +289,11 @@ const loslaters = new Set();
 function tekenParams(app, slews = new Map()) {
   const doos = $('params');
   $('focus-titel').textContent = app ? `Focus · ${app.naam || app.app}` : 'Focus';
+  // De app met focus is weg (bv. uurwerk dat niet op deze computer staat): de knoppen lijken te werken, maar er
+  // gebeurt niets. Zeg dat, en hoe je een andere kiest.
+  const weg = $('focus-weg');
+  weg.hidden = app?.status !== 'weg';
+  if (!weg.hidden) weg.textContent = `${app.naam || app.app} is er niet — wat je nu bedient, gaat nergens heen. Kies met BANK + Track Select een app die "actief" is.`;
   doos.style.setProperty('--app', app ? appKleur(app) : 'var(--accent)');
   const sleutel = paramSleutel(app?.app ?? null, app?.params);
   if (sleutel !== huidigeParams) {

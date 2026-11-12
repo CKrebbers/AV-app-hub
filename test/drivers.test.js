@@ -528,6 +528,42 @@ describe('HTTP-driver (uurwerk)', () => {
     expect(kern.verbindingen.map((v) => v.app)).toEqual([null]);
   });
 
+  it('antwoordt uurwerk 20 s lang nooit: één regel in het hubvenster met wat te doen (autostart false); daarna niet nog eens', async () => {
+    // Eerste avond (nagespeeld): uurwerk stond niet op de Mac, het venster zei alleen "teruglezen aan", en Track
+    // Select 1 bleef leeg zonder dat iets zei waarom.
+    const klok = new NepKlok(), kern = new NepKern(), fetch = nepFetch(), log = /** @type {string[]} */ ([]);
+    Object.assign(fetch, { gooit: true });
+    const d = maakDriver(leesApp('uurwerk.json'), { klok, fetch, log: (...a) => log.push(a.join(' ')) });
+    d.start(kern);
+    const melding = () => log.filter((r) => r.includes('doet nog niet mee'));
+    for (let i = 0; i < 8; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toEqual([]);                       // een set die uurwerk zelf start, krijgt de tijd
+    for (let i = 0; i < 4; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toEqual(['driver uurwerk Uurwerk doet nog niet mee (geen antwoord op http://127.0.0.1:8766): hij heeft geen plek op Track Select tot hij antwoordt. Staat Uurwerk niet op deze computer, zet dan in config.json bij apps.uurwerk "autostart": false.']);
+    for (let i = 0; i < 20; i++) { klok.loop(2000); await rust(); }
+    expect(melding()).toHaveLength(1);
+    d.stop();
+  });
+
+  it('brug zonder tab: de regel zegt dat er geen tab open is; wie ooit antwoordde, krijgt hem niet', async () => {
+    const klok = new NepKlok(), kern = new NepKern(), log = /** @type {string[]} */ ([]);
+    const zonderTab = nepFetch(); Object.assign(zonderTab, { tabs: 0 });
+    const a = maakDriver(leesApp('uurwerk.json'), { klok, fetch: zonderTab, log: (...x) => log.push(x.join(' ')) });
+    a.start(kern);
+    for (let i = 0; i < 12; i++) { klok.loop(2000); await rust(); }
+    expect(log.filter((r) => r.includes('doet nog niet mee'))).toEqual([expect.stringContaining('de brug op http://127.0.0.1:8766 draait, maar er is geen Uurwerk-tab open')]);
+    a.stop();
+    const log2 = /** @type {string[]} */ ([]);
+    const wisselend = nepFetch();
+    const b = maakDriver(leesApp('uurwerk.json'), { klok, fetch: wisselend, log: (...x) => log2.push(x.join(' ')) });
+    b.start(new NepKern());
+    await rust();
+    Object.assign(wisselend, { gooit: true });            // eerst gezien, dan weg: een gewone storing (stil/weg)
+    for (let i = 0; i < 15; i++) { klok.loop(2000); await rust(); }
+    expect(log2.filter((r) => r.includes('doet nog niet mee'))).toEqual([]);
+    b.stop();
+  });
+
   it('terug na storing: opnieuw aanmelden, zodat de kern alles opnieuw afspeelt (truth:"hub")', async () => {
     const { klok, kern, fetch, v } = opzet();
     await rust();
