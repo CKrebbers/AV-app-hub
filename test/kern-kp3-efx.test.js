@@ -46,6 +46,66 @@ describe('KP3+: het gebaar op de app met focus (§21)', () => {
     expect(kern.beeld().apps[0].waarden).toMatchObject({ vorm: 0.25, galm: 0.5 });
   });
 
+  it('een tweede aanraking zet niets tot X of Y beweegt (geen sprong naar waar de vorige eindigde)', () => {
+    const { kern } = opzet();
+    const v = meldAan(kern, VORM, { staat: { vorm: 0.25, galm: 0.5 } });
+    kern.focus('formula-lab');
+    const k = kp3(kern);
+    k.raak(); k.x(127); k.y(127); k.los();
+    leeg(v);
+    k.raak();
+    expect(zets(v)).toEqual([]);
+    k.x(10);
+    expect(zets(v)).toEqual([['vorm', 0.079, 'kp3plus']]);
+  });
+
+  it('aanraken op een ander CC-nummer dan in config.json (74 i.p.v. 92): na 0,4 s stil veert het terug en volgt het de focus weer', () => {
+    const { kern, klok } = opzet();
+    const v = meldAan(kern, VORM, { staat: { vorm: 0.25, galm: 0.5 } });
+    const m = meldAan(kern, { v: 1, app: 'medisynth', naam: 'M', xy: { x: 'a', y: 'b' }, params: [{ id: 'a', naam: 'A', soort: 'waarde', standaard: 0.1 }, { id: 'b', naam: 'B', soort: 'waarde', standaard: 0.1 }] });
+    kern.focus('formula-lab');
+    const k = kp3(kern);
+    k.stuur([0xb0, 74, 127]); k.x(100);
+    leeg(v);
+    k.stuur([0xb0, 74, 0]);
+    expect(zets(v)).toEqual([]);           // de hub ziet dit loslaten niet ...
+    klok.loop(KP3.LOS_MS + 1);
+    expect(zets(v)).toEqual([['vorm', 0.25, 'kp3plus']]);   // ... maar na 0,4 s zonder beweging veert hij terug
+    expect(kern.kp3.vast).toBe(null);
+    leeg(v, m);
+    kern.focus('medisynth');
+    k.x(50);
+    expect(zets(v)).toEqual([]);
+    expect(zets(m)).toEqual([['a', 0.394, 'kp3plus']]);
+  });
+
+  it('zonder aanraak-CC (null): bewegen houdt het gebaar open, 0,4 s stil = loslaten', () => {
+    const config = { ...CONFIG, apparaten: { kp3plus: { cc: { aanraak: null } } } };
+    const { kern, klok } = opzet(config);
+    const v = meldAan(kern, VORM, { staat: { vorm: 0.25, galm: 0.5 } });
+    kern.focus('formula-lab');
+    const k = kp3(kern, config);
+    k.x(100); klok.loop(300); k.x(110); klok.loop(300);
+    leeg(v);
+    expect(kern.kp3.vast).not.toBe(null);
+    klok.loop(KP3.LOS_MS);
+    expect(zets(v)).toEqual([['vorm', 0.25, 'kp3plus']]);
+  });
+
+  it('kwam de aanraak-CC wel: een X na het loslaten (napijlen) begint geen nieuw gebaar', () => {
+    const { kern, klok } = opzet();
+    const v = meldAan(kern, VORM, { staat: { vorm: 0.25, galm: 0.5 } });
+    kern.focus('formula-lab');
+    const k = kp3(kern);
+    k.raak(); k.x(100); k.los();
+    leeg(v);
+    k.x(101);
+    klok.loop(2000);
+    expect(zets(v)).toEqual([]);
+    expect(kern.kp3.vast).toBe(null);
+    expect(kern.beeld().apps[0].waarden).toMatchObject({ vorm: 0.25, galm: 0.5 });
+  });
+
   it('hold in config.json: na loslaten blijft het staan', () => {
     const config = { ...CONFIG, apparaten: { kp3plus: { hold: true } } };
     const { kern } = opzet(config);

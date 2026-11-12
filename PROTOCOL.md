@@ -548,6 +548,14 @@ parameter-alfabet, §19). Heeft de app er geen van, dan doet die as niets.
 
 **Gedrag:**
 - Aanraken (of bewegen zonder aanraak-CC) kiest de app met focus en onthoudt van elke as de waarde van dat moment.
+  Een aanraking begint zonder X en Y: pas als er een X of Y binnenkomt, verandert er iets (nooit eerst een sprong
+  naar waar de vorige aanraking eindigde). X en Y die hooguit 50 ms vóór het aanraken kwamen, horen er wel bij.
+- **Wanneer is het gebaar voorbij?** Kwam de aanraak-CC al eens binnen, dan alleen bij loslaten; een X of Y buiten
+  een aanraking (een KP3+ die na het loslaten nog één waarde stuurt) begint dan geen nieuw gebaar. Kwam hij nooit
+  (`cc.aanraak` is `null`, of de KP3+ stuurt een ander nummer dan in `config.json`), dan telt bewegen als aanraken en
+  is het gebaar voorbij na `apparaten.kp3plus.los_ms` (400) zonder beweging: dan veert het terug en volgt het
+  daarna weer de focus. Houd je je vinger zo lang stil, dan veert het dus al terug; beweeg je weer, dan gaat het
+  verder. (Zonder dit bleef het vlak bij een verkeerd CC-nummer de hele avond bij één app.)
 - Bewegen zet alleen de as die bewoog: `zet` met `bron: "kp3plus"`, direct (geen `slew_s`: het is een hand, zoals een
   APC-fader); pickup en LEDs van de APC gaan mee.
 - **Loslaten veert terug** naar de waarden van vóór het aanraken, alleen voor de assen die bewogen. **Hold**

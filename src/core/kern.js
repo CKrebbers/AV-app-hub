@@ -201,7 +201,8 @@ export class Kern extends Zender {
      * @type {{ inst: KP3.Instellingen, gebaar: KP3.Gebaar, holdKnop: boolean,
      *   vast: { app: string, x: { id: string, voor: number, laatst: number|null }|null, y: { id: string, voor: number, laatst: number|null }|null }|null }}
      */
-    this.kp3 = { inst: KP3.instellingen(this.config), gebaar: KP3.nieuwGebaar(), holdKnop: false, vast: null };
+    // timer: zonder (geziene) aanraak-CC eindigt een gebaar na inst.losMs zonder beweging (§21).
+    this.kp3 = { inst: KP3.instellingen(this.config), gebaar: KP3.nieuwGebaar(), holdKnop: false, vast: null, /** @type {any} */ timer: null };
     this.adem = { t: klok.nu(), fase: 0 };
     /** @type {Map<string, number>} laatst bekende fysieke stand per control (apc: id, lpd8: 'lpd8:k1') */
     this.fysiek = new Map();
@@ -1025,11 +1026,23 @@ export class Kern extends Zender {
       }
       return;
     }
-    const r = KP3.gebaarStap(k.gebaar, /** @type {any} */ (g));
+    const r = KP3.gebaarStap(k.gebaar, /** @type {any} */ (g), this.klok.nu());
     k.gebaar = r.staat;
     if (!r.gebaar) return;
-    if (r.gebaar.aan) this.#xyBeweeg(r.gebaar);
-    else this.#xyLos();
+    this.#xyWekker(null);
+    if (r.gebaar.aan) {
+      this.#xyBeweeg(r.gebaar);
+      // Kwam de aanraak-CC nooit (geen CC, of een ander nummer dan in config.json), dan zegt niets dat de vinger eraf
+      // is: na losMs zonder beweging telt het als loslaten. Anders bleef het gebaar de hele avond bij één app.
+      if (!k.gebaar.gezien) this.#xyWekker(() => { k.gebaar = { ...k.gebaar, x: null, y: null, aan: false }; this.#xyLos(); });
+    } else this.#xyLos();
+  }
+
+  /** De time-out van het gebaar opnieuw zetten (fn) of wissen (null). @param {(() => void)|null} fn */
+  #xyWekker(fn) {
+    const k = this.kp3;
+    if (k.timer !== null) { this.klok.wis(k.timer); k.timer = null; }
+    if (fn) k.timer = this.klok.zet(() => { k.timer = null; fn(); }, k.inst.losMs);
   }
 
   /**
@@ -1360,7 +1373,7 @@ export class Kern extends Zender {
       return;
     }
     if (dev === EFX.DEV) { this.#efxWeg(); return; }
-    if (dev === KP3.DEV) { this.kp3.gebaar = KP3.nieuwGebaar(); this.kp3.holdKnop = false; this.#xyLos(); return; }
+    if (dev === KP3.DEV) { this.#xyWekker(null); this.kp3.gebaar = KP3.nieuwGebaar(); this.kp3.holdKnop = false; this.#xyLos(); return; }
     if (dev === 'apc40') {
       this.hubIn = false;
       this.shiftIn = false;
@@ -1730,6 +1743,7 @@ export class Kern extends Zender {
       this[k] = null;
     }
     if (this.tempo.timer !== null) { this.klok.wis(this.tempo.timer); this.tempo.timer = null; }
+    this.#xyWekker(null);
     for (const a of this.apps.values()) this.#wisHartslag(a);
     // De slews blijven staan (hun timer is weg): exporteer() bewaart daarvan het doel, ook als het geheugen
     // pas ná kern.stop() wegschrijft.
