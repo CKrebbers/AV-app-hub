@@ -17,6 +17,7 @@ Eén commando, vlak voor een optreden, dat alles naloopt. Per punt één regel:
 | ✓ | goed | |
 | ! | let op, maar speelbaar | met `→` wat je kunt doen als er tijd is |
 | ✗ | eerst oplossen | met `→` wat te doen |
+| ○ | ter kennis: telt niet mee (de KP3+ of EFX-500 is niet aangesloten; zonder speel je gewoon) | met `→` wat te doen als hij er wel is |
 
 Exitcode **0** als er niets ✗ is (alleen ✓ en !), **1** als er minstens één ✗ is, **2** bij een ongeldige
 `--poort`. `check` verandert niets: het
