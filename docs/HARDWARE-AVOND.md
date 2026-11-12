@@ -504,7 +504,7 @@ node src/cli.js proef efx500
 | 6 | EFX-500: sturen knoppen MIDI (of Start/Stop)? | 10 s lang op alle knoppen drukken en aan de knoppen draaien |
 | 7 | Klaar | — |
 
-De proef meet het tempo zoals de hub het toont (mediaan over de tikken, ±0,2 BPM stabiel), de jitter per tik, of de
+De proef meet het tempo zoals de hub het toont (een rechte lijn door de tikken, ±0,2 BPM stabiel), de jitter per tik, of de
 klok doortikt zonder muziek (dan blijft de EFX de bron met zijn laatste tempo) en of er knoppen of Start/Stop
 binnenkomen. Push beide logboeken (`proef/<datum-tijd>-kp3plus.jsonl` en `-efx500.jsonl`) zoals in blok 6, met
 commitboodschap `proef kp3plus en efx500`; ze worden golden tests.

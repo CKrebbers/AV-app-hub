@@ -503,9 +503,12 @@ USB-MIDI-interface; de hub opent alleen de ingang, mét de klok (RtMidi negeert 
 interface-ingang). De EFX telt 40–250 BPM uit de audio-ingang of met TAP en stuurt 24 tikken (F8) per tel.
 
 **Van tikken naar tempo** (`src/core/klokbron.js`, puur, de tijd komt van de Klok van de hub):
-- De laatste `venster` intervallen (standaard 96 = vier tellen). De mediaan haalt uitschieters weg (een late tik van USB
-  of ALSA: alles verder dan 25 % ervan telt niet mee); door de rest gaat een rechte lijn (kleinste kwadraten), zodat de
-  jitter van één tik er niet zwaar in telt.
+- De laatste `venster` intervallen (standaard 96 = vier tellen). Daaruit de tiktijden zelf, en door die tiktijden een
+  rechte lijn (kleinste kwadraten: tiknummer → tijd). Een late tik is dan één punt naast de lijn: het interval ervoor
+  te lang en het volgende te kort heffen elkaar op. Een punt dat meer dan 25 % van een interval naast de lijn ligt (een
+  hapering van USB of ALSA) telt niet mee; de lijn gaat dan opnieuw zonder. Twee tikken op dezelfde ms tellen allebei
+  (een lus die in stappen aflevert). Zo blijft het tempo bij 2 ms jitter (sigma) op 174 BPM binnen ±0,2 BPM
+  (golf afronden; met een keten van gefilterde intervallen sprong het tot 25× per seconde tussen 166 en 184).
 - Pas na één tel (24 intervallen) is er een tempo; daarvóór blijft de vorige bron.
 - Het tempo gaat op 0,1 afgerond naar `globaal.bpm`, en alleen als het meer dan `stabiel_bpm` (0,2) afwijkt van wat er
   staat, of als een kleinere afwijking een hele tel dezelfde blijft (anders bleef het na een tempowissel net naast het
