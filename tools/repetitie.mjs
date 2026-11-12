@@ -363,7 +363,8 @@ async function main() {
     });
   } catch (e) {
     throw new Error(`Chromium start niet${CHROMIUM ? ` (${CHROMIUM})` : ''}. Installeer hem eenmalig met \`npx playwright-core install chromium\`, `
-      + `of wijs een eigen Chrome aan: CHROMIUM="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node tools/repetitie.mjs\n  ${String(/** @type {any} */ (e)?.message ?? e).split('\n')[0]}`);
+      + `of wijs een eigen Chrome aan: CHROMIUM="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" node tools/repetitie.mjs `
+      + `(Linux: CHROMIUM=/usr/bin/google-chrome-stable)\n  ${String(/** @type {any} */ (e)?.message ?? e).split('\n')[0]}`);
   }
   // Ná de servers toegevoegd, dus vóór de servers opgeruimd: de pagina's verbinden niet opnieuw met wat al weg is.
   opruimer.voeg('Chromium', () => browser.close());

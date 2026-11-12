@@ -30,7 +30,7 @@ Sluit eerst alles wat de APC zelf aanstuurt: Chrome-tabs met Varve DJ of av-kern
 | `node src/cli.js opname [naam]` | speelsessie opnemen in `proef/` — voor hardwareproeven (wordt een golden test), niet om een avond te bewaren |
 | `npm run herhaal -- <avondmap>` | een opgenomen avond opnieuw afspelen tegen de draaiende hub en de eindstand per app vergelijken (`--snelheid x`, `--zonder-beginstand`) |
 
-**LPD8-pad 4** = de avond opnemen naar `~/Movies/varve-avonden/<datum-tijd>/` (sleutel `avondmap` in `config.json`), terwijl de hub draait; de cockpit toont dan een rode REC. Zie `docs/OPNAME.md`.
+**LPD8-pad 4** = de avond opnemen naar `~/Movies/varve-avonden/<datum-tijd>/` (macOS; op Linux de video-map, sleutel `avondmap` in `config.json`, standaard `"auto"`), terwijl de hub draait; de cockpit toont dan een rode REC. Zie `docs/OPNAME.md`.
 
 **Paniek** (LPD8-pad 1 een seconde vasthouden): wat een app daarna zelf verandert (bv. volume naar 0) koppelt de LPD8-knoppen niet los; `paniek.naloop_s` in `config.json` (standaard 5) bepaalt hoe lang na het loslaten (PROTOCOL §14). Ook de driver-apps doen mee: uurwerk zet het volume op 0 (terug met de trigger `master_terug`), Sediment zet alle noten uit (CC 123), Scene Kit zet de master dicht (na de TD-patch in `koppelingen/av-scene-kit/`).
 
@@ -58,6 +58,17 @@ git commit -m "proef f0-hardware"
 git push
 ```
 
+## Op Linux (Omarchy)
+
+Werkt zonder systeempakketten: Node ≥ 22 via mise, `npm ci`, `node src/cli.js doctor`. Anders dan op de Mac: de
+Maschine MK2 heeft een udev-regel nodig (de hub zegt dat zelf), de avondmap komt in de video-map, een set opent de apps
+in Chrome (anders `xdg-open`), en de drivers van TouchDesigner en Logic starten niet. `node src/cli.js installeer`
+maakt een systemd-user-unit. Alles in `docs/LINUX.md`.
+
+**KP3+ en EFX-500** (fase F): de Kaoss Pad is het gebaar (XY op de app met focus, PROTOCOL §21), de EFX-500 de klok
+(`globaal.bpm`, §20). Ze hangen met MIDI-DIN aan een USB-MIDI-interface; meten met `node src/cli.js proef kp3plus` en
+`node src/cli.js proef efx500` (`docs/HARDWARE-AVOND.md`, blok 9).
+
 ## Voor ontwikkelen
 
 ```bash
@@ -66,4 +77,4 @@ npm run repetitie   # generale repetitie: de hub met de échte app-koppelingen, 
 npm run duurtest -- --minuten 3 --seed 7   # duurtest: een hele avond in een paar minuten, lekken en invarianten (docs/DUURTEST.md)
 ```
 
-Indeling: `src/devices/` (APC40, LPD8, Xboard49, Maschine MK2) · `src/ports/` (poort-interface, nep, RtMidi, HID) · `src/core/` (kern, indeling, pickup, slew, klok, wachtrij, LED-beeld, hotplug, logboek, spelers) · `src/protocol/` (het contract, PROTOCOL.md) · `src/transports/` (HTTP- en WebSocket-server) · `src/drivers/` (MIDI, HTTP, TD) · `src/sets/`, `src/opname/`, `src/check/` · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/hub.js` (alles samen) · `src/cli.js` · `ui/` (cockpit en oefenruimte). Werkafspraken in `CLAUDE.md`.
+Indeling: `src/devices/` (APC40, LPD8, Xboard49, Maschine MK2, KP3+, EFX-500) · `src/ports/` (poort-interface, nep, RtMidi, HID) · `src/core/` (kern, indeling, pickup, slew, klok, wachtrij, LED-beeld, hotplug, logboek, spelers) · `src/protocol/` (het contract, PROTOCOL.md) · `src/transports/` (HTTP- en WebSocket-server) · `src/drivers/` (MIDI, HTTP, TD) · `src/sets/`, `src/opname/`, `src/check/` · `src/apparaten.js` (sessies) · `src/proef/` (runner + protocollen) · `src/hub.js` (alles samen) · `src/cli.js` · `ui/` (cockpit en oefenruimte). Werkafspraken in `CLAUDE.md`.

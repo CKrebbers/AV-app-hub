@@ -9,10 +9,12 @@
 import * as nodeFs from 'node:fs';
 import { spawn as echteSpawn } from 'node:child_process';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { HUB_MAP } from '../config.js';
 import { echteKlok } from '../core/klok.js';
-import { zoekNaam } from '../ports/poort.js';
+import { zoekNaam, zoekIngang } from '../ports/poort.js';
+import * as KP3 from '../devices/kp3plus.js';
+import * as EFX from '../devices/efx500.js';
 import { geheugenPad } from '../opslag.js';
 import { avondmapPad } from '../opname/opnemer.js';
 import { tokenPad, isLoopbackHost, GELDIG } from '../lan.js';
@@ -20,6 +22,7 @@ import { laadSet as echteLaadSet, laadPaden as echteLaadPaden, poortOpen as echt
 import { controleerSet, isDriver } from './set.js';
 import { laadStatisch } from '../drivers/index.js';
 import { haal } from './systeem.js';
+import { CHROME_LINUX, vindChrome } from '../sets/systeem.js';
 
 /** @typedef {'ok'|'let'|'fout'} Status */
 /** @typedef {{ groep: string, naam: string, status: Status, uitleg: string, doen?: string }} Punt */
@@ -39,8 +42,7 @@ export const RUIMTE_FOUT = 500 * 1024 ** 2;
 const SCHIJVEN = /^\/(Volumes|media|mnt|run\/media)\//;
 /** Wat er van zo'n pad overblijft als de schijf niet is aangesloten. */
 const SCHIJF_WORTEL = /^\/(Volumes|mnt)$|^\/(run\/)?media(\/[^/]+)?$/;
-/** Programma's die als Chrome tellen buiten macOS. */
-export const CHROME_LINUX = Object.freeze(['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']);
+export { CHROME_LINUX };
 
 /**
  * @typedef {{
@@ -117,11 +119,22 @@ export async function check(o) {
 
   const apparaten = in_('apparaten');
   const namen = /** @type {const} */ ([['apc40', 'APC40'], ['lpd8', 'LPD8']]);
+  // KP3+ en EFX-500 (§20, §21): alleen als config.json ze noemt, en nooit een ✗: zonder speel je gewoon (tap, de APC).
+  const midiDin = /** @type {const} */ ([['kp3plus', 'KP3+', KP3.patroon(config)], ['efx500', 'EFX-500', EFX.patroon(config)]]).filter((x) => x[2]);
+  const nietGezien = (/** @type {string} */ dev, /** @type {string} */ label) => apparaten('let', dev, `de ${label} is niet te zien (hij hangt met MIDI-DIN aan een USB-MIDI-interface)`,
+    `sluit de interface aan en de ${label} op zijn MIDI-ingang; past config.json → apparaten.${dev}.poort_patroon ("${config.apparaten?.[dev]?.poort_patroon}") op de naam van die ingang? npm run doctor toont ze`);
   if (beeld) {
     for (const [dev, label] of namen) {
       const a = beeld.apparaten?.[dev];
       if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}`);
       else apparaten('fout', dev, `de hub ziet de ${label} niet`, `steek de ${label} in (USB; de hub vindt hem vanzelf binnen ${Math.round((config.hotplug_ms ?? 2000) / 1000)} s)`);
+    }
+    for (const [dev, label] of midiDin) {
+      const a = beeld.apparaten?.[dev];
+      if (!a?.verbonden) { nietGezien(dev, label); continue; }
+      const t = beeld.tempo;
+      const klok = dev !== 'efx500' || !t ? '' : t.efx?.bpm != null ? `, klok ${t.efx.bpm} BPM` : `, geen klok${t.efx?.vorige != null ? ` (laatst ${t.efx.vorige} BPM)` : ''} — tempo nu ${t.bpm} uit ${t.bron}`;
+      apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}${klok}`);
     }
   } else {
     // Zoals doctor: alleen de lijst met poorten, niets openen.
@@ -140,6 +153,11 @@ export async function check(o) {
           const naam = zoekNaam(lijst, new RegExp(config.apparaten[dev].naam, 'i'));
           if (naam) apparaten('ok', dev, `${label} zichtbaar als MIDI-poort (${naam})`);
           else apparaten('fout', dev, `${label} niet gevonden tussen de MIDI-poorten`, `steek de ${label} in (USB, en aan) en draai check opnieuw; npm run doctor toont alle poorten`);
+        }
+        for (const [dev, label, patroon] of midiDin) {
+          const naam = zoekIngang(lijst, /** @type {RegExp} */ (patroon));
+          if (naam) apparaten('ok', dev, `${label} zichtbaar als MIDI-ingang (${naam})`);
+          else nietGezien(dev, label);
         }
       }
     }
@@ -199,6 +217,7 @@ export async function check(o) {
       if (!app) return true;   // onleesbaar bestand: niet te zeggen, dus ✗
       const cfg = config.apps?.[app];
       if (cfg?.autostart === false || (soort === 'td' && cfg?.autostart !== true)) return false;
+      if (platform === 'linux' && Array.isArray(config.linux?.drivers_uit) && config.linux.drivers_uit.includes(app)) return false;
       return !def || Object.hasOwn(def.apps ?? {}, app);
     };
     for (const f of fouten) {
@@ -241,8 +260,8 @@ export async function check(o) {
     if (fs.existsSync(`${gPad}.kapot`)) best('let', 'geheugen-kapot', `er staat een eerder kapot geheugen: ${toon(gPad)}.kapot`, 'kijk erin of er iets te redden valt, en haal het daarna weg');
   }
 
-  const avond = avondmapPad(config, thuis, hubMap);
-  if (!avond) best('let', 'avondmap', 'geen avondmap in config.json: de avond wordt niet opgenomen', 'zet "avondmap" in config.json (bv. ~/Movies/varve-avonden)');
+  const avond = avondmapPad(config, thuis, hubMap, { platform });
+  if (!avond) best('let', 'avondmap', 'geen avondmap in config.json: de avond wordt niet opgenomen', 'zet "avondmap" in config.json ("auto" = ~/Movies/varve-avonden op macOS, de XDG-videomap of ~/Videos/varve-avonden op Linux; of een eigen pad)');
   else best(...avondmapPunt(fs, avond, toon));
 
   // ── Chrome ─────────────────────────────────────────────────────────────────────────────────────
@@ -252,8 +271,11 @@ export async function check(o) {
     if (waar) prog('ok', 'chrome', `Chrome aanwezig (${toon(waar)})`);
     else prog('fout', 'chrome', 'Google Chrome niet gevonden in /Applications: de set kan de apps niet openen', 'installeer Chrome (de apps zijn er op getest; Web MIDI)');
   } else {
-    const gevonden = CHROME_LINUX.find((n) => inPad(fs, n, env.PATH ?? ''));
-    if (gevonden) prog('ok', 'chrome', `Chrome aanwezig (${gevonden})`);
+    // Zoals de starter (src/sets/systeem.js openInChrome): linux.chrome uit config.json, anders de eerste in PATH.
+    const eigen = config.linux?.chrome ?? null;
+    const gevonden = vindChrome({ chrome: eigen, pad: env.PATH ?? '', kan: (p) => { try { fs.accessSync(p, nodeFs.constants.X_OK); return true; } catch { return false; } } });
+    if (gevonden) prog('ok', 'chrome', `Chrome aanwezig (${gevonden.split(sep).pop()}): een set opent de apps daarin`);
+    else if (eigen) prog('let', 'chrome', `config.json → linux.chrome ("${eigen}") is niet te vinden of niet uitvoerbaar: xdg-open opent dan je standaardbrowser`, 'zet het juiste pad (of null om in PATH te zoeken)');
     else prog('let', 'chrome', `geen Chrome of Chromium in PATH (${CHROME_LINUX.join(', ')}): xdg-open opent dan je standaardbrowser`, 'installeer Chrome of Chromium; de apps zijn in Chrome getest');
   }
 
@@ -388,15 +410,6 @@ export function hubAdres(config, token) {
   if (isLoopbackHost(h) || h === '0.0.0.0' || h === '::') return { host: '127.0.0.1', metToken: '' };
   const t = token();
   return { host: h, metToken: t ? `?token=${encodeURIComponent(t)}` : '' };
-}
-
-/** Uitvoerbaar programma in PATH, via de geïnjecteerde fs. @param {Bestanden} fs @param {string} naam @param {string} pad */
-function inPad(fs, naam, pad) {
-  for (const map of pad.split(delimiter)) {
-    if (!map) continue;
-    try { fs.accessSync(join(map, naam), nodeFs.constants.X_OK); return true; } catch { /* volgende */ }
-  }
-  return false;
 }
 
 const GROEPEN = /** @type {Record<string, string>} */ ({ hub: 'Hub', apparaten: 'Controllers', bestanden: 'Bestanden', programma: 'Programma\'s', netwerk: 'Netwerk (--lan)', set: 'Set' });

@@ -13,7 +13,7 @@ import { HUB_MAP, laadKaarten } from './config.js';
 import * as APC from './devices/apc40mk2.js';
 import * as LPD8 from './devices/lpd8.js';
 import { Opnemer, avondmapPad } from './opname/opnemer.js';
-import { HINT } from './ports/hid.js';
+import { HINT, invoerHint } from './ports/hid.js';
 
 /** Zo lang mag het afsluiten van een lopende opname hub.stop() ophouden (schijf weg of traag). */
 export const OPNAME_SLUIT_MS = 2000;
@@ -63,11 +63,12 @@ export function opnameMeldingen(zet) {
 
 /**
  * Wat de cockpit bij de Maschine zegt (beeld.apparaten["maschine-mk2"].hint): wat te doen bij deze status.
- * @param {string} status @param {string|null} [reden]
+ * @param {string} status @param {string|null} [reden] @param {string} [platform] (tests)
  */
-export function maschineHint(status, reden = null) {
+export function maschineHint(status, reden = null, platform = process.platform) {
   if (status === 'bezet') return HINT.bezet;
-  if (status === 'geen-invoer') return HINT.invoer;
+  if (status === 'geen-rechten') return HINT.rechten;
+  if (status === 'geen-invoer') return invoerHint(platform);
   // Alleen als node-hid echt ontbreekt helpt npm install (niet bij --zonder-midi of een vid/pid die niet klopt).
   if (status === 'geen-hid') return /^node-hid niet geïnstalleerd/.test(reden ?? '') ? `${reden} — npm install haalt node-hid binnen` : (reden ?? 'geen HID');
   return null;
@@ -157,9 +158,19 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   maschine?.bij('status', meldMaschine);
   meldXboard();
   meldMaschine();
+  // KP3+ (het gebaar, §21) en EFX-500 (de klok, §20) → kern; de tikken van de klok niet in de avondmap (24 per tel),
+  // wel start/stop en wat er verder binnenkomt. Hun stand in de cockpit (beeld.apparaten), het tempo in beeld.tempo.
+  for (const [sessie, dev] of /** @type {const} */ ([[apparaten.kp3, 'kp3plus'], [apparaten.efx, 'efx500']])) {
+    if (!sessie) continue;
+    sessie.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { if (g.kind !== 'tik') opnemer?.invoer(dev, b); kern.invoer(g, b); });
+    sessie.bij('weg', () => kern.apparaatWeg(dev));
+    const meld = () => kern.zetApparaat(dev, { verbonden: sessie.verbonden, naam: sessie.poort?.naam ?? null });
+    for (const e of ['verbonden', 'weg']) sessie.bij(e, meld);
+    meld();
+  }
   // Mislukt sturen of openen: één regel per storing (de sessie meldt niet per bericht of per poging); het opnieuw
   // openen en initialiseren doet de aansluiting zelf (src/core/aansluiting.js, PROTOCOL §16).
-  for (const [sessie, label] of /** @type {const} */ ([[apparaten.apc, 'APC'], [apparaten.lpd8, 'LPD8'], [xboard, 'Xboard49']])) {
+  for (const [sessie, label] of /** @type {const} */ ([[apparaten.apc, 'APC'], [apparaten.lpd8, 'LPD8'], [xboard, 'Xboard49'], [apparaten.kp3, 'KP3+'], [apparaten.efx, 'EFX-500']])) {
     sessie?.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => {
       log(soort === 'sturen' ? `${label}: sturen mislukt — kabel los? de hub probeert opnieuw`
         : `${label}: openen mislukt (${e?.message ?? e}) — de hub probeert opnieuw`);
@@ -171,11 +182,13 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
     log(h.ok ? `APC: modus gezet (antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''})`
       : `APC: geen antwoord op de modus-instructie${h.identiteit ? '' : ' (ook niet op de identiteitsvraag)'} — waarschijnlijk staat hij nog in de fabrieksmodus en doen knoppen en lampjes niet wat de hub verwacht. Draai: node src/cli.js doctor`);
   });
-  // De Maschine: bezet (een NI-programma heeft hem) of geen invoer (macOS-Invoermonitoring): zeggen wat te doen.
+  // De Maschine: bezet (een NI-programma heeft hem), geen rechten (Linux zonder udev-regel) of geen invoer
+  // (macOS-Invoermonitoring): zeggen wat te doen.
   maschine?.bij('fout', (/** @type {Error} */ e, /** @type {string} */ soort) => {
     log(soort === 'sturen' ? 'Maschine: sturen mislukt — kabel los? de hub probeert opnieuw'
-      : soort === 'invoer' ? `Maschine: open, maar er komt niets binnen — ${HINT.invoer}`
-        : `Maschine: bezet (${e?.message ?? e}) — ${HINT.bezet}`);
+      : soort === 'invoer' ? `Maschine: open, maar er komt niets binnen — ${invoerHint()}`
+        : maschine.status === 'geen-rechten' ? `Maschine: geen rechten (${e?.message ?? e}) — ${HINT.rechten}`
+          : `Maschine: bezet (${e?.message ?? e}) — ${HINT.bezet}`);
   });
 
   // Virtuele controllers uit de cockpit: precies alsof de bytes van USB kwamen.

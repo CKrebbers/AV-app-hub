@@ -12,6 +12,7 @@
  * @typedef {{
  *   v: 1, app: string, naam: string, kleur?: string, truth: 'app'|'hub', hb_s: number,
  *   lease: boolean, rings?: 'host'|'auto', speelt?: ('xboard49'|'maschine-mk2')[], levert?: 'sectie'[], scenes: string[], params: Param[],
+ *   xy?: { x?: string, y?: string },
  * }} Manifest
  *
  * Berichten app → hub

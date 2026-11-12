@@ -241,7 +241,7 @@ export const DRIVER_UITSTEL_MS = 3000;
  *   `config.apps.<app>.autostart: true` — bewust aanzetten (docs/TDLAB.md).
  * @param {{ kern: KernVoorDriver, klok: import('../core/klok.js').Klok, systeem?: any, fetch?: any, config?: any, map?: string, uitstel_ms?: number, log?: (...a: unknown[]) => void }} o
  */
-export function startDrivers({ kern, klok, systeem, fetch, config, map, uitstel_ms, log = () => {} }) {
+export function startDrivers({ kern, klok, systeem, fetch, config, map, uitstel_ms, log = () => {}, platform = process.platform }) {
   const { statisch, fouten } = laadStatisch(map);
   for (const f of fouten) log('drivers', `${f.bestand} overgeslagen:`, f.fouten.join('; '));
   const volgorde = Object.keys(config?.apps ?? {});
@@ -249,7 +249,14 @@ export function startDrivers({ kern, klok, systeem, fetch, config, map, uitstel_
   const lijst = [...statisch].sort((a, b) => plek(a.app) - plek(b.app) || String(a.app).localeCompare(String(b.app)));
   /** @type {ReturnType<typeof maakDriver>[]} */
   const drivers = [];
+  // Op Linux bestaan TouchDesigner en Logic niet: hun drivers (config.json → linux.drivers_uit) starten daar niet.
+  const linuxUit = platform === 'linux' && Array.isArray(config?.linux?.drivers_uit) ? config.linux.drivers_uit : [];
   for (const s of lijst) {
+    if (linuxUit.includes(s.app)) {
+      const poort = s.driver.soort === 'midi' ? ` (de hub maakt poort "${config?.apps?.[s.app]?.midipoort ?? s.driver.poort}" niet aan)` : '';
+      log('drivers', `${s.app}: overgeslagen op Linux${poort} — TouchDesigner en Logic draaien hier niet. Toch nodig? Haal "${s.app}" uit config.json → linux.drivers_uit (docs/LINUX.md)`);
+      continue;
+    }
     if (s.driver.soort === 'td' && config?.apps?.[s.app]?.autostart !== true) {
       log('drivers', `${s.app}: TD-driver staat uit — zet config.json → apps.${s.app}.autostart op true om hem te gebruiken (docs/TDLAB.md)`);
       continue;

@@ -20,11 +20,12 @@
 
 /**
  * Het MIDI-systeem van de machine: poorten opsommen en openen. `open(naam, { alleenIngang: true })` opent alleen de
- * ingang (een apparaat dat niets ontvangt, zoals de Xboard49; `stuur` gooit dan).
+ * ingang (een apparaat dat niets ontvangt, zoals de Xboard49; `stuur` gooit dan). `metKlok: true` laat de MIDI-klok
+ * (F8, en start/stop) door; standaard negeert de ingang die (alleen de EFX-500 heeft hem nodig, PROTOCOL §20).
  * @typedef {{
  *   soort: string,
  *   lijst: () => { ingangen: string[], uitgangen: string[] },
- *   open: (naam: string, opties?: { alleenIngang?: boolean }) => Poort,
+ *   open: (naam: string, opties?: { alleenIngang?: boolean, metKlok?: boolean }) => Poort,
  *   virtueel?: (naam: string) => Poort,
  * }} Systeem
  */

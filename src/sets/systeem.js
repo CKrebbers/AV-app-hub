@@ -2,6 +2,8 @@
 // De echte wereld voor de starter: processen starten en stoppen, een URL in Chrome openen, kijken of een
 // poort bezet is. Alles hier is klein en vervangbaar; de starter krijgt het geïnjecteerd (tests gebruiken nep).
 import { spawn } from 'node:child_process';
+import { accessSync, constants } from 'node:fs';
+import { delimiter, isAbsolute, join } from 'node:path';
 import net from 'node:net';
 
 /**
@@ -63,19 +65,54 @@ export function startProces({ commando, cwd, omgeving }, { kill = (pid, sein) =>
   };
 }
 
+/** Programma's die als Chrome tellen buiten macOS, in deze volgorde gezocht in PATH (check en de starter). */
+export const CHROME_LINUX = Object.freeze(['google-chrome-stable', 'google-chrome', 'chromium', 'chromium-browser']);
+
+/** @param {string} p */
+const uitvoerbaar = (p) => { try { accessSync(p, constants.X_OK); return true; } catch { return false; } };
+
 /**
- * Open een URL in Chrome: macOS `open -a "Google Chrome" <url>`, anders `xdg-open <url>`.
+ * Chrome buiten macOS: het pad of de naam uit config.json (`linux.chrome`), anders de eerste uit CHROME_LINUX in PATH.
+ * Null = niet gevonden (dan xdg-open).
+ * @param {{ chrome?: string|null, pad?: string, kan?: (p: string) => boolean }} [o] kan: is dit bestand uitvoerbaar (tests)
+ * @returns {string|null}
+ */
+export function vindChrome({ chrome = null, pad = process.env.PATH ?? '', kan = uitvoerbaar } = {}) {
+  const inPad = (/** @type {string} */ naam) => pad.split(delimiter).filter(Boolean).map((m) => join(m, naam)).find(kan) ?? null;
+  if (typeof chrome === 'string' && chrome.trim()) {
+    const c = chrome.trim();
+    if (isAbsolute(c)) return kan(c) ? c : null;
+    return inPad(c);
+  }
+  for (const n of CHROME_LINUX) { const p = inPad(n); if (p) return p; }
+  return null;
+}
+
+/**
+ * Open een URL in Chrome: macOS `open -a "Google Chrome" <url>`; Linux `<chrome> --new-window <url>` (vindChrome,
+ * `linux.chrome` uit config.json), en als dat niet lukt of er geen Chrome is: `xdg-open <url>` (de standaardbrowser).
+ * Chrome start op Linux zelf door als hij nog niet liep: dan geldt "gestart" (het spawn-event) als gelukt.
  * @param {string} [platform] @param {typeof spawn} [start] (tests)
+ * @param {{ chrome?: string|null, pad?: string, kan?: (p: string) => boolean, log?: (t: string) => void }} [o] zie vindChrome
  * @returns {(url: string) => Promise<void>}
  */
-export function openInChrome(platform = process.platform, start = spawn) {
-  const [cmd, voor] = platform === 'darwin' ? ['open', ['-a', 'Google Chrome']] : ['xdg-open', []];
-  return (url) => new Promise((goed, fout) => {
-    const p = start(cmd, [...voor, url], { stdio: 'ignore', detached: true });
+export function openInChrome(platform = process.platform, start = spawn, o = {}) {
+  /** @param {string} cmd @param {string[]} args @param {boolean} gestartIsGenoeg */
+  const draai = (cmd, args, gestartIsGenoeg) => new Promise((goed, fout) => {
+    const p = start(cmd, args, { stdio: 'ignore', detached: true });
     p.on('error', (e) => fout(new Error(`${cmd} lukt niet: ${e.message}`)));
-    p.on('exit', (code) => (code === 0 ? goed() : fout(new Error(`${cmd} stopte met code ${code}`))));
+    if (gestartIsGenoeg) p.on('spawn', () => goed(undefined));
+    p.on('exit', (code) => (code === 0 ? goed(undefined) : fout(new Error(`${cmd} stopte met code ${code}`))));
     p.unref();
   });
+  if (platform === 'darwin') return (url) => /** @type {Promise<void>} */ (draai('open', ['-a', 'Google Chrome', url], false));
+  const chrome = vindChrome(o);
+  const xdg = (/** @type {string} */ url) => /** @type {Promise<void>} */ (draai('xdg-open', [url], false));
+  if (!chrome) return xdg;
+  return (url) => /** @type {Promise<void>} */ (draai(chrome, ['--new-window', url], true).catch((e) => {
+    o.log?.(`${e.message} — ik probeer xdg-open`);
+    return xdg(url);
+  }));
 }
 
 /**

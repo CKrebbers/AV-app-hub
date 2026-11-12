@@ -14,7 +14,8 @@ een draaiende hub — met dezelfde timing of sneller — en de hub controleert o
 
 In de cockpit staat dan bovenin een rode **● REC** met de mapnaam en de looptijd, en P4 van de virtuele LPD8 is rood. De laatste opname-melding staat ernaast (rood = fout) en blijft staan tot er een nieuwe komt. Staat er "REC — niets bewaard" (doorgestreept), dan wordt er niets opgeslagen: lees de melding.
 
-Waar: `config.json` → `"avondmap"` (`~/Movies/varve-avonden`; `~` is je thuismap). Een relatief pad geldt vanaf
+Waar: `config.json` → `"avondmap"`. Standaard `"auto"`: op macOS `~/Movies/varve-avonden`, op Linux de XDG-videomap
+(`xdg-user-dir VIDEOS`) of `~/Videos`, met `varve-avonden` erin (docs/LINUX.md); `~` is je thuismap. Een relatief pad geldt vanaf
 de AV-app-hub-map (zoals `proefmap`), niet vanaf waar je `npm start` typte. Zonder `"avondmap"` neemt de hub
 niets op en zegt dat. Elke avond krijgt een eigen map met datum en tijd, bv.
 `~/Movies/varve-avonden/2026-10-03_21-04-05/`. Twee opnames in dezelfde seconde krijgen `-2`, `-3`, …

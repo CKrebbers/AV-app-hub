@@ -198,7 +198,7 @@ describe.skipIf(process.platform === 'win32')('echte processen en poorten', () =
     expect(seinen.every(([pid]) => pid === -(/** @type {number} */ (p.pid)))).toBe(true);
   });
 
-  it('openInChrome: macOS open -a "Google Chrome", Linux xdg-open; een fout wordt een melding, geen crash', async () => {
+  it('openInChrome: macOS open -a "Google Chrome", Linux zonder Chrome xdg-open; een fout wordt een melding, geen crash', async () => {
     /** @type {any[]} */
     const aanroepen = [];
     const nep = (/** @type {number} */ code) => /** @type {any} */ ((/** @type {string} */ cmd, /** @type {string[]} */ a) => {
@@ -208,9 +208,9 @@ describe.skipIf(process.platform === 'win32')('echte processen en poorten', () =
       return p;
     });
     await openInChrome('darwin', nep(0))('http://localhost:5174/?hub=ws://localhost:7700/app');
-    await openInChrome('linux', nep(0))('http://x/');
+    await openInChrome('linux', nep(0), { pad: '' })('http://x/');   // geen Chrome in PATH (Linux mét Chrome: test/linux.test.js)
     expect(aanroepen).toEqual([['open', '-a', 'Google Chrome', 'http://localhost:5174/?hub=ws://localhost:7700/app'], ['xdg-open', 'http://x/']]);
-    await expect(openInChrome('linux', nep(3))('http://x/')).rejects.toThrow(/xdg-open stopte met code 3/);
+    await expect(openInChrome('linux', nep(3), { pad: '' })('http://x/')).rejects.toThrow(/xdg-open stopte met code 3/);
   });
 
   it('poortOpen: true als er iets luistert, false als niet', async () => {

@@ -61,7 +61,10 @@ function opzet() {
   // De statische manifesten zoals in de repo (apps/*.json): check controleert ze zoals de hub.
   mkdirSync(join(hubMap, 'apps'));
   for (const f of nodeFs.readdirSync(APPS_MAP)) if (f.endsWith('.json')) nodeFs.copyFileSync(join(APPS_MAP, f), join(hubMap, 'apps', f));
-  const config = { ...laadConfig(), avondmap: '~/avonden', geheugen: { pad: '~/.varve-hub/staat.json' } };
+  // linux.drivers_uit leeg: deze tests gaan over de drivers zelf (platform 'linux' hieronder is voor Chrome);
+  // dat TD en Logic op Linux overgeslagen worden, toetst test/linux.test.js.
+  const basis = laadConfig();
+  const config = { ...basis, avondmap: '~/avonden', geheugen: { pad: '~/.varve-hub/staat.json' }, linux: { ...basis.linux, drivers_uit: [] } };
   /** @type {any} */
   const fs = { ...nodeFs, statfsSync: () => ({ bavail: 10 * GB / 4096, bsize: 4096 }) };
   const opties = /** @type {import('../src/check/index.js').CheckOpties} */ ({
@@ -645,5 +648,39 @@ describe('check: driver-apps uit de echte config (golf 6)', () => {
     const c = laadConfig();
     for (const id of ['td-lab', 'sediment', 'av-scene-kit', 'uurwerk']) expect(isDriver(c, id), id).toBe(true);
     expect(isDriver(c, 'formula-lab')).toBe(false);
+  });
+});
+
+describe('check: KP3+ en EFX-500 (PROTOCOL §20, §21)', () => {
+  const metInterface = (/** @type {any} */ config) => ({ ...config, apparaten: { ...config.apparaten, kp3plus: { ...config.apparaten.kp3plus, poort_patroon: 'interface midi 1' }, efx500: { ...config.apparaten.efx500, poort_patroon: 'interface midi 2' } } });
+  it('hub draait niet: zichtbaar als MIDI-ingang = ✓, niet te zien = ! (nooit ✗: zonder speel je gewoon)', async () => {
+    const { opties } = opzet();
+    const r = await check({ ...opties, config: metInterface(opties.config), laadMidi: midiMet(['APC40 mkII', 'LPD8 mk2', 'USB MIDI Interface MIDI 1']) });
+    expect(punt(r, 'kp3plus')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/KP3\+ zichtbaar als MIDI-ingang \(USB MIDI Interface MIDI 1\)/) });
+    expect(punt(r, 'efx500')).toMatchObject({ status: 'let', doen: expect.stringMatching(/apparaten\.efx500\.poort_patroon \("interface midi 2"\)/) });
+    expect(r.code).toBe(0);
+  });
+  it('zonder poort_patroon in config.json: geen punt', async () => {
+    const { opties } = opzet();
+    const c = opties.config;
+    const r = await check({ ...opties, config: { ...c, apparaten: { ...c.apparaten, kp3plus: {}, efx500: {} } } });
+    expect(punt(r, 'kp3plus')).toBe(undefined);
+    expect(punt(r, 'efx500')).toBe(undefined);
+  });
+  it('de hub draait: verbonden, en van de EFX de laatste BPM', async () => {
+    const { opties } = opzet();
+    const config = { ...metInterface(opties.config), hotplug_ms: 20 };
+    const systeem = new NepSysteem();
+    for (const n of ['APC40 mkII', 'LPD8 mk2']) systeem.voegToe(n);
+    const efx = systeem.voegToe('USB MIDI Interface MIDI 2', { uitgang: false });
+    const klok = new NepKlok();
+    const hub = await startHub({ config, systeem, klok, poort: 0, drivers: false, opname: false });
+    lopend.push(() => hub.stop());
+    klok.loop(300);
+    for (let i = 0; i < 30; i++) { efx.injecteer([0xf8]); klok.loop(60000 / (24 * 126)); }
+    klok.loop(200);   // het beeld (hooguit 10×/s) bijwerken
+    const r = await check({ ...opties, config, fetch, poort: hub.server.poort });
+    expect(punt(r, 'efx500')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/EFX-500 verbonden met de hub \(USB MIDI Interface MIDI 2\), klok 126 BPM/) });
+    expect(punt(r, 'kp3plus')).toMatchObject({ status: 'let' });
   });
 });

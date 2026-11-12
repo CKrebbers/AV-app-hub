@@ -4,9 +4,12 @@ import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import dgram from 'node:dgram';
 import { zoekNaam, zoekIngang } from './ports/poort.js';
-import { laadHid, draaiendeNi, HINT } from './ports/hid.js';
+import { laadHid, draaiendeNi, HINT, invoerHint, isRechtenFout } from './ports/hid.js';
 import { laadLpd8Profiel, laadXboardProfiel, HUB_MAP } from './config.js';
 import * as XB from './devices/xboard49.js';
+import * as KP3 from './devices/kp3plus.js';
+import * as EFX from './devices/efx500.js';
+import { KlokMeter } from './core/klokbron.js';
 import * as A from './devices/apc40mk2.js';
 import * as L from './devices/lpd8.js';
 
@@ -35,11 +38,11 @@ export const vrij = (poort, soort) => new Promise((r) => {
 /**
  * @param {{ config: any, laadMidi: () => Promise<{ systeem: import('./ports/poort.js').Systeem|null, reden?: string }>,
  *   laadHid?: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>, niProgrammas?: () => string[],
- *   wachtMs?: number, hubDraait?: () => Promise<boolean> }} o  laadHid/niProgrammas/wachtMs/hubDraait: tests geven nep
+ *   wachtMs?: number, hubDraait?: () => Promise<boolean>, platform?: string }} o  laadHid/niProgrammas/wachtMs/hubDraait/platform: tests geven nep
  * @returns {Promise<{ tekst: string, data: any }>}
  */
 export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600,
-  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')) }) {
+  hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')), platform = process.platform }) {
   const r = [];
   const data = /** @type {any} */ ({});
   const ok = (/** @type {boolean|null|undefined} */ b) => (b ? '✔' : '✗');
@@ -120,7 +123,10 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
   r.push(`  LPD8-profiel: ${prof ? `${prof.bron} (lpd8-profiel.json)` : 'nog niet geleerd — draai de proef'}`);
 
   r.push('', 'Speelapparaten (PROTOCOL §17)');
-  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok });
+  await speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok, platform });
+
+  r.push('', 'KP3+ en EFX-500 (MIDI-DIN via een USB-MIDI-interface; PROTOCOL §20, §21)');
+  await kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok });
 
   r.push('', 'Poorten van de hub');
   for (const [naam, poort, soort] of [['http/ws', config.poorten.http, 'tcp'], ['osc', config.poorten.osc, 'udp']]) {
@@ -139,12 +145,62 @@ export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, ni
 }
 
 /**
+ * KP3+ en EFX-500: alleen een MIDI-ingang, achter een USB-MIDI-interface (de poortnaam is die van de interface). Gevonden
+ * of niet, met wat er in config.json staat. Van de EFX luistert doctor even naar de klok (als de hub niet draait: die
+ * heeft de poort dan al) en zegt welk tempo hij meet. Er wordt niets naar de apparaten gestuurd.
+ * @param {{ config: any, systeem: import('./ports/poort.js').Systeem|null, wachtMs: number, hubDraait: () => Promise<boolean>,
+ *   r: string[], data: any, ok: (b: boolean) => string }} o
+ */
+async function kp3EnEfx({ config, systeem, wachtMs, hubDraait, r, data, ok }) {
+  const ingangen = systeem ? systeem.lijst().ingangen : [];
+  for (const [dev, label, patroon] of /** @type {const} */ ([['kp3plus', 'KP3+', KP3.patroon(config)], ['efx500', 'EFX-500', EFX.patroon(config)]])) {
+    const cfg = config.apparaten?.[dev] ?? {};
+    if (!patroon) { data[dev] = { inConfig: false }; r.push(`  - ${dev}: niet in config.json (apparaten.${dev}.poort_patroon) — de hub opent hem niet`); continue; }
+    if (!systeem) { data[dev] = { naam: null }; r.push(`  ✗ ${dev}: geen MIDI (zie boven)`); continue; }
+    const naam = zoekIngang({ ingangen }, patroon);
+    data[dev] = { naam, patroon: cfg.poort_patroon };
+    r.push(`  ${ok(!!naam)} ${dev} (${label}): ${naam ?? `niet gevonden — geen MIDI-ingang past op "${cfg.poort_patroon}". Hij hangt aan een USB-MIDI-interface: zet een stukje van de naam van die ingang (zie de ingangen hierboven) in config.json → apparaten.${dev}.poort_patroon`}`);
+    if (dev === 'kp3plus') {
+      const i = KP3.instellingen(config);
+      const cc = (/** @type {number|null} */ n) => (n === null ? '–' : `CC ${n}`);
+      data[dev].instellingen = i;
+      r.push(`      X ${cc(i.cc.x)} · Y ${cc(i.cc.y)} · aanraken ${cc(i.cc.aanraak)} · kanaal ${i.kanaal === null ? 'elk' : i.kanaal + 1} · XY → ${i.xy.x} / ${i.xy.y}${i.hold ? ' · hold' : ''} (te meten: node src/cli.js proef kp3plus)`);
+      continue;
+    }
+    if (!naam) continue;
+    if (await hubDraait()) {
+      data[dev].hubDraait = true;
+      r.push(`  - klok niet gemeten: de hub draait (poort ${config.poorten.http}) en heeft de poort; het tempo staat in de cockpit (beeld.tempo)`);
+      continue;
+    }
+    // Even luisteren naar de klok (een tel op 40 BPM duurt 1,5 s; standaard 2,5 × wachtMs).
+    const meter = new KlokMeter();
+    const t0 = performance.now();
+    let anders = 0;
+    try {
+      const p = systeem.open(naam, { alleenIngang: true, metKlok: true });
+      p.bijBericht((b) => { if (b[0] === EFX.KLOK.tik) meter.tik(performance.now()); else anders++; });
+      await new Promise((res) => setTimeout(res, wachtMs * 2.5));
+      p.sluit();
+    } catch (e) {
+      data[dev].fout = /** @type {Error} */ (e).message;
+      r.push(`      ✗ openen mislukt: ${/** @type {Error} */ (e).message}`);
+      continue;
+    }
+    const s = Math.round((performance.now() - t0) / 100) / 10;
+    Object.assign(data[dev], { tikken: meter.tikken, bpm: meter.bpm, anders });
+    r.push(meter.tikken === 0 ? `      geen klok in ${s} s — staat er muziek op de ingang (of tik TAP)? De EFX-500 stuurt alleen klok als hij een tempo heeft`
+      : `      ${meter.tikken} kloktikken in ${s} s${meter.bpm !== null ? ` · ${meter.bpm} BPM` : ' · nog geen hele tel'}${anders ? ` · ook ${anders} andere berichten` : ''}`);
+  }
+}
+
+/**
  * Xboard49 (een MIDI-ingang) en Maschine MK2 (USB-HID): gevonden, bezet, komt er invoer? De Maschine wordt kort
  * geopend (zoals de APC hierboven), en wat Clay moet doen staat erbij (NI-programma's, Invoermonitoring).
  * @param {{ config: any, systeem: import('./ports/poort.js').Systeem|null, hidLader: () => Promise<{ systeem: import('./ports/hid.js').HidSysteem|null, reden?: string }>,
- *   niProgrammas: () => string[], wachtMs: number, hubDraait: () => Promise<boolean>, r: string[], data: any, ok: (b: boolean) => string }} o
+ *   niProgrammas: () => string[], wachtMs: number, hubDraait: () => Promise<boolean>, r: string[], data: any, ok: (b: boolean) => string, platform: string }} o
  */
-async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok }) {
+async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs, hubDraait, r, data, ok, platform }) {
   const xcfg = config.apparaten?.xboard49;
   const xpatroon = XB.patroon(config);   // zoals de hub: zonder naam doet de Xboard niet mee
   if (!xpatroon) r.push('  - xboard49: niet in config.json (apparaten.xboard49.naam) — de hub opent hem niet');
@@ -188,10 +244,16 @@ async function speelapparaten({ config, systeem, hidLader, niProgrammas, wachtMs
     p.sluit();
     data.maschine.frames = frames;
     r.push(frames > 0 ? `  ✔ invoer komt binnen (${frames} rapporten in ${wachtMs / 1000} s; in rust ±750 per seconde)`
-      : `  ✗ open, maar er komt niets binnen — ${HINT.invoer}`);
+      : `  ✗ open, maar er komt niets binnen — ${invoerHint(platform)}`);
   } catch (e) {
-    data.maschine.bezet = /** @type {Error} */ (e).message;
-    r.push(`  ✗ bezet: ${/** @type {Error} */ (e).message} — ${HINT.bezet}`);
+    // Linux zonder udev-regel: "Permission denied". Dat is geen ander programma: de udev-hint, niet de Mac-hint.
+    if (isRechtenFout(e)) {
+      data.maschine.rechten = /** @type {Error} */ (e).message;
+      r.push(`  ✗ geen rechten: ${/** @type {Error} */ (e).message} — ${HINT.rechten}`);
+    } else {
+      data.maschine.bezet = /** @type {Error} */ (e).message;
+      r.push(`  ✗ bezet: ${/** @type {Error} */ (e).message} — ${HINT.bezet}`);
+    }
   }
-  r.push('  (Invoermonitoring: Systeeminstellingen → Privacy en beveiliging → Invoermonitoring; Terminal of iTerm aan.)');
+  if (platform === 'darwin') r.push('  (Invoermonitoring: Systeeminstellingen → Privacy en beveiliging → Invoermonitoring; Terminal of iTerm aan.)');
 }
