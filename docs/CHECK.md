@@ -60,7 +60,8 @@ Set
 
 **De hub** — `GET /api/beeld` op de poort uit `config.json` (`poorten.http`, of `--poort N`), op 127.0.0.1; staat
 in `config.json` → `server.host` een eigen LAN-adres, dan op dat adres (met het token).
-- Draait hij: zijn de APC40 en de LPD8 verbonden (`apparaten` in het beeld)? Niet verbonden = ✗. Het aantal
+- Draait hij: zijn de APC40 en de LPD8 verbonden (`apparaten` in het beeld)? Niet verbonden = ✗. Bevestigde de APC
+  de modus-instructie niet, dan ! met wat te doen (druk op Track Select 1: komt die binnen, dan staat hij goed). Het aantal
   verbonden apps telt alleen apps die zich zelf aanmelden; drivers (MIDI, HTTP, TD) staan er apart achter.
 - Draait hij niet (niemand op de poort): ! met de startregel (met de set als die bestaat, en `--lan` als je check met
   `--lan` draaide), en dan zoals `doctor`: staan de APC40 en de LPD8 als MIDI-poort in de lijst (naam uit

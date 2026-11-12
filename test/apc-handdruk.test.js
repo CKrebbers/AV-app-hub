@@ -128,3 +128,28 @@ describe('APC-handdruk', () => {
     expect(A.ontleed(identiteit(3))).toMatchObject({ kind: 'identiteit', apparaatId: 3 });
   });
 });
+
+describe('APC-handdruk in het beeld (cockpit, check)', () => {
+  it('bezig → geen-antwoord (met wat te doen) → ok zodra Track Select binnenkomt', async () => {
+    const { startHub, APC_HANDDRUK_HINT } = await import('../src/hub.js');
+    const { laadConfig } = await import('../src/config.js');
+    const systeem = new NepSysteem();
+    const apc = systeem.voegToe('APC40 mkII');                // antwoordt nergens op
+    const log = [];
+    const hub = await startHub({ config: { ...laadConfig(), hotplug_ms: 20 }, systeem, poort: 0, drivers: false, opname: false, log: (t) => log.push(String(t)) });
+    try {
+      const wacht = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
+      const apc40 = () => hub.kern.beeld().apparaten.apc40;
+      for (let i = 0; i < 100 && !apc40()?.verbonden; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ verbonden: true, handdruk: 'bezig', hint: null });
+      for (let i = 0; i < 300 && apc40()?.handdruk !== 'geen-antwoord'; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ handdruk: 'geen-antwoord', hint: APC_HANDDRUK_HINT });
+      expect(APC_HANDDRUK_HINT).toMatch(/druk op Track Select 1/);
+      expect(log.filter((t) => /^APC: geen bevestiging/.test(t))).toHaveLength(1);
+      apc.injecteer([0x90, 51, 127]);
+      for (let i = 0; i < 100 && apc40()?.handdruk !== 'ok'; i++) await wacht(10);
+      expect(apc40()).toMatchObject({ handdruk: 'ok', hint: null });
+      expect(log.at(-1)).toMatch(/APC: modus gezet \(Track Select komt binnen\)/);
+    } finally { await hub.stop(); }
+  });
+});

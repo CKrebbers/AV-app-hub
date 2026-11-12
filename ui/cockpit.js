@@ -10,7 +10,7 @@ import { klem01 } from '../src/protocol/berichten.js';
 import { maakApc } from './apc.js';
 import { maakLpd8, KNOP_NAMEN } from './lpd8.js';
 import { Verbinding, cockpitUrl } from './verbinding.js';
-import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan, plekTekst, dkNamen, maschineVan } from './opmaak.js';
+import { toonWaarde, invoerTekst, focusVan, isVerbonden, ademPeriode, ademSchaal, appKleur, paramSleutel, opnameVan, looptijdTekst, slewsVan, sectieVan, plekTekst, dkNamen, maschineVan, handdrukVan } from './opmaak.js';
 
 const LOG_MAX = 50;
 const LANG_DRUKKEN_MS = 700;
@@ -211,6 +211,14 @@ function tekenApparaten(apparaten) {
     el.classList.toggle('aan', aan);
     el.title = `${dev === 'apc40' ? 'APC40 mkII' : 'LPD8'}: ${aan ? 'aangesloten' : 'niet aangesloten'}`;
   }
+  // De APC-handdruk (PROTOCOL §16): één regel met wat te doen als de APC de modus niet bevestigde.
+  const h = handdrukVan(apparaten.apc40);
+  const chip = $('dev-apc40'), m = $('apc-melding');
+  chip.classList.toggle('let-op', h.stand === 'geen-antwoord');
+  if (h.stand) chip.title += ` · modus: ${h.stand === 'ok' ? 'gezet' : h.stand === 'bezig' ? 'wordt gezet…' : 'geen bevestiging'}`;
+  m.hidden = h.stand !== 'geen-antwoord';
+  const tekst = h.stand === 'geen-antwoord' ? `APC: ${h.hint ?? 'geen bevestiging op de modus-instructie'}` : '';
+  if (m.textContent !== tekst) m.textContent = tekst;
 }
 
 /** @type {Map<string, HTMLLIElement>} */

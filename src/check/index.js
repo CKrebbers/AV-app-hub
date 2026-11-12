@@ -126,7 +126,11 @@ export async function check(o) {
   if (beeld) {
     for (const [dev, label] of namen) {
       const a = beeld.apparaten?.[dev];
-      if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}`);
+      // De APC-handdruk (§16): geen bevestiging is nog geen fout (niet elke APC stuurt die; Track Select beslist).
+      if (a?.verbonden && dev === 'apc40' && a.handdruk === 'geen-antwoord') {
+        apparaten('let', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}, maar zonder bevestiging op de modus-instructie`,
+          a.hint ?? 'druk op Track Select 1: komt die in de hub binnen, dan staat hij goed; anders npm run doctor');
+      } else if (a?.verbonden) apparaten('ok', dev, `${label} verbonden met de hub${a.naam ? ` (${a.naam})` : ''}${dev === 'apc40' && a.handdruk === 'ok' ? ', modus gezet' : dev === 'apc40' && a.handdruk === 'bezig' ? ', modus wordt nog gezet' : ''}`);
       else apparaten('fout', dev, `de hub ziet de ${label} niet`, `steek de ${label} in (USB; de hub vindt hem vanzelf binnen ${Math.round((config.hotplug_ms ?? 2000) / 1000)} s)`);
     }
     for (const [dev, label] of midiDin) {

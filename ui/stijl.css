@@ -62,11 +62,16 @@ h2 { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: .14em;
 .opname-melding.fout { color: var(--fout); font-weight: 600; white-space: normal; max-width: 72ch; line-height: 1.3; }
 /* smal (tablet): een fout over de volle breedte onder de kop, in plaats van een smal kolommetje */
 @media (max-width: 1100px) { .opname-melding.fout { order: 10; flex-basis: 100%; max-width: none; } }
-.apparaten { display: flex; gap: 6px; margin-left: auto; }
+.apparaten { display: flex; gap: 6px; margin-left: auto; align-items: center; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 .chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--rand); color: var(--stil); }
 .chip::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--stil); }
 .chip.aan { color: var(--tekst); border-color: color-mix(in srgb, var(--goed) 40%, var(--rand)); }
 .chip.aan::before { background: var(--goed); }
+/* De APC bevestigde de modus niet (PROTOCOL §16): de chip en één regel met wat te doen. */
+.chip.aan.let-op { border-color: color-mix(in srgb, var(--fout) 50%, var(--rand)); }
+.chip.aan.let-op::before { background: var(--fout); }
+.apc-melding[hidden] { display: none; }
+.apc-melding { font-size: 12px; color: var(--fout); font-weight: 600; line-height: 1.3; max-width: 60ch; }
 .verbinding { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--zacht); min-width: 13em; justify-content: flex-end; }
 .verbinding i { width: 9px; height: 9px; border-radius: 50%; background: var(--let); }
 .verbinding[data-status="verbonden"] i { background: var(--goed); box-shadow: 0 0 8px var(--goed); }

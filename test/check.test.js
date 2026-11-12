@@ -117,6 +117,10 @@ describe('check: de hub en de controllers', () => {
     expect(punt(r, 'apc40')).toMatchObject({ status: 'ok', uitleg: expect.stringMatching(/verbonden met de hub/) });
     expect(punt(r, 'lpd8')).toMatchObject({ status: 'fout', uitleg: expect.stringMatching(/hub ziet de LPD8 niet/) });
     expect(midiGelezen).toBe(false);
+    // De nep-APC antwoordt niet op de intro: na HANDDRUK_MS zegt check het (let op, geen fout) met wat te doen (§16).
+    for (let i = 0; i < 300 && hub.kern.beeld().apparaten.apc40?.handdruk !== 'geen-antwoord'; i++) await new Promise((res) => setTimeout(res, 10));
+    const r2 = await check({ ...opties, fetch, poort: hub.server.poort, laadMidi: async () => ({ systeem: null }) });
+    expect(punt(r2, 'apc40')).toMatchObject({ status: 'let', uitleg: expect.stringMatching(/zonder bevestiging op de modus-instructie/), doen: expect.stringMatching(/druk op Track Select 1/) });
     expect(r.hub).toBe(true);
     expect(r.code).toBe(1);
   });

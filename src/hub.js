@@ -142,7 +142,11 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   // Echte controllers → kern; hun stand → cockpit.
   apparaten.apc.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { opnemer?.invoer('apc40', b); kern.invoer(g, b); });
   apparaten.lpd8.bij('gebeurtenis', (/** @type {any} */ g, /** @type {number[]} */ b) => { opnemer?.invoer('lpd8', b); kern.invoer(g, b); });
-  const meldApc = () => kern.zetApparaat('apc40', { verbonden: apparaten.apc.verbonden, naam: apparaten.apc.poort?.naam ?? null });
+  // §16/§8: de stand van de handdruk (bezig, ok, geen-antwoord) staat bij de APC in het beeld, met wat te doen als het mis is.
+  const meldApc = () => {
+    const stand = apparaten.apc.verbonden ? apparaten.apc.handdruk.stand : null;
+    kern.zetApparaat('apc40', { verbonden: apparaten.apc.verbonden, naam: apparaten.apc.poort?.naam ?? null, handdruk: stand, hint: stand === 'geen-antwoord' ? APC_HANDDRUK_HINT : null });
+  };
   const meldLpd8 = () => kern.zetApparaat('lpd8', { verbonden: apparaten.lpd8.verbonden, naam: apparaten.lpd8.poort?.naam ?? null, model: apparaten.lpd8.model });
   for (const e of ['verbonden', 'weg']) { apparaten.apc.bij(e, meldApc); apparaten.lpd8.bij(e, meldLpd8); }
   apparaten.lpd8.bij('model', meldLpd8);
@@ -183,6 +187,7 @@ export async function startHub({ config, systeem, hid = null, hidReden = null, k
   // De APC-handdruk (src/apparaten.js ApcSessie.init). Zonder antwoord op de intro is het nog niet zeker mis (niet
   // elke APC stuurt dat antwoord): Track Select is het bewijs (PROTOCOL §16). Eén regel, met wat te doen.
   apparaten.apc.bij('handdruk', (/** @type {{ ok: boolean, identiteit: boolean, apparaatId: number|null, trackSelect: boolean }} */ h) => {
+    meldApc();
     log(h.ok ? `APC: modus gezet (${h.trackSelect ? 'Track Select komt binnen' : `antwoord op de intro${h.apparaatId !== null ? `, apparaat-id ${h.apparaatId}` : ''}`})`
       : `APC: ${APC_HANDDRUK_HINT}${h.identiteit ? '' : ' (ook geen antwoord op de identiteitsvraag)'}`);
   });
