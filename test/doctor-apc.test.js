@@ -1,5 +1,6 @@
 // doctor toont de APC-handdruk stap voor stap: welke identiteitsvraag en welke modus-instructie de APC beantwoordt.
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { doctor, draaiendeApcProgrammas } from '../src/doctor.js';
 import { laadConfig } from '../src/config.js';
 import { NepSysteem } from '../src/ports/nep.js';
@@ -8,10 +9,10 @@ const config = laadConfig();
 const identiteit = (id) => [0xf0, 0x7e, 0x00, 0x06, 0x02, 0x47, 0x29, 0x00, 0x19, 1, 2, 0, 3, id, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 0xf7];
 
 /**
- * @param {{ omni?: boolean, id?: number, stil?: boolean, geenIntroAntwoord?: boolean, bijLuisteren?: number[][], programmas?: string[], hub?: boolean }} o
+ * @param {{ omni?: boolean, id?: number, stil?: boolean, geenIntroAntwoord?: boolean, bijLuisteren?: number[][], programmas?: string[], hub?: boolean, luisterMs?: number }} o
  *   geenIntroAntwoord: identiteit wel, maar nooit 0x61; bijLuisteren: wat Clay drukt terwijl doctor luistert
  */
-async function draai({ omni = true, id = 0, stil = false, geenIntroAntwoord = false, bijLuisteren = [], programmas = [], hub = false } = {}) {
+async function draai({ omni = true, id = 0, stil = false, geenIntroAntwoord = false, bijLuisteren = [], programmas = [], hub = false, luisterMs = 300 } = {}) {
   const midi = new NepSysteem();
   const apc = midi.voegToe('APC40 mkII');
   const vragen = [];
@@ -23,7 +24,7 @@ async function draai({ omni = true, id = 0, stil = false, geenIntroAntwoord = fa
     if (b[1] === 0x47 && b[4] === 0x60) setTimeout(() => apc.injecteer([0xf0, 0x47, id, 0x29, 0x61, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0xf7]), 1);
   };
   const r = await doctor({ config, laadMidi: async () => ({ systeem: midi }), laadHid: async () => ({ systeem: null, reden: 'x' }),
-    niProgrammas: () => [], wachtMs: 20, hubDraait: async () => hub, apcLuisterMs: 300, apcProgrammas: () => programmas,
+    niProgrammas: () => [], wachtMs: 20, hubDraait: async () => hub, apcLuisterMs: luisterMs, apcProgrammas: () => programmas,
     vraag: (t) => { vragen.push(t); setTimeout(() => { for (const b of bijLuisteren) apc.injecteer(b); }, 50); } });
   return { ...r, vragen };
 }
@@ -64,10 +65,21 @@ describe('doctor: APC-handdruk', () => {
     expect(tekst).not.toMatch(/fabrieksmodus/);
     expect(data.apc40.handdruk).toMatchObject({ gezet: true, trackSelect: true });
   }, 15000);
-  it('alleen de fader komt binnen, Track Select niet: hij staat in de fabrieksmodus (0x40)', async () => {
+  it('alleen de fader komt binnen, Track Select niet: niet ingedrukt, of de fabrieksmodus (0x40); niet stellig', async () => {
     const { tekst, data } = await draai({ geenIntroAntwoord: true, bijLuisteren: [[0xb0, 7, 90], [0xb0, 7, 91]] });
-    expect(tekst).toMatch(/✗ apc40: wel invoer, maar Track Select stuurt niets: hij staat nog in de fabrieksmodus \(0x40\)/);
+    expect(tekst).toMatch(/✗ apc40: wel invoer, maar Track Select kwam niet binnen \(niet ingedrukt, of hij staat nog in de fabrieksmodus 0x40/);
+    expect(tekst).toMatch(/Draai doctor nog eens en druk dan op Track Select 1/);
     expect(data.apc40.handdruk).toMatchObject({ gezet: false, trackSelect: false, invoerTijdensLuisteren: 2 });
+  }, 15000);
+  // Eindcontrole (nov): 3 s was krap (de vraag lezen, de knop vinden). Nu tot 8 s, maar doctor wacht niet langer dan nodig.
+  it('Track Select komt binnen: doctor luistert niet de hele tijd door; standaard luistert hij tot 8 s', async () => {
+    const t0 = Date.now();
+    const { tekst, data, vragen } = await draai({ geenIntroAntwoord: true, bijLuisteren: [[0x90, 51, 127]], luisterMs: 10000 });
+    expect(Date.now() - t0).toBeLessThan(8000); // zonder vroeg stoppen: ±3 s doctor + 10 s luisteren
+    expect(data.apc40.handdruk).toMatchObject({ gezet: true, trackSelect: true });
+    expect(tekst).toMatch(/✔ apc40: Track Select komt binnen/);
+    expect(vragen[0]).toMatch(/luistert tot 10 s, en gaat door zodra Track Select binnenkomt/);
+    expect(readFileSync(new URL('../src/doctor.js', import.meta.url), 'utf8')).toMatch(/apcLuisterMs = 8000/);
   }, 15000);
   it('Ableton Live of de hub draait ook: een waarschuwing (ze delen de poort en sturen hun eigen intro)', async () => {
     const { tekst } = await draai({ programmas: ['Ableton Live'], hub: true });

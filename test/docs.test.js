@@ -163,4 +163,21 @@ describe('HARDWARE-AVOND: "Eerst dit (5 minuten)" na de eerste test op de Mac', 
     expect(hub).toContain('APC: modus gezet');
     expect(hub).toContain('geen bevestiging op de modus-instructie');
   });
+  // Eindcontrole (nov): het blok verwachtte doctor-regels die alleen na #23, #24 en de afronding op main staan; de
+  // luistertijd stond er als 3 s; en dat de rode APC-regel na elke start terug kan komen, stond nergens.
+  it('zegt eerst te mergen (#23, #24, de afronding; gewone merge), met een regel van doctor als controle', () => {
+    const plat = blok.replace(/\n> ?/g, ' ').replace(/\s+/g, ' '); // ook binnen het citaatblok (regels met "> ")
+    expect(plat).toMatch(/#23 .*#24 .*afronding/);
+    expect(plat).toMatch(/niet "Squash and merge"/);
+    expect(plat.indexOf('Eerst mergen')).toBeLessThan(plat.indexOf('git pull'));
+    expect(plat).toContain('identiteit (omni, 0,5 s later)');
+    expect(lees('src/doctor.js')).toContain('identiteit (omni, 0,5 s later)');
+  });
+  it('de luistertijd van doctor klopt met src/doctor.js, en de rode APC-regel na een nieuwe start staat erin', () => {
+    const plat = blok.replace(/\s+/g, ' ');
+    const ms = Number(/apcLuisterMs = (\d+)/.exec(lees('src/doctor.js'))?.[1]);
+    expect(plat).toContain(`doctor wacht tot ${ms / 1000} seconden en gaat door zodra Track Select binnenkomt`);
+    expect(doc).not.toMatch(/3 seconden\)|je hebt 3 seconden/);
+    expect(plat).toMatch(/kan na \*\*elke\*\* start van de hub terugkomen.*één keer Track Select 1 haalt hem weer weg/);
+  });
 });

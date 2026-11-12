@@ -11,6 +11,11 @@ stappen, vink af, en push aan het eind twee bestanden. Daarna maakt Claude er va
 Na je eerste test in oktober is de manier veranderd waarop de hub de APC aanzet (de "handdruk", nu zoals Ableton Live het
 doet). Kijk eerst of dat werkt. Daarna pas de rest van dit draaiboek.
 
+> **Eerst mergen.** Dit draaiboek hoort bij de versie waarin drie pull requests op `main` staan, in deze volgorde:
+> #23 (grammatica), #24 (KP3+ en EFX-500) en daarna de afronding. Kies op GitHub telkens de gewone merge ("Create a
+> merge commit"), niet "Squash and merge": anders botsen ze. Zie je bij stap 5 geen regel `identiteit (omni, 0,5 s
+> later)`, dan staan ze er nog niet op en klopt dit draaiboek niet met wat je ziet; vraag Claude dan eerst om hulp.
+
 1. Open Terminal en ga naar de map AV-app-hub.
 2. Haal de nieuwe versie op:
    ```bash
@@ -35,7 +40,8 @@ doet). Kijk eerst of dat werkt. Daarna pas de rest van dit draaiboek.
    - `identiteit (omni, …)` en `identiteit (kanaal 0, zoals Ableton Live)`: staat er bij minstens één een rij getallen
      (geen "geen antwoord"), dan antwoordt de APC. Bij `product` hoort `0x29 (APC40 mkII)` te staan.
    - `modus-instructie (intro, …)`: `✔ antwoord` is goed. Staat er overal `✗ geen antwoord`, dan vraagt doctor je
-     **Track Select 1 in te drukken en fader 1 te bewegen**. Doe dat meteen; je hebt 3 seconden.
+     **Track Select 1 in te drukken en fader 1 te bewegen**. Doe dat meteen: doctor wacht tot 8 seconden en gaat door
+     zodra Track Select binnenkomt.
    - De laatste regel bij de APC zegt hoe het afliep. Goed is `✔ apc40 gaat in de hub-modus` of `✔ apc40: Track Select
      komt binnen`. Staat er een ✗, lees dan wat erachter staat, en kijk in blok 7 ("De APC doet niet wat hij moet").
 6. Start de hub:
@@ -44,7 +50,8 @@ doet). Kijk eerst of dat werkt. Daarna pas de rest van dit draaiboek.
    ```
    Kijk in het Terminal-venster. Je wilt binnen een paar seconden **`APC: modus gezet`** zien. Staat er
    `APC: geen bevestiging op de modus-instructie`? Druk dan op Track Select 1: komt daarna `APC: modus gezet`, dan is
-   het goed. Ctrl-C stopt de hub.
+   het goed. Ctrl-C stopt de hub. Die rode APC-regel kan na **elke** start van de hub terugkomen, en ook als de USB even
+   hapert (de hub zet de APC dan opnieuw aan). Dat is niet erg: één keer Track Select 1 haalt hem weer weg.
 7. Stuur Claude de hele uitvoer van doctor, en zeg of `APC: modus gezet` verscheen. Kopiëren mag gewoon uit het
    Terminal-venster.
 
@@ -352,11 +359,14 @@ iets anders dan de cockpit, de draaiknoppen doen per track iets anders). *Oorzaa
 **fabrieksmodus** (0x40): hij heeft de modus-instructie van de hub niet aangenomen. In het hubvenster en in de cockpit
 (bij APC40) staat dan `geen bevestiging op de modus-instructie — druk op Track Select 1 …`. Druk dan eerst op Track
 Select 1: komt die binnen, dan staat de modus wél goed (niet elke APC stuurt een bevestiging) en verdwijnt de melding.
+Komt de melding later terug (na een nieuwe start van de hub, of als de USB even haperde)? Dan zette de hub de APC opnieuw
+aan en wacht hij weer op zijn bevestiging: druk nog eens op Track Select 1.
 *Kijk anders:* stop de hub (Ctrl-C) en draai `node src/cli.js doctor`. Bij de APC staat per vorm of hij antwoordt: de
 identiteitsvraag zoals het protocol (omni, direct en een halve seconde later) en zoals Ableton Live (kanaal 0), het
 product (`0x29` = mkII), en de modus-instructie met apparaat-id 0x7f en met zijn eigen id. Staat er ergens `✔ antwoord`,
 dan zet de hub hem zelf zo — start de hub opnieuw. Zo niet, dan vraagt doctor je **Track Select 1 in te drukken en fader 1
-te bewegen** (3 seconden) en zegt hij wat er binnenkwam: Track Select (goed), alleen de fader (fabrieksmodus), of niets
+te bewegen** (tot 8 seconden) en zegt hij wat er binnenkwam: Track Select (goed), alleen de fader (Track Select niet
+ingedrukt, of de fabrieksmodus: draai doctor nog eens en druk dan echt op Track Select 1), of niets
 (er komt helemaal niets van de APC binnen). Dan: de aan/uit-knop achterop aan (de mkII krijgt stroom via USB, er is geen
 adapter), de kabel rechtstreeks in de Mac of een andere kabel of poort, en Ableton Live, Bitwig en Chrome-tabs met
 Varve DJ zonder `?hub=` helemaal dicht (doctor noemt Live en Bitwig als ze draaien). *Nog dieper (laat het Claude zien):* installeer **MIDI Monitor**

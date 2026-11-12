@@ -8,7 +8,7 @@
 // driver = { soort:"http", url:"http://127.0.0.1:8766", gezond_s?:2, max_hz?:10,
 //            verbs: { paramId: { verb, args?, waarde?: "argnaam", bereik?: [min, max] } },
 //            lees?: false | LeesSpec }   (teruglezen uit de app, §3.3 van docs/VOLGENDE-KOPPELINGEN.md: zie onderaan)
-import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
+import { DriverBasis, scheidStatisch, bewaarBegrensd, laatBodyLos } from './basis.js';
 import { klem01 } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
@@ -173,7 +173,7 @@ export class HttpDriver extends DriverBasis {
       p = this.fetch(`${this.url}/verb`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(bericht), ...(ac ? { signal: ac.signal } : {}) });
     } catch (e) { klaar(); this.#mislukt(bericht, e); return; }
     Promise.resolve(p).then(
-      (r) => { klaar(); if (r && r.ok === false) this.#mislukt(bericht, new Error(`HTTP ${r.status}`)); },
+      (r) => { klaar(); laatBodyLos(r); if (r && r.ok === false) this.#mislukt(bericht, new Error(`HTTP ${r.status}`)); },
       (e) => {
         klaar();
         // Afgebroken na POST_TIMEOUT_MS: de brug heeft het verb wel, de tab is alleen traag. Geen replay.
@@ -254,6 +254,7 @@ export class HttpDriver extends DriverBasis {
     try {
       const r = await this.fetch(`${this.url}/`, { method: 'GET', ...(ac ? { signal: ac.signal } : {}) });
       ok = !!r && r.ok !== false;
+      if (!ok || typeof r.text !== 'function') laatBodyLos(r);
       // de uurwerk-brug draait wel, maar zonder browsertab gebeurt er niets: "tabs: 0"
       if (ok && typeof r.text === 'function') {
         const tekst = await r.text().catch(() => '');

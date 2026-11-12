@@ -46,7 +46,7 @@ export const vrij = (poort, soort) => new Promise((r) => {
  */
 export async function doctor({ config, laadMidi, laadHid: hidLader = laadHid, niProgrammas = () => draaiendeNi(), wachtMs = 600,
   hubDraait = async () => !(await vrij(config.poorten.http, 'tcp')), platform = process.platform,
-  apcLuisterMs = 3000, apcProgrammas = () => draaiendeApcProgrammas(), vraag = () => {} }) {
+  apcLuisterMs = 8000, apcProgrammas = () => draaiendeApcProgrammas(), vraag = () => {} }) {
   const r = [];
   const data = /** @type {any} */ ({});
   const ok = (/** @type {boolean|null|undefined} */ b) => (b ? '✔' : '✗');
@@ -184,20 +184,21 @@ async function apcHanddruk({ config, p, ontvangen, alle, r, data, ok, hubDraait,
   // Geen antwoord op de intro: Track Select beslist.
   let trackSelect = false, invoer = 0;
   if (!antwoord && apcLuisterMs > 0) {
-    const tekst = `      → druk nu op Track Select 1 en beweeg fader 1 (doctor luistert ${Math.round(apcLuisterMs / 100) / 10} s)`;
+    // Tot apcLuisterMs (8 s: tijd om de vraag te lezen en de knop te vinden); komt Track Select binnen, dan meteen door.
+    const tekst = `      → druk nu op Track Select 1 en beweeg fader 1 (doctor luistert tot ${Math.round(apcLuisterMs / 100) / 10} s, en gaat door zodra Track Select binnenkomt)`;
     r.push(tekst);
     vraag(tekst.trim());
     const n0 = alle.n, l0 = alle.laatste.length;
-    await wacht(apcLuisterMs);
+    const eind = Date.now() + apcLuisterMs;
+    while (!(trackSelect = alle.laatste.slice(l0).some(isModusBewijs)) && Date.now() < eind) await wacht(Math.min(100, Math.max(1, eind - Date.now())));
     invoer = alle.n - n0;
-    trackSelect = alle.laatste.slice(l0).some(isModusBewijs);
   }
   const gezet = antwoord || trackSelect;
   data[dev].handdruk = { omni: omni ?? null, omniLater, kanaal0, apparaatId: id, product, intro7f: !!intro7f, introId: !!introId, intro0: !!intro0, trackSelect, invoerTijdensLuisteren: invoer, gezet };
   r.push(`      ontvangen van de APC: ${alle.n} berichten (${ontvangen.length} SysEx)`);
   if (antwoord) r.push(`  ${ok(true)} apc40 gaat in de hub-modus (0x${modus.toString(16)})`);
   else if (trackSelect) r.push(`  ${ok(true)} apc40: Track Select komt binnen, dus de hub-modus staat (deze APC antwoordt alleen niet op de intro; dat is niet erg)`);
-  else if (invoer > 0) r.push(`  ${ok(false)} apc40: wel invoer, maar Track Select stuurt niets: hij staat nog in de fabrieksmodus (0x40). ${APC_HINT}`);
+  else if (invoer > 0) r.push(`  ${ok(false)} apc40: wel invoer, maar Track Select kwam niet binnen (niet ingedrukt, of hij staat nog in de fabrieksmodus 0x40; daarin stuurt Track Select niets). Draai doctor nog eens en druk dan op Track Select 1. ${APC_HINT}`);
   else r.push(`  ${ok(false)} apc40: geen antwoord op de modus-instructie en er kwam niets binnen${apcLuisterMs > 0 ? ' (ook geen fader of knop)' : ''}. ${APC_HINT}`);
 }
 

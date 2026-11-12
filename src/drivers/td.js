@@ -33,7 +33,7 @@
 //            paniek?: { paramId: 0..1 } }
 // De poort staat alleen in config.json (huisregel 6): apps.<app>.poort, anders bekende_apps.<app>.tcp.
 // Geen (geldige) poort → de driver start niet en zegt waarom.
-import { DriverBasis, scheidStatisch, bewaarBegrensd } from './basis.js';
+import { DriverBasis, scheidStatisch, bewaarBegrensd, laatBodyLos } from './basis.js';
 import { klem01, nieuweInst } from '../protocol/berichten.js';
 
 /** @typedef {import('../protocol/types.js').NaarApp} NaarApp @typedef {import('../core/klok.js').Klok} Klok */
@@ -238,7 +238,7 @@ export class TdDriver extends DriverBasis {
         p = this.fetch(`${this.url}/exec`, { method: 'POST', headers: { 'content-type': 'text/plain; charset=utf-8' }, body: code, ...(ac ? { signal: ac.signal } : {}) });
       } catch (e) { einde({ ok: false, fout: foutTekst(e), transport: true }); return; }
       Promise.resolve(p).then(async (r) => {
-        if (!r || r.ok === false) return einde({ ok: false, fout: `HTTP ${r?.status ?? '?'}`, transport: true });
+        if (!r || r.ok === false) { laatBodyLos(r); return einde({ ok: false, fout: `HTTP ${r?.status ?? '?'}`, transport: true }); }
         let tekst = '';
         try { tekst = typeof r.text === 'function' ? await r.text() : ''; } catch { return einde({ ok: false, fout: 'antwoord onleesbaar', transport: true }); }
         /** @type {any} */

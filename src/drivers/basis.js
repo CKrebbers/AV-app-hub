@@ -39,6 +39,19 @@ export function bewaarBegrensd(lijst, x, max = VERSTUURD_MAX) {
   if (lijst.length > max) lijst.splice(0, lijst.length - max);
 }
 
+/**
+ * Een antwoord waarvan de driver de body niet leest: breek de body af. Blijft hij half gelezen liggen en sluit de app
+ * daarna de verbinding, dan laat Node 22 (undici) een onafgehandelde AssertionError vallen ("assert(!this.paused)") en
+ * valt de hub om (gezien bij de repetitie, met python3 http.server). Nep-antwoorden in tests hebben geen body: niets.
+ * @param {unknown} r
+ */
+export function laatBodyLos(r) {
+  try {
+    const c = /** @type {any} */ (r)?.body?.cancel?.();
+    if (c && typeof c.catch === 'function') c.catch(() => {});
+  } catch { /* al gelezen of dicht */ }
+}
+
 export class DriverBasis {
   /**
    * @param {{ manifest: Record<string, any>, klok: Klok, log?: (...a: unknown[]) => void }} o

@@ -60,6 +60,7 @@ Elke app spreekt het protocol achter `?hub=ws://localhost:7700/app`; zonder vlag
 - [x] **Geheugen** — snapshots en `truth:"hub"`-waarden over een herstart (`~/.varve-hub/staat.json`); slew_s voor alles behalve de APC (PROTOCOL §12)
 - [x] **Altijd aan + netwerk (F5)** — `--lan` met token en mDNS, `installeer` (launchd/systemd), `token` (`docs/NETWERK.md`, PROTOCOL §13)
 - [x] **Generale repetitie** — `npm run repetitie`: de hub met de échte koppelingen in headless Chromium, één avond lang (`docs/REPETITIE.md`); in CI met nep-apps
+  - Nov (eindcontrole): de repetitie viel 3 van de 4 keer om vlak na de start (`AssertionError … assert(!this.paused)` in Node 22): het script liet het antwoord van Waterschaal (python3 http.server) ongelezen liggen. Nu breekt het die body af (`tools/repetitie-proces.mjs`, ook in de HTTP- en TD-driver van de hub); daarna 2 van de 2 keer groen (204/204).
 - [x] **av-kern** — lease-koppeling, eerst als patch in `koppelingen/av-kern/` (de ◄/►-fix, right = 96, left = 97, staat sinds 5 okt op av-kern main); na 25 okt als PR in av-kern, die op jouw OK wacht
 
 Klaar als (op jouw Mac):
